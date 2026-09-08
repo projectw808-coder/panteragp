@@ -34,6 +34,9 @@ Market data (any authenticated principal): `GET /instruments` · `GET /candles` 
 Live feed: `WS /feed` — the client authenticates in its first message, then receives
 `{type:'tick', ticks:[{symbol, price}]}` once a second, plus `order` and `fill` events
 for its own account (staff with `trade:read` see them too).
+Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
+`POST /wallets/:id/withdraw` · `GET /wallet-transactions` · `POST /wallet-transactions/:id/decide`
+`POST /clients/:id/credit` · `POST /clients/:id/wallet-credit` (both admin-only)
 Trading (account holders only): `GET /account` · `GET|POST /orders` · `DELETE /orders/:id`
 `GET /positions` · `GET /trades` · `GET|POST /cash`
 Compliance: `POST|GET /clients/:id/kyc` · `GET /kyc/pending` · `GET /kyc/:id/file`
@@ -84,6 +87,41 @@ position sizing tool is the same function on both sides of the wire.
 
 Not enforced: margin calls, partial fills, slippage, spread, commission, and a resting
 limit left behind after a stop-limit triggers. Each is marked in the code.
+
+## Currencies, credits and wallets
+
+`currencies` carries 167 codes — the worldwide ISO 4217 fiat list plus twelve crypto
+assets — each with its minor unit, because that is what every balance is formatted to.
+The zero-decimal (JPY, KRW, CLP, the CFA francs) and three-decimal (KWD, BHD, OMR, JOD,
+TND, LYD, IQD) entries are correct, not oversights; formatting yen to two places would
+misstate a balance by a factor of a hundred.
+
+A client holds one `trading_accounts` row per currency — the schema's
+`UNIQUE (client_id, mode, currency)` always allowed this — created on first credit.
+
+**Credits** put money on an account out of nothing, so they sit behind a dedicated
+`funds:credit` permission held only by admin: deliberately not part of ordinary CRM write
+access, so sales and support cannot mint funds. Every credit is audited and written to the
+client's timeline with its stated reason.
+
+**Wallets are simulated.** There is no key material anywhere in this codebase and nothing
+touches a chain. A wallet is a balance plus an address-shaped label, and every address is
+prefixed `DEMO-` — enforced by a CHECK constraint, not just convention — so it can never
+be mistaken for a real address and funded with coin that nothing here could recover or
+return. Wallet withdrawals follow the same rule as fiat: debited on request, refunded on
+rejection.
+
+Making these real is a different product, not a feature flag: key custody or a custodian
+integration, HSM or KMS for signing, chain reorg and confirmation handling, hot/cold
+separation, and the licensing and travel-rule obligations that come with holding client
+crypto.
+
+**Valuation.** `rateToUsd` prices crypto from the live feed where an instrument exists
+(BTC, ETH), dollar-pegged stablecoins from a seeded rate of 1, and fiat from the seeded
+`fx_rates` table — which a real deployment refreshes from an FX provider. Anything with no
+price source is reported as unpriced and excluded from the total, and the UI names it,
+rather than being silently valued at zero and understating the client's holdings.
+
 
 ## Compliance
 KYC: a client uploads JPEG/PNG/PDF (10 MB cap, anything else refused). The stored filename

@@ -1012,6 +1012,265 @@ app.get('/reports/:name', { preHandler: auth('crm:read') }, async (req: any, rep
     .send(toCSV(rows));
 });
 
+// ----------------------------------------------- currencies, credits, wallets
+
+type Currency = { code: string; name: string; kind: 'fiat' | 'crypto'; decimals: number };
+
+/** Reference data changes about never, so read it once and keep it. */
+let currencyCache: Map<string, Currency> | null = null;
+let rateCache: Map<string, number> | null = null;
+async function currencies() {
+  if (!currencyCache) {
+    const { rows } = await pool.query<Currency>(
+      'SELECT code, name, kind, decimals FROM currencies WHERE active ORDER BY kind, code');
+    currencyCache = new Map(rows.map((c) => [c.code, c]));
+    const { rows: rates } = await pool.query<{ code: string; per_usd: number }>('SELECT code, per_usd FROM fx_rates');
+    rateCache = new Map(rates.map((r) => [r.code, Number(r.per_usd)]));
+  }
+  return currencyCache;
+}
+
+/**
+ * What one unit of `code` is worth in USD, or null when we genuinely do not know.
+ * Crypto is priced from the live feed where an instrument exists; everything else comes
+ * from the seeded FX table. Returning null rather than a guess keeps unpriced assets out
+ * of totals instead of quietly understating them.
+ */
+async function rateToUsd(code: string): Promise<number | null> {
+  const all = await currencies();
+  const ccy = all.get(code);
+  if (!ccy) return null;
+  if (code === 'USD') return 1;
+  if (ccy.kind === 'crypto') {
+    const { rowCount } = await pool.query('SELECT 1 FROM instruments WHERE symbol = $1', [`${code}USD`]);
+    if (rowCount) return spot(`${code}USD`);
+  }
+  const per = rateCache?.get(code);
+  return per ? 1 / per : null;
+}
+
+/** Sum mixed-currency amounts into USD, reporting what could not be priced. */
+async function totalUsd(rows: { code: string; amount: number }[]) {
+  let usd = 0;
+  const unpriced: string[] = [];
+  for (const r of rows) {
+    const rate = await rateToUsd(r.code);
+    if (rate === null) unpriced.push(r.code);
+    else usd += Number(r.amount) * rate;
+  }
+  return { usd: round8(usd), unpriced: [...new Set(unpriced)] };
+}
+
+app.get('/currencies', { preHandler: auth() }, async () =>
+  [...(await currencies()).values()]);
+
+/** Every balance the client holds, fiat and crypto, with a USD view for totals. */
+app.get('/accounts', { preHandler: trader }, async (req: any) => {
+  await demoAccount(req.principal.sub);   // make sure the base USD account exists
+  const { rows: accounts } = await pool.query<{ currency: string; balance: number }>(
+    `SELECT id, currency, balance, mode, leverage FROM trading_accounts
+      WHERE client_id = $1 AND mode = 'demo' ORDER BY currency`, [req.principal.sub]);
+  const { rows: wallets } = await pool.query<{ asset: string; balance: number }>(
+    'SELECT id, asset, address, balance FROM wallets WHERE client_id = $1 ORDER BY asset',
+    [req.principal.sub]);
+
+  const priced = async <T extends { balance: number }>(row: T, code: string) => {
+    const rate = await rateToUsd(code);
+    return { ...row, usd_value: rate === null ? null : round8(Number(row.balance) * rate) };
+  };
+  const cash = await Promise.all(accounts.map((a) => priced(a, a.currency)));
+  const crypto = await Promise.all(wallets.map((w) => priced(w, w.asset)));
+  const total = await totalUsd([
+    ...accounts.map((a) => ({ code: a.currency, amount: a.balance })),
+    ...wallets.map((w) => ({ code: w.asset, amount: w.balance })),
+  ]);
+  return { cash, wallets: crypto, total_usd: total.usd, unpriced: total.unpriced };
+});
+
+const creditBody = z.object({
+  currency: z.string().min(2).max(10),
+  amount: z.number().positive().finite().max(1e12),
+  note: z.string().max(500).optional(),
+});
+
+/**
+ * Put credit on a client's account in any supported currency. This creates money from
+ * nothing, so it is admin-only, always audited, and always on the client's timeline.
+ */
+app.post('/clients/:id/credit', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = creditBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { currency, amount, note } = body.data;
+
+  const ccy = (await currencies()).get(currency);
+  if (!ccy) return reply.code(404).send({ error: 'unknown currency' });
+  if (ccy.kind !== 'fiat') return reply.code(400).send({ error: 'use the wallet credit route for crypto' });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+
+  return tx(req.principal.sub, async (c) => {
+    // The account for this currency may not exist yet; opening it is part of crediting it.
+    const { rows: [account] } = await c.query(
+      `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo',$2,0)
+       ON CONFLICT (client_id, mode, currency) DO UPDATE SET client_id = excluded.client_id
+       RETURNING *`, [req.params.id, currency]);
+    await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [account.id, amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
+       VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`,
+      [account.id, req.params.id, amount, req.principal.sub]);
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'credit', actor: req.principal.sub,
+      summary: `Credited ${amount} ${currency}${note ? ` — ${note}` : ''}`,
+      ref_table: 'cash_transactions', ref_id: String(entry.id),
+      data: { currency, amount, note: note ?? null },
+    });
+    return { transaction: entry, currency, amount };
+  });
+});
+
+// ------------------------------------------------------------ crypto wallets
+
+/**
+ * Simulated addresses. The DEMO- prefix is not decoration: an address that looked real
+ * could be funded with real coin that nothing here can ever recover or return.
+ */
+const demoAddress = (asset: string) => `DEMO-${asset}-${randomUUID().replace(/-/g, '')}`;
+
+app.get('/wallets', { preHandler: trader }, async (req: any) => {
+  const { rows } = await pool.query(
+    `SELECT id, asset, address, balance, created_at FROM wallets WHERE client_id = $1 ORDER BY asset`,
+    [req.principal.sub]);
+  return Promise.all(rows.map(async (w) => ({ ...w, usd_value: await rateToUsd(w.asset).then((r) => r === null ? null : round8(Number(w.balance) * r)) })));
+});
+
+app.post('/wallets', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({ asset: z.string().min(2).max(10) }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const ccy = (await currencies()).get(body.data.asset);
+  if (!ccy) return reply.code(404).send({ error: 'unknown asset' });
+  if (ccy.kind !== 'crypto') return reply.code(400).send({ error: 'not a crypto asset' });
+
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      `INSERT INTO wallets (client_id, asset, address) VALUES ($1,$2,$3)
+       ON CONFLICT (client_id, asset) DO UPDATE SET client_id = excluded.client_id RETURNING *`,
+      [req.principal.sub, body.data.asset, demoAddress(body.data.asset)]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'wallet', actor: req.principal.sub,
+      summary: `Opened a ${body.data.asset} wallet`, ref_table: 'wallets', ref_id: rows[0].id,
+    });
+    return rows[0];
+  });
+});
+
+app.get('/wallet-transactions', { preHandler: auth() }, async (req: any, reply) => {
+  const q = z.object({ client_id: z.string().uuid().optional() }).parse(req.query);
+  if (req.principal.kind !== 'client' && !can(req.principal.role, 'crm:read')) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  const clientId = req.principal.kind === 'client' ? req.principal.sub : q.client_id;
+  if (!clientId) return [];
+  const { rows } = await pool.query(
+    `SELECT t.*, w.asset FROM wallet_transactions t JOIN wallets w ON w.id = t.wallet_id
+      WHERE t.client_id = $1 ORDER BY t.created_at DESC LIMIT 200`, [clientId]);
+  return rows;
+});
+
+/** Staff credit a wallet. Same reasoning as the fiat credit route: admin-only. */
+app.post('/clients/:id/wallet-credit', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = z.object({
+    asset: z.string().min(2).max(10),
+    amount: z.number().positive().finite().max(1e12),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const ccy = (await currencies()).get(body.data.asset);
+  if (!ccy || ccy.kind !== 'crypto') return reply.code(404).send({ error: 'unknown crypto asset' });
+
+  return tx(req.principal.sub, async (c) => {
+    const { rows: [wallet] } = await c.query(
+      `INSERT INTO wallets (client_id, asset, address) VALUES ($1,$2,$3)
+       ON CONFLICT (client_id, asset) DO UPDATE SET client_id = excluded.client_id RETURNING *`,
+      [req.params.id, body.data.asset, demoAddress(body.data.asset)]);
+    await c.query('UPDATE wallets SET balance = balance + $2 WHERE id = $1', [wallet.id, body.data.amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO wallet_transactions (wallet_id, client_id, kind, amount, status, decided_by, tx_ref)
+       VALUES ($1,$2,'credit',$3,'confirmed',$4,$5) RETURNING *`,
+      [wallet.id, req.params.id, body.data.amount, req.principal.sub, `DEMO-TX-${randomUUID().slice(0, 16)}`]);
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'credit', actor: req.principal.sub,
+      summary: `Credited ${body.data.amount} ${body.data.asset} to the wallet`,
+      ref_table: 'wallet_transactions', ref_id: String(entry.id),
+      data: { asset: body.data.asset, amount: body.data.amount },
+    });
+    return entry;
+  });
+});
+
+/** Withdrawals debit on request and refund on rejection — the same rule as fiat. */
+app.post('/wallets/:id/withdraw', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({
+    amount: z.number().positive().finite(),
+    to_address: z.string().min(6).max(120),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    // Lock before checking, so two withdrawals cannot both spend the same balance.
+    const { rows: [w] } = await c.query<{ id: string; asset: string; balance: number }>(
+      'SELECT id, asset, balance FROM wallets WHERE id = $1 AND client_id = $2 FOR UPDATE',
+      [req.params.id, req.principal.sub]);
+    if (!w) return 'missing' as const;
+    if (body.data.amount > Number(w.balance)) return 'insufficient' as const;
+
+    await c.query('UPDATE wallets SET balance = balance - $2 WHERE id = $1', [w.id, body.data.amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO wallet_transactions (wallet_id, client_id, kind, amount, to_address)
+       VALUES ($1,$2,'withdrawal',$3,$4) RETURNING *`,
+      [w.id, req.principal.sub, -body.data.amount, body.data.to_address]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'withdrawal', actor: req.principal.sub,
+      summary: `Requested withdrawal of ${body.data.amount} ${w.asset} — debited, awaiting approval`,
+      ref_table: 'wallet_transactions', ref_id: String(entry.id),
+      data: { asset: w.asset, amount: body.data.amount, to_address: body.data.to_address },
+    });
+    return entry;
+  });
+  if (out === 'missing') return reply.code(404).send({ error: 'no such wallet' });
+  if (out === 'insufficient') return reply.code(400).send({ error: 'amount exceeds wallet balance' });
+  return reply.code(201).send(out);
+});
+
+app.post('/wallet-transactions/:id/decide', { preHandler: auth('kyc:review') }, async (req: any, reply) => {
+  const body = z.object({ status: z.enum(['confirmed', 'rejected']) }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      `UPDATE wallet_transactions SET status = $2, decided_by = $3,
+              tx_ref = coalesce(tx_ref, $4)
+        WHERE id = $1 AND status = 'pending' RETURNING *`,
+      [req.params.id, body.data.status, req.principal.sub, `DEMO-TX-${randomUUID().slice(0, 16)}`]);
+    const t = rows[0];
+    if (!t) return null;
+    // The withdrawal already left on request, so only a rejection moves the balance back.
+    const reversed = t.kind === 'withdrawal' && body.data.status === 'rejected';
+    if (reversed) {
+      await c.query('UPDATE wallets SET balance = balance - $2 WHERE id = $1', [t.wallet_id, t.amount]);
+    }
+    const { rows: [w] } = await c.query<{ asset: string }>('SELECT asset FROM wallets WHERE id = $1', [t.wallet_id]);
+    await logActivity(c, {
+      client_id: t.client_id, kind: 'withdrawal', actor: req.principal.sub,
+      summary: `${Math.abs(Number(t.amount))} ${w!.asset} withdrawal ${body.data.status}`
+        + (reversed ? ' — refunded to the wallet' : ''),
+      ref_table: 'wallet_transactions', ref_id: String(t.id), data: { reversed },
+    });
+    return t;
+  });
+  if (!out) return reply.code(404).send({ error: 'no such pending transaction' });
+  return out;
+});
+
 // --------------------------------------------------------------- dashboard
 
 /** The whole business in one response: CRM, trading and compliance side by side. */

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { btn, card, input } from './App.tsx';
 import { FlagList, KycPanel } from './compliance.tsx';
+import { CreditForm } from './wallet.tsx';
 import { api, useApi, type Activity, type Client, type ClientRow, type Stage, type Staff, type Task } from './api.ts';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -103,7 +104,7 @@ function NewClient({ onDone }: { onDone: () => void }) {
 
 // ----------------------------------------------------------- client detail
 
-export function ClientDetail({ id, me }: { id: string; me: { sub: string } | null }) {
+export function ClientDetail({ id, me }: { id: string; me: { sub: string; role?: string } | null }) {
   const client = useApi<Client>(`/clients/${id}`);
   const timeline = useApi<Activity[]>(`/clients/${id}/timeline`);
   const tasks = useApi<Task[]>(`/tasks${qs({ client_id: id, scope: 'all' })}`);
@@ -152,6 +153,8 @@ export function ClientDetail({ id, me }: { id: string; me: { sub: string } | nul
           </Field>
           <Field label="KYC"><Badge value={c.kyc_status} /></Field>
         </div>
+
+        {me?.role === 'admin' && <CreditForm clientId={id} onDone={timeline.reload} />}
 
         <KycPanel clientId={id} canUpload />
 

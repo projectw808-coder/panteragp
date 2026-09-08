@@ -3,6 +3,7 @@ import { btn, card, field, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
 import { FundingPanel, KycPanel } from './compliance.tsx';
+import { HoldingsPanel } from './wallet.tsx';
 import { positionSize } from '../../src/trading.ts';
 
 type Instrument = { symbol: string };
@@ -28,7 +29,7 @@ export function TradeView() {
   const orders = useApi<Order[]>('/orders?open=true');
   const trades = useApi<Trade[]>('/trades');
   const [prices, setPrices] = useState<Record<string, number>>({});
-  const [tab, setTab] = useState<'positions' | 'orders' | 'history' | 'funding'>('positions');
+  const [tab, setTab] = useState<'positions' | 'orders' | 'history' | 'funding' | 'holdings'>('positions');
 
   const refresh = useCallback(() => {
     account.reload(); positions.reload(); orders.reload(); trades.reload();
@@ -51,7 +52,7 @@ export function TradeView() {
         <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
           PAPER / DEMO
         </span>
-        <Stat label="Balance" value={a ? `${money(a.balance)} ${a.currency}` : '—'} />
+        <Stat label="Trading balance" value={a ? `${money(a.balance)} ${a.currency}` : '—'} />
         <Stat label="Equity" value={a ? money(a.equity) : '—'} />
         <Stat label="Open P&L" value={a ? signed(a.unrealized) : '—'} className={a ? pnl(a.unrealized) : ''} />
       </div>
@@ -65,7 +66,7 @@ export function TradeView() {
 
         <div className={`${card} flex min-h-0 flex-col gap-3`}>
           <div className="flex gap-1 text-xs">
-            {(['positions', 'orders', 'history', 'funding'] as const).map((t) => (
+            {(['positions', 'orders', 'history', 'funding', 'holdings'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
                 className={`rounded px-3 py-1 capitalize ${tab === t
                   ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
@@ -83,6 +84,7 @@ export function TradeView() {
             }} />}
             {tab === 'history' && <History rows={trades.data ?? []} />}
             {tab === 'funding' && <FundingPanel />}
+            {tab === 'holdings' && <HoldingsPanel />}
           </div>
         </div>
       </div>

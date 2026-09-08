@@ -32,5 +32,8 @@ test('rbac matrix', () => {
   assert.ok(can('sales', 'trade:read'));               // trading data, read-only
   assert.ok(can('compliance', 'audit:read'));
   assert.equal(can('compliance', 'crm:write'), false);
-  for (const p of ['crm:write', 'kyc:review', 'audit:read', 'admin'] as const) assert.ok(can('admin', p));
+  for (const role of ['sales', 'support', 'compliance', 'trader'] as const) {
+    assert.equal(can(role, 'funds:credit'), false, role + ' must not be able to credit funds');
+  }
+  for (const p of ['crm:write', 'kyc:review', 'audit:read', 'funds:credit', 'admin'] as const) assert.ok(can('admin', p));
 });

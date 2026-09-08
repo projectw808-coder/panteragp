@@ -274,6 +274,73 @@ await step('reports export as CSV with formulas defused', async () => {
   assert.equal(await status('/reports/clients', { token: T }), 403);
 });
 
+console.log('\nCurrencies, credits and wallets');
+await step('the currency list covers world fiat and crypto, with correct minor units', async () => {
+  const all = await get('/currencies', { token: A });
+  const by = Object.fromEntries(all.map((c) => [c.code, c]));
+  assert.ok(all.filter((c) => c.kind === 'fiat').length > 100, 'expected a worldwide fiat list');
+  for (const code of ['USD', 'GBP', 'EUR', 'CAD']) assert.equal(by[code].decimals, 2, code);
+  assert.equal(by.JPY.decimals, 0, 'yen has no minor unit');
+  assert.equal(by.KWD.decimals, 3, 'the dinar has three');
+  assert.equal(by.BTC.decimals, 8);
+  assert.equal(by.ETH.decimals, 18);
+});
+await step('an admin can credit any currency, and nobody else can', async () => {
+  for (const [currency, value] of [['GBP', 5000], ['EUR', 2500], ['CAD', 1200], ['JPY', 300000]]) {
+    const r = await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency, amount: value, note: 'acceptance' } });
+    assert.ok(r.transaction, `credit in ${currency} failed: ${JSON.stringify(r)}`);
+  }
+  assert.equal(await status(`/clients/${client.id}/credit`, { token: T, method: 'POST', body: { currency: 'GBP', amount: 1 } }), 403,
+    'a client must not be able to credit itself');
+  assert.equal(await status(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'XYZ', amount: 1 } }), 404);
+  assert.equal(await status(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'GBP', amount: -5 } }), 400);
+  assert.equal(await status(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'BTC', amount: 1 } }), 400,
+    'crypto belongs on the wallet route');
+});
+await step('balances appear per currency with a USD total', async () => {
+  const acct = await get('/accounts', { token: T });
+  const held = Object.fromEntries(acct.cash.map((c) => [c.currency, Number(c.balance)]));
+  assert.equal(held.GBP, 5000);
+  assert.equal(held.JPY, 300000);
+  assert.ok(acct.total_usd > 0);
+  const gbp = acct.cash.find((c) => c.currency === 'GBP');
+  assert.ok(gbp.usd_value > gbp.balance, 'sterling should convert to more dollars than its face');
+});
+await step('wallets are simulated, and say so in the address', async () => {
+  const wallet = await get('/wallets', { token: T, method: 'POST', body: { asset: 'BTC' } });
+  assert.match(wallet.address, /^DEMO-BTC-/, 'an address must never look fundable');
+  assert.equal(await status('/wallets', { token: T, method: 'POST', body: { asset: 'GBP' } }), 400, 'fiat is not a wallet asset');
+  assert.equal(await status('/wallets', { token: T, method: 'POST', body: { asset: 'NOPE' } }), 404);
+  const again = await get('/wallets', { token: T, method: 'POST', body: { asset: 'BTC' } });
+  assert.equal(again.id, wallet.id, 'opening the same wallet twice returns the same wallet');
+});
+await step('a wallet withdrawal debits immediately and refunds on rejection', async () => {
+  await get(`/clients/${client.id}/wallet-credit`, { token: A, method: 'POST', body: { asset: 'BTC', amount: 0.5 } });
+  const wallet = (await get('/wallets', { token: T })).find((w) => w.asset === 'BTC');
+  assert.equal(Number(wallet.balance), 0.5);
+
+  const wd = await get(`/wallets/${wallet.id}/withdraw`, { token: T, method: 'POST', body: { amount: 0.2, to_address: 'DEMO-BTC-elsewhere' } });
+  const debited = (await get('/wallets', { token: T })).find((w) => w.asset === 'BTC');
+  assert.ok(Math.abs(Number(debited.balance) - 0.3) < 1e-12, 'the coin should leave on request');
+
+  await get(`/wallet-transactions/${wd.id}/decide`, { token: A, method: 'POST', body: { status: 'rejected' } });
+  const refunded = (await get('/wallets', { token: T })).find((w) => w.asset === 'BTC');
+  assert.ok(Math.abs(Number(refunded.balance) - 0.5) < 1e-12, 'a rejected withdrawal must come back');
+  assert.equal(await status(`/wallets/${wallet.id}/withdraw`, { token: T, method: 'POST', body: { amount: 999, to_address: 'DEMO-x' } }), 400);
+});
+await step('one client cannot withdraw from another client wallet', async () => {
+  const wallet = (await get('/wallets', { token: T })).find((w) => w.asset === 'BTC');
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy', email: `nosy+${Date.now()}@example.com`, password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/wallets/${wallet.id}/withdraw`, { token: N, method: 'POST', body: { amount: 0.01, to_address: 'DEMO-x' } }), 404);
+});
+await step('credits and wallet movements reach the CRM timeline', async () => {
+  const kinds = (await get(`/clients/${client.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('credit'), 'credits missing from the timeline');
+  assert.ok(kinds.includes('wallet'), 'wallet creation missing from the timeline');
+});
+
+
 console.log('\nPhase 7 — admin dashboard');
 await step('the overview agrees with the underlying endpoints', async () => {
   const o = await get('/admin/overview', { token: A });
