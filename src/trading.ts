@@ -142,6 +142,30 @@ export function project(
   return round8(value);
 }
 
+/** Days per year used to turn a headline annual rate into a daily one. */
+export const DAYS_PER_YEAR = 365;
+
+/**
+ * Interest earned over `days` at `annualRate`, compounded daily.
+ *
+ * The daily rate is the 365th root of the annual one, not annualRate/365, so a full year
+ * of daily compounding lands back on the headline rate instead of overshooting it — the
+ * same convention project() uses monthly, so the projection and the accrual agree.
+ *
+ * Returns the interest only, not the new balance, and never rounds to a minor unit: a
+ * penny a day on a small pot would floor to zero every day and never grow at all. The
+ * fraction stays in the balance (numeric(38,18)) and the display rounds.
+ * ponytail: 365-day year, so leap days pay a fraction less. Use an actual/actual day
+ * count if that ever has to tie out against a real product.
+ */
+export function accrue(
+  { balance, annualRate, days }: { balance: number; annualRate: number | null; days: number },
+): number {
+  if (annualRate === null || annualRate === 0 || !(days > 0) || !(balance > 0)) return 0;
+  const daily = (1 + annualRate) ** (1 / DAYS_PER_YEAR) - 1;
+  return round8(balance * ((1 + daily) ** days - 1));
+}
+
 /** How far a pot is towards its target, capped at 1. Null when there is no target. */
 export function progress(balance: number, target: number | null): number | null {
   if (!target || target <= 0) return null;

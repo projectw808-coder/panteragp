@@ -11,7 +11,7 @@ import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
-  applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
+  accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
 } from './trading.ts';
 import { RULES, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
@@ -1405,8 +1405,67 @@ app.post('/wallet-transactions/:id/decide', { preHandler: auth('kyc:review') }, 
  * the client and nothing else — add a daily accrual job when balances need to grow.
  */
 
+/**
+ * Post interest to every open portfolio that has whole days outstanding.
+ *
+ * Safe to run repeatedly: each portfolio is claimed by moving last_accrued_on to today
+ * inside the same transaction that credits it, so a second run the same day finds nothing
+ * to do. A run missed for a week pays the week in one compounded step, which the maths
+ * tests pin as equal to seven daily runs.
+ */
+async function accrueInterest(): Promise<{ portfolios: number; posted: number }> {
+  const { rows } = await pool.query<{
+    id: string; client_id: string; name: string; currency: string;
+    balance: number; rate: number; days: number;
+  }>(`
+    SELECT p.id, p.client_id, p.name, p.currency, p.balance,
+           t.indicative_rate AS rate,
+           (current_date - p.last_accrued_on) AS days
+      FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
+     WHERE p.status = 'open'
+       AND t.indicative_rate IS NOT NULL
+       AND p.balance > 0
+       AND p.last_accrued_on < current_date`);
+
+  let posted = 0;
+  for (const p of rows) {
+    const interest = accrue({ balance: Number(p.balance), annualRate: Number(p.rate), days: Number(p.days) });
+    if (interest <= 0) {
+      await pool.query('UPDATE portfolios SET last_accrued_on = current_date WHERE id = $1', [p.id]);
+      continue;
+    }
+    await tx('system', async (c) => {
+      // Claim the days and credit them together: if this transaction rolls back, the
+      // portfolio stays unclaimed and the next run picks it up again.
+      const { rowCount } = await c.query(
+        `UPDATE portfolios SET balance = balance + $2, last_accrued_on = current_date
+          WHERE id = $1 AND last_accrued_on < current_date`, [p.id, interest]);
+      if (!rowCount) return;              // another run got there first
+      await c.query(
+        `INSERT INTO portfolio_transactions (portfolio_id, client_id, kind, amount, note)
+         VALUES ($1,$2,'interest',$3,$4)`,
+        [p.id, p.client_id, interest, `${p.days} day(s) at ${(Number(p.rate) * 100).toFixed(2)}%`]);
+      await logActivity(c, {
+        client_id: p.client_id, kind: 'interest', actor: 'system',
+        summary: `Interest of ${interest} ${p.currency} on ${p.name}`,
+        ref_table: 'portfolios', ref_id: p.id,
+        data: { days: Number(p.days), rate: Number(p.rate), interest },
+      });
+      posted++;
+    });
+  }
+  return { portfolios: rows.length, posted };
+}
+
 app.get('/portfolio-types', { preHandler: auth() }, async () =>
   (await pool.query('SELECT * FROM portfolio_types ORDER BY sort_order')).rows);
+
+/**
+ * Run the accrual now. Exists so operations can re-run after an incident and so the day
+ * rollover can be exercised without waiting for one — it is idempotent, so an accidental
+ * double-click costs nothing.
+ */
+app.post('/admin/accrue', { preHandler: auth('admin') }, async () => accrueInterest());
 
 /** Portfolios belong to a client; staff with crm:read may look at someone else's. */
 async function portfolioScope(req: any, reply: any) {
@@ -1687,6 +1746,16 @@ app.get('/audit', { preHandler: auth('audit:read') }, async (req) => {
 
 if (process.argv[1]?.endsWith('server.ts')) {
   app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
+
+  // Interest is posted per whole day, so an hourly sweep is ample: it catches the day
+  // rollover wherever the server happens to be, and picks up anything a restart missed.
+  // ponytail: an in-process timer, so several API instances would each run it — harmless
+  // because the accrual is idempotent, but move it to a single scheduled job at that point.
+  const sweep = () => accrueInterest()
+    .then(({ posted }) => posted && app.log.info({ posted }, 'interest accrued'))
+    .catch((err: unknown) => app.log.error({ err }, 'interest accrual failed'));
+  setTimeout(sweep, 5_000).unref();          // once shortly after boot
+  setInterval(sweep, 3600_000).unref();
 }
 
 export { app, pool, tx };

@@ -402,6 +402,9 @@ CREATE TABLE portfolios (
   target_amount numeric(38,18) CHECK (target_amount IS NULL OR target_amount > 0),
   target_date   date,
   status        text NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  -- Interest is posted per whole day elapsed since this date, which is what makes the
+  -- accrual job safe to run twice, to retry, or to catch up after an outage.
+  last_accrued_on date NOT NULL DEFAULT current_date,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (client_id, name)

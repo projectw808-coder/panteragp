@@ -475,6 +475,26 @@ await step('staff can read a client portfolio, and it is on the timeline', async
   assert.ok(kinds.includes('portfolio'), 'portfolio activity missing from the timeline');
 });
 
+await step('accrual posts nothing on the day a pot was funded, however often it runs', async () => {
+  // The acceptance database is fresh, so no whole day has elapsed for any portfolio.
+  // Elapsed-day behaviour is pinned by the maths tests in test/trading.test.ts.
+  const pots = await get('/portfolios', { token: T });
+  const before = Object.fromEntries(pots.map((p) => [p.id, Number(p.balance)]));
+
+  for (let run = 0; run < 3; run++) {
+    const result = await get('/admin/accrue', { token: A, method: 'POST' });
+    assert.equal(result.posted, 0, 'nothing has been held for a whole day yet');
+  }
+  const after = Object.fromEntries((await get('/portfolios', { token: T })).map((p) => [p.id, Number(p.balance)]));
+  assert.deepEqual(after, before, 'repeated accrual runs must not move a balance');
+});
+await step('only an admin can trigger accrual', async () => {
+  assert.equal(await status('/admin/accrue', { token: T, method: 'POST' }), 403);
+  assert.equal(await status('/admin/accrue', { method: 'POST' }), 401);
+});
+
+
+
 
 
 

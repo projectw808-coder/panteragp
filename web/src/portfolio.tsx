@@ -111,9 +111,15 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
 
       {p.projected !== null && (
         <p className="mt-1 text-xs text-slate-500">
-          {/* Explicitly a projection: nothing in this system pays interest in. */}
-          Projected {money(p.projected, p.currency)} by then at an indicative{' '}
-          {pct(p.indicative_rate ?? 0)} a year — an illustration, not interest paid.
+          {/* Interest is genuinely credited daily at this rate, so the projection is a
+              forecast of the accrual rather than a decorative illustration. */}
+          Earning {pct(p.indicative_rate ?? 0)} a year, credited daily —
+          projected {money(p.projected, p.currency)} by then if left untouched.
+        </p>
+      )}
+      {p.projected === null && p.indicative_rate !== null && (
+        <p className="mt-1 text-xs text-slate-500">
+          Earning {pct(p.indicative_rate)} a year, credited daily.
         </p>
       )}
 

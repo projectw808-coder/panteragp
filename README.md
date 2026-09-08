@@ -36,6 +36,7 @@ Live feed: `WS /feed` — the client authenticates in its first message, then re
 for its own account (staff with `trade:read` see them too).
 Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
 Converter: `GET /convert/quote` · `POST /convert` · `GET /conversions`
+Accrual: `POST /admin/accrue` (idempotent; also runs hourly)
 Portfolios: `GET /portfolio-types` · `GET|POST /portfolios` · `PATCH /portfolios/:id`
 `POST /portfolios/:id/contribute` · `POST /portfolios/:id/withdraw`
 `POST /wallets/:id/withdraw` · `GET /wallet-transactions` · `POST /wallet-transactions/:id/decide`
@@ -153,11 +154,25 @@ place, or in both.
 fund, Emergency fund, Property deposit, General investment), so adding "Junior ISA" or
 "Trust" is an INSERT rather than a deploy.
 
-**Nothing accrues interest.** `indicative_rate` drives a projection shown to the client and
-nothing else, labelled in the UI as an illustration rather than interest paid. A pot with
-no target date shows no projection at all, and a type with no rate (General investment)
-never projects — saying nothing beats implying growth that will not arrive. Add a daily
-accrual job when balances actually need to grow.
+**Interest accrues.** Portfolios whose type carries an `indicative_rate` are paid interest
+for each whole day elapsed, compounded daily at the 365th root of the annual rate — so a
+full year lands on the headline rate rather than overshooting it the way `rate/365` would,
+and the accrual agrees with the projection shown to the client. There is a test asserting
+those two code paths cannot disagree.
+
+The job is **idempotent by date**. Each portfolio is claimed by moving `last_accrued_on` to
+today inside the same transaction that credits it, so running the accrual twice in a day
+pays once, a rolled-back transaction leaves the days unclaimed for the next run, and a week
+missed to an outage is paid as one compounded step equal to seven daily ones. That matters
+because in production this is driven by cron, and cron double-fires, retries and runs late.
+
+It runs shortly after boot and hourly thereafter, so the day rollover is caught wherever
+the server happens to be. `POST /admin/accrue` triggers it by hand for an ops re-run; being
+idempotent, an accidental double-click costs nothing.
+
+Interest is credited at full precision rather than rounded to the currency's minor unit:
+a small pot earns well under a penny a day, and flooring daily would mean it never grew at
+all. The fraction stays in the balance (`numeric(38,18)`) and the display rounds.
 
 A pot cannot go negative (a CHECK constraint, not just a guard), and closing one that still
 holds money is refused rather than stranding it — take the balance out first.
@@ -228,7 +243,7 @@ live list. At the time of writing:
 | `src/server.ts` | `numeric`/`bigint` parsed as JS numbers. | Same as the float note above. |
 | `src/server.ts` | Client search is `ILIKE '%x%'` — a sequential scan. | When the client list gets long: pg_trgm index. |
 | `src/server.ts` | One process, one broadcast interval, in-memory socket set. | More than one API instance: Redis pub/sub, same message shape. |
-| `src/server.ts` | Portfolios never accrue their indicative rate; it only drives a projection. | When balances must actually grow: a daily accrual job. |
+| `src/server.ts` | Accrual runs on an in-process hourly timer, so every API instance would run it. | Harmless while it stays idempotent; move to one scheduled job when you scale out. |
 | `web/src/App.tsx` | Hash routing, five flat routes. | When routes nest: react-router. |
 | `web/src/chart.tsx` | Resizing a chart re-fits and so resets zoom. | When someone complains. |
 

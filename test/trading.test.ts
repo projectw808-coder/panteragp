@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyFill, convert, floorTo, MAX_FLOOR_DECIMALS, isTriggered, positionSize, progress, project, trailStop, unrealized } from '../src/trading.ts';
+import { accrue, applyFill, convert, DAYS_PER_YEAR, floorTo, MAX_FLOOR_DECIMALS, isTriggered, positionSize, progress, project, trailStop, unrealized } from '../src/trading.ts';
 
 describe('applyFill', () => {
   test('opens a position at the fill price', () => {
@@ -254,5 +254,53 @@ describe('portfolio progress', () => {
   test('has nothing to report without a target', () => {
     assert.equal(progress(250, null), null);
     assert.equal(progress(250, 0), null);
+  });
+});
+
+describe('interest accrual', () => {
+  test('a full year of daily compounding lands on the headline rate', () => {
+    // The point of the 365th root: annualRate/365 compounded daily would overshoot 5%.
+    const earned = accrue({ balance: 1000, annualRate: 0.05, days: DAYS_PER_YEAR });
+    assert.ok(Math.abs(earned - 50) < 0.01, `a year at 5% earned ${earned}`);
+  });
+
+  test('agrees with the projection shown to the client', () => {
+    // Same money, same rate, same year, two different code paths: they must not disagree.
+    const viaAccrual = 1000 + accrue({ balance: 1000, annualRate: 0.05, days: DAYS_PER_YEAR });
+    const viaProjection = project({ balance: 1000, annualRate: 0.05, years: 1 })!;
+    assert.ok(Math.abs(viaAccrual - viaProjection) < 0.01,
+      `accrual said ${viaAccrual}, projection said ${viaProjection}`);
+  });
+
+  test('compounds rather than adding a flat daily amount', () => {
+    const oneDay = accrue({ balance: 10000, annualRate: 0.05, days: 1 });
+    const twoDays = accrue({ balance: 10000, annualRate: 0.05, days: 2 });
+    assert.ok(twoDays > oneDay * 2, 'two days should beat twice one day, however slightly');
+    assert.ok(twoDays < oneDay * 2.001);
+  });
+
+  test('catching up several days equals accruing them one at a time', () => {
+    // This is what makes a missed run safe: a five-day catch-up must not pay differently
+    // from five daily runs.
+    let daily = 1000;
+    for (let d = 0; d < 5; d++) daily += accrue({ balance: daily, annualRate: 0.04, days: 1 });
+    const caughtUp = 1000 + accrue({ balance: 1000, annualRate: 0.04, days: 5 });
+    assert.ok(Math.abs(daily - caughtUp) < 1e-6, `${daily} vs ${caughtUp}`);
+  });
+
+  test('pays nothing when there is nothing to pay', () => {
+    assert.equal(accrue({ balance: 1000, annualRate: null, days: 30 }), 0, 'no rate');
+    assert.equal(accrue({ balance: 1000, annualRate: 0, days: 30 }), 0, 'zero rate');
+    assert.equal(accrue({ balance: 1000, annualRate: 0.05, days: 0 }), 0, 'no elapsed days');
+    assert.equal(accrue({ balance: 0, annualRate: 0.05, days: 30 }), 0, 'empty pot');
+    assert.equal(accrue({ balance: 1000, annualRate: 0.05, days: -3 }), 0, 'clock went backwards');
+  });
+
+  test('a small balance still earns, instead of rounding to nothing every day', () => {
+    // 100 units at 3.5% earns well under a minor unit per day. Flooring daily would mean
+    // it never grew at all, so the fraction is kept.
+    const earned = accrue({ balance: 100, annualRate: 0.035, days: 1 });
+    assert.ok(earned > 0, 'a small pot must still accrue something');
+    assert.ok(earned < 0.01);
   });
 });
