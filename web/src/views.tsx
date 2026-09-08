@@ -192,6 +192,7 @@ export function ClientDetail({ id, me }: { id: string; me: { sub: string; role?:
         <div className={`${card} space-y-4`}>
         <h2 className="text-sm font-semibold">Activity</h2>
         <NoteBox clientId={id} onDone={timeline.reload} />
+        <MessageBox clientId={id} onDone={timeline.reload} />
         <ol className="space-y-3">
           {timeline.data?.map((a) => (
             <li key={a.id} className="border-l-2 border-slate-200 pl-3 dark:border-slate-700">
@@ -204,6 +205,30 @@ export function ClientDetail({ id, me }: { id: string; me: { sub: string; role?:
         </div>
       </div>
     </div>
+  );
+}
+
+/** A note is internal; a message goes to the client's notifications. */
+function MessageBox({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  return (
+    <form className="flex gap-2" onSubmit={async (e) => {
+      e.preventDefault();
+      setBusy(true);
+      try {
+        await api(`/clients/${clientId}/notify`, { method: 'POST', body: JSON.stringify({ title }) });
+        setTitle('');
+        setSent(true);
+        setTimeout(() => setSent(false), 3000);
+        onDone();
+      } finally { setBusy(false); }
+    }}>
+      <input className={input} required maxLength={120} placeholder="Message the client…"
+        value={title} onChange={(e) => setTitle(e.target.value)} />
+      <button className={btn} disabled={busy || !title.trim()}>{sent ? 'Sent' : 'Send'}</button>
+    </form>
   );
 }
 

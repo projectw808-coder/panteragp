@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, token, useApi } from './api.ts';
 import { AdminView } from './admin.tsx';
 import { ChartsView } from './chart.tsx';
+import { NotificationBell } from './notifications.tsx';
 import { ComplianceView, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
 import { ClientDetail, ClientList, TaskList } from './views.tsx';
@@ -112,6 +113,7 @@ function Shell({ dark, setDark, onLogout }: {
           {trading && <a href="#/trade" className={hash === '/trade' ? navOn : navOff}>Trade</a>}
         </nav>
         <span className="ml-auto text-sm text-slate-500">{me?.role}</span>
+        {trading && <NotificationBell />}
         <button onClick={() => setDark(!dark)} aria-label="Toggle dark mode"
           className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">
           {dark ? '☀' : '☾'}

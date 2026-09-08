@@ -493,6 +493,78 @@ await step('only an admin can trigger accrual', async () => {
   assert.equal(await status('/admin/accrue', { method: 'POST' }), 401);
 });
 
+console.log('\nNotifications');
+await step('things done to the client are notified', async () => {
+  const before = (await get('/notifications', { token: T })).length;
+  await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'CHF', amount: 250, note: 'goodwill' } });
+  await get(`/clients/${client.id}/notify`, { token: A, method: 'POST', body: { title: 'Welcome aboard', body: 'Your manager is Ada.' } });
+  const inbox = await get('/notifications', { token: T });
+  assert.equal(inbox.length, before + 2);
+  assert.ok(inbox.some((n) => n.kind === 'credit' && n.title.includes('CHF')));
+  assert.ok(inbox.some((n) => n.kind === 'message' && n.title === 'Welcome aboard'));
+});
+
+await step('things the client did themselves are not', async () => {
+  const before = (await get('/notifications', { token: T })).length;
+  await get('/orders', { token: T, method: 'POST', body: { symbol: 'EURUSD', side: 'buy', type: 'market', qty: 500 } });
+  assert.equal((await get('/notifications', { token: T })).length, before,
+    'a market order the client just placed needs no telling');
+});
+
+await step('an order the engine fills later is notified, with nobody watching', async () => {
+  // Nothing here holds a WebSocket open, which is the point: settlement and its
+  // notification must not depend on a client being connected.
+  const px = (await get('/quotes', { token: T })).find((q) => q.symbol === 'ETHUSD').price;
+  await get('/orders', { token: T, method: 'POST', body: {
+    symbol: 'ETHUSD', side: 'buy', type: 'limit', qty: 1, limit_price: Math.round(px * 1.05) } });
+  for (let i = 0; i < 20 && !(await get('/notifications?limit=5', { token: T })).some((n) => n.kind === 'order.filled'); i++) {
+    await wait(500);
+  }
+  const fill = (await get('/notifications', { token: T })).find((n) => n.kind === 'order.filled');
+  assert.ok(fill, 'a resting order filled by the engine must notify the client');
+  assert.match(fill.title, /ETHUSD/);
+});
+
+await step('a compliance flag is never disclosed to the client', async () => {
+  // Tipping off is a criminal offence in most jurisdictions: flags stop at staff.
+  await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'USD', amount: 80000 } });
+  const w = await get('/cash', { token: T, method: 'POST', body: { kind: 'withdrawal', amount: 60000 } });
+  assert.ok(w.flags.length > 0, 'this withdrawal should have raised a flag');
+
+  const inbox = await get('/notifications', { token: T });
+  const leaked = inbox.filter((n) => /flag|suspic|aml|laundering/i.test(`${n.title} ${n.body ?? ''}`));
+  assert.equal(leaked.length, 0, `a flag leaked to the client: ${JSON.stringify(leaked)}`);
+  assert.ok((await get(`/flags?status=open&client_id=${client.id}`, { token: A })).length > 0,
+    'while staff must still see it');
+});
+
+await step('reading is idempotent and scoped to the owner', async () => {
+  const unreadNow = async () => (await get('/notifications/unread-count', { token: T })).unread;
+  const before = await unreadNow();
+  assert.ok(before > 0);
+  const first = (await get('/notifications?unread=true', { token: T }))[0];
+  await get(`/notifications/${first.id}/read`, { token: T, method: 'POST' });
+  assert.equal(await unreadNow(), before - 1);
+  await get(`/notifications/${first.id}/read`, { token: T, method: 'POST' });
+  assert.equal(await unreadNow(), before - 1, 'marking the same one twice must not double-count');
+
+  const { marked } = await get('/notifications/read-all', { token: T, method: 'POST' });
+  assert.equal(marked, before - 1);
+  assert.equal(await unreadNow(), 0);
+});
+
+await step('an inbox belongs to one client, and staff have none', async () => {
+  const mine = (await get('/notifications', { token: T }))[0];
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Inbox', email: `inbox+${Date.now()}@example.com`, password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal((await get('/notifications', { token: N })).length, 0);
+  assert.equal(await status(`/notifications/${mine.id}/read`, { token: N, method: 'POST' }), 404);
+  assert.equal(await status('/notifications', { token: A }), 403, 'staff read the CRM timeline, not an inbox');
+  assert.equal(await status(`/clients/${client.id}/notify`, { token: T, method: 'POST', body: { title: 'hi' } }), 403);
+});
+
+
+
 
 
 
@@ -509,7 +581,12 @@ await step('the overview agrees with the underlying endpoints', async () => {
   assert.equal(Number(o.kyc.pending_docs), (await get('/kyc/pending', { token: A })).length);
   assert.equal(o.pipeline.reduce((n, p) => n + Number(p.clients), 0), clients.length, 'pipeline must account for every client');
   assert.ok(Number(o.trading.volume_today) > 0);
-  assert.equal(Number(o.cash.pending_withdrawals) - pendingBefore, 1, 'this run added exactly one pending withdrawal');
+  // Derived rather than hardcoded: the count is firm-wide, so compare how far this run
+  // moved it against the withdrawals this run's client actually has outstanding.
+  const minePending = (await get('/cash', { token: T }))
+    .filter((c) => c.kind === 'withdrawal' && c.status === 'pending').length;
+  assert.equal(Number(o.cash.pending_withdrawals) - pendingBefore, minePending,
+    'the dashboard should account for exactly the withdrawals this run left pending');
 });
 await step('config reports live trading as disabled', async () => {
   const config = await get('/admin/config', { token: A });

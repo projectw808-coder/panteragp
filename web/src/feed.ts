@@ -24,7 +24,12 @@ function connect() {
   socket.onmessage = (e) => {
     const msg = JSON.parse(String(e.data));
     if (msg.type === 'ready') attempt = 0;
-    if (msg.type === 'tick') for (const h of handlers) h(msg.ticks, msg.at);
+    if (msg.type === 'tick') return void handlers.forEach((h) => h(msg.ticks, msg.at));
+    // Ticks are a stream with subscribers; a notification is a one-off. Re-dispatching it
+    // as a DOM event lets the bell listen without also subscribing to every price.
+    if (msg.type === 'notification') {
+      dispatchEvent(new CustomEvent('notification', { detail: msg.notification }));
+    }
   };
 
   socket.onclose = () => {

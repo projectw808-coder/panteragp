@@ -369,6 +369,13 @@ function notify(clientId: string, msg: unknown) {
   }
 }
 
+/**
+ * Drives both the price broadcast and order settlement.
+ *
+ * Started at boot, not when the first client connects: a resting limit order has to fill
+ * when the market reaches it whether or not anybody happens to be watching. Broadcasting
+ * is skipped when nothing is listening; settlement never is.
+ */
 async function startTicker() {
   if (ticker) return;
   const { rows } = await pool.query<{ symbol: string }>('SELECT symbol FROM instruments');
@@ -419,7 +426,7 @@ async function settle(prices: Map<string, number>) {
           o.stop_price = moved;
         }
       }
-      if (isTriggered(o, price)) await fillOrder(o, price);
+      if (isTriggered(o, price)) await fillOrder(o, price, true);
     }
   } finally {
     settling = false;
@@ -431,7 +438,7 @@ async function settle(prices: Map<string, number>) {
  * cancel the sibling exit, attach take-profit / stop-loss, and write the CRM timeline.
  * All of it in one transaction — a fill the timeline never saw is not acceptable.
  */
-async function fillOrder(o: OrderRow, price: number) {
+async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
   await tx('engine', async (c) => {
     // Re-read under a lock: the request path can fill a market order at the same moment.
     const { rows: [live] } = await c.query<{ status: string }>(
@@ -482,9 +489,18 @@ async function fillOrder(o: OrderRow, price: number) {
       ref_table: 'orders', ref_id: o.id,
       data: { price, qty: o.qty, side: o.side, symbol: o.symbol, realized, type: o.type },
     });
+    if (viaEngine) {
+      await notifyClientOf(c, {
+        client_id: o.client_id, kind: 'order.filled',
+        title: `${o.side === 'buy' ? 'Bought' : 'Sold'} ${o.qty} ${o.symbol}`,
+        body: `Your ${o.type.replace('_', ' ')} order filled at ${price}.`,
+        ref_table: 'orders', ref_id: o.id,
+      });
+    }
   });
 
   notify(o.client_id, { type: 'fill', order_id: o.id, symbol: o.symbol, side: o.side, qty: o.qty, price });
+  flushNotifications();
   await checkVolume(o.client_id).catch((err: unknown) => app.log.error({ err }, 'volume check failed'));
 }
 
@@ -759,6 +775,16 @@ app.post('/kyc/:id/review', { preHandler: auth('kyc:review') }, async (req: any,
       : REQUIRED_KYC.every((k) => approved.has(k)) ? 'approved' : 'pending';
     await c.query('UPDATE clients SET kyc_status = $2 WHERE id = $1', [doc.client_id, status]);
 
+    await notifyClientOf(c, {
+      client_id: doc.client_id, kind: 'kyc',
+      title: status === 'approved' ? 'Identity verified'
+        : body.data.status === 'rejected' ? `${doc.kind.replace(/_/g, ' ')} needs attention`
+        : `${doc.kind.replace(/_/g, ' ')} accepted`,
+      body: body.data.note ?? (status === 'approved'
+        ? 'Your account is fully verified.'
+        : 'We will be in touch if anything else is needed.'),
+      ref_table: 'kyc_documents', ref_id: String(doc.id),
+    });
     await logActivity(c, {
       client_id: doc.client_id, kind: 'kyc', actor: req.principal.sub,
       summary: `${doc.kind.replace(/_/g, ' ')} ${body.data.status}${body.data.note ? ` — ${body.data.note}` : ''}`,
@@ -885,6 +911,13 @@ app.post('/cash/:id/decide', { preHandler: auth('kyc:review') }, async (req: any
       await c.query('UPDATE trading_accounts SET balance = balance - $2 WHERE id = $1', [t.account_id, t.amount]);
     }
 
+    await notifyClientOf(c, {
+      client_id: t.client_id, kind: t.kind,
+      title: `${t.kind === 'deposit' ? 'Deposit' : 'Withdrawal'} ${body.data.status}`,
+      body: `${Math.abs(Number(t.amount))} ${body.data.status}`
+        + (reversal ? ', and returned to your balance.' : '.'),
+      ref_table: 'cash_transactions', ref_id: String(t.id),
+    });
     await logActivity(c, {
       client_id: t.client_id, kind: t.kind, actor: req.principal.sub,
       summary: `${t.kind} of ${Math.abs(Number(t.amount))} ${body.data.status}`
@@ -1012,6 +1045,105 @@ app.get('/reports/:name', { preHandler: auth('crm:read') }, async (req: any, rep
     .send(toCSV(rows));
 });
 
+// ------------------------------------------------------------ notifications
+
+type Notice = {
+  client_id: string; kind: string; title: string;
+  body?: string; ref_table?: string; ref_id?: string;
+};
+
+/**
+ * Tell a client something happened to them. Written in the caller's transaction so a
+ * notification cannot outlive the event it describes, then pushed over the socket so an
+ * open session sees it without polling.
+ *
+ * The rule for what belongs here: things done *to* the client — by staff, or by the
+ * engine — not things the client just did themselves, which they already know about.
+ * Compliance flags are never notified; see the note on the table.
+ */
+async function notifyClientOf(c: pg.PoolClient, n: Notice) {
+  const { rows: [row] } = await c.query(
+    `INSERT INTO notifications (client_id, kind, title, body, ref_table, ref_id)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [n.client_id, n.kind, n.title, n.body ?? null, n.ref_table ?? null, n.ref_id ?? null]);
+  pending.push(row);
+  return row;
+}
+
+/**
+ * Sockets are pushed after the transaction commits, not during it: a client told about a
+ * fill that then rolled back would be looking at money that never moved.
+ */
+const pending: any[] = [];
+function flushNotifications() {
+  while (pending.length) {
+    const row = pending.shift();
+    notify(row.client_id, { type: 'notification', notification: row });
+  }
+}
+
+app.addHook('onResponse', async () => flushNotifications());
+
+app.get('/notifications', { preHandler: trader }, async (req: any) => {
+  const q = z.object({
+    unread: z.coerce.boolean().default(false),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  }).parse(req.query);
+  const { rows } = await pool.query(
+    `SELECT * FROM notifications
+      WHERE client_id = $1 AND ($2::bool IS NOT TRUE OR read_at IS NULL)
+      ORDER BY created_at DESC, id DESC LIMIT $3`,
+    [req.principal.sub, q.unread, q.limit]);
+  return rows;
+});
+
+app.get('/notifications/unread-count', { preHandler: trader }, async (req: any) => {
+  const { rows: [row] } = await pool.query<{ unread: number }>(
+    'SELECT count(*) AS unread FROM notifications WHERE client_id = $1 AND read_at IS NULL',
+    [req.principal.sub]);
+  return { unread: Number(row!.unread) };
+});
+
+app.post('/notifications/:id/read', { preHandler: trader }, async (req: any, reply) => {
+  // Scoped by client_id as well as id, so one client cannot mark another's as read.
+  const { rows } = await pool.query(
+    `UPDATE notifications SET read_at = coalesce(read_at, now())
+      WHERE id = $1 AND client_id = $2 RETURNING *`, [req.params.id, req.principal.sub]);
+  if (!rows[0]) return reply.code(404).send({ error: 'no such notification' });
+  return rows[0];
+});
+
+app.post('/notifications/read-all', { preHandler: trader }, async (req: any) => {
+  const { rowCount } = await pool.query(
+    'UPDATE notifications SET read_at = now() WHERE client_id = $1 AND read_at IS NULL',
+    [req.principal.sub]);
+  return { marked: rowCount ?? 0 };
+});
+
+/** Staff message a client directly — the CRM side of the same inbox. */
+app.post('/clients/:id/notify', { preHandler: auth('crm:write') }, async (req: any, reply) => {
+  const body = z.object({
+    title: z.string().min(1).max(120),
+    body: z.string().max(2000).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const row = await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'message', title: body.data.title, body: body.data.body,
+    });
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'message', actor: req.principal.sub,
+      summary: `Messaged the client: ${body.data.title}`,
+      ref_table: 'notifications', ref_id: String(row.id),
+    });
+    return row;
+  });
+  return reply.code(201).send(out);
+});
+
 // ----------------------------------------------- currencies, credits, wallets
 
 type Currency = { code: string; name: string; kind: 'fiat' | 'crypto'; decimals: number };
@@ -1119,6 +1251,11 @@ app.post('/clients/:id/credit', { preHandler: auth('funds:credit') }, async (req
       `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
        VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`,
       [account.id, req.params.id, amount, req.principal.sub]);
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'credit',
+      title: `${amount} ${currency} added to your account`,
+      body: note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id),
+    });
     await logActivity(c, {
       client_id: req.params.id, kind: 'credit', actor: req.principal.sub,
       summary: `Credited ${amount} ${currency}${note ? ` — ${note}` : ''}`,
@@ -1445,6 +1582,12 @@ async function accrueInterest(): Promise<{ portfolios: number; posted: number }>
         `INSERT INTO portfolio_transactions (portfolio_id, client_id, kind, amount, note)
          VALUES ($1,$2,'interest',$3,$4)`,
         [p.id, p.client_id, interest, `${p.days} day(s) at ${(Number(p.rate) * 100).toFixed(2)}%`]);
+      await notifyClientOf(c, {
+        client_id: p.client_id, kind: 'interest',
+        title: `Interest on ${p.name}`,
+        body: `${interest} ${p.currency} credited for ${p.days} day(s).`,
+        ref_table: 'portfolios', ref_id: p.id,
+      });
       await logActivity(c, {
         client_id: p.client_id, kind: 'interest', actor: 'system',
         summary: `Interest of ${interest} ${p.currency} on ${p.name}`,
@@ -1454,6 +1597,7 @@ async function accrueInterest(): Promise<{ portfolios: number; posted: number }>
       posted++;
     });
   }
+  flushNotifications();
   return { portfolios: rows.length, posted };
 }
 
@@ -1746,6 +1890,9 @@ app.get('/audit', { preHandler: auth('audit:read') }, async (req) => {
 
 if (process.argv[1]?.endsWith('server.ts')) {
   app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
+
+  // Settlement must not depend on anyone being connected — see startTicker.
+  startTicker().catch((err: unknown) => app.log.error({ err }, 'could not start the ticker'));
 
   // Interest is posted per whole day, so an hourly sweep is ample: it catches the day
   // rollover wherever the server happens to be, and picks up anything a restart missed.

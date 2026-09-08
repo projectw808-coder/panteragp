@@ -422,6 +422,31 @@ CREATE TABLE portfolio_transactions (
 );
 CREATE INDEX ON portfolio_transactions (client_id, at DESC);
 CREATE INDEX ON portfolio_transactions (portfolio_id, at DESC);
+-- --------------------------------------------------------- notifications
+
+/*
+ * What a client is told. Deliberately not a mirror of activity_log: the timeline is the
+ * firm's record of everything, this is the subset a client should see.
+ *
+ * Compliance flags never appear here. Telling a client they have been flagged for
+ * suspicious activity is tipping-off, a criminal offence in most jurisdictions, so flags
+ * reach staff through the CRM and stop there. Do not "helpfully" add them.
+ */
+CREATE TABLE notifications (
+  id         bigserial PRIMARY KEY,
+  client_id  uuid NOT NULL REFERENCES clients(id),
+  kind       text NOT NULL,        -- order.filled | deposit | withdrawal | kyc | interest | credit | message
+  title      text NOT NULL,
+  body       text,
+  ref_table  text,
+  ref_id     text,
+  read_at    timestamptz,          -- null means unread
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- The two reads that matter: a client's latest, and their unread count.
+CREATE INDEX ON notifications (client_id, created_at DESC);
+CREATE INDEX ON notifications (client_id) WHERE read_at IS NULL;
+
 
 
 
@@ -472,7 +497,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['staff','clients','client_tags','tasks','kyc_documents','flags',
                            'trading_accounts','orders','fills','positions','cash_transactions',
                            'wallets','wallet_transactions','conversions',
-                           'portfolios','portfolio_transactions'] LOOP
+                           'portfolios','portfolio_transactions','notifications'] LOOP
     EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
   END LOOP;

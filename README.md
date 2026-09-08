@@ -36,6 +36,8 @@ Live feed: `WS /feed` — the client authenticates in its first message, then re
 for its own account (staff with `trade:read` see them too).
 Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
 Converter: `GET /convert/quote` · `POST /convert` · `GET /conversions`
+Notifications: `GET /notifications` · `GET /notifications/unread-count`
+`POST /notifications/:id/read` · `POST /notifications/read-all` · `POST /clients/:id/notify` (staff)
 Accrual: `POST /admin/accrue` (idempotent; also runs hourly)
 Portfolios: `GET /portfolio-types` · `GET|POST /portfolios` · `PATCH /portfolios/:id`
 `POST /portfolios/:id/contribute` · `POST /portfolios/:id/withdraw`
@@ -176,6 +178,31 @@ all. The fraction stays in the balance (`numeric(38,18)`) and the display rounds
 
 A pot cannot go negative (a CHECK constraint, not just a guard), and closing one that still
 holds money is refused rather than stranding it — take the balance out first.
+
+
+## Notifications
+
+A client's inbox, deliberately not a mirror of `activity_log`: the timeline is the firm's
+record of everything, this is the subset a client should see.
+
+What generates one is things done **to** the client — a staff credit, a KYC decision, a
+cash decision, interest credited overnight, a message from their account manager, and an
+order the *engine* filled. What does not is things the client just did themselves: placing
+a market order, converting currency, paying into a portfolio. They were there.
+
+**Compliance flags are never notified.** Telling a client they have been flagged for
+suspicious activity is tipping-off, a criminal offence in most jurisdictions. Flags reach
+staff through the CRM and stop there, and there is an acceptance check asserting no
+notification ever mentions one.
+
+Rows are written inside the transaction that causes them, so a notification cannot outlive
+the event it describes, and pushed over the existing WebSocket only after that transaction
+commits — a client told about a fill that then rolled back would be looking at money that
+never moved. The bell keeps the socket open on every page, so notifications arrive away
+from the charts too.
+
+`POST /clients/:id/notify` lets staff message a client directly, which is the CRM and the
+client-facing side sharing one inbox.
 
 
 ## Compliance
