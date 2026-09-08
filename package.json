@@ -1,0 +1,28 @@
+{
+  "name": "platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch src/server.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "db:reset": "psql \"$DATABASE_URL\" -f db/schema.sql",
+    "dev:db": "node --experimental-strip-types src/devdb.ts",
+    "test:e2e": "node test/acceptance.mjs"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.1",
+    "@fastify/websocket": "^11.3.0",
+    "fastify": "^5.2.0",
+    "jose": "^5.9.6",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.2",
+    "ws": "^8.18.0"
+  }
+}

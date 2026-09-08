@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* Manual toggle: .dark on <html>, set by useDarkMode in App.tsx. */
+@custom-variant dark (&:where(.dark, .dark *));

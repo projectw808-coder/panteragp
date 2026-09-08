@@ -1,0 +1,3 @@
+# Store LF in the repo whatever the checkout platform, so a Windows clone and a Linux
+# CI run do not see every line as modified.
+* text=auto eol=lf
