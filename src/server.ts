@@ -11,7 +11,7 @@ import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
-  applyFill, convert, isTriggered, round8, trailStop, unrealized,
+  applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
 } from './trading.ts';
 import { RULES, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
@@ -1395,6 +1395,187 @@ app.post('/wallet-transactions/:id/decide', { preHandler: auth('kyc:review') }, 
   if (!out) return reply.code(404).send({ error: 'no such pending transaction' });
   return out;
 });
+
+// -------------------------------------------------------------- portfolios
+
+/*
+ * A portfolio is a labelled pot: money reaches it only by being moved out of a balance
+ * the client already holds, so the two always move together in one transaction.
+ * ponytail: nothing accrues interest. `indicative_rate` drives the projection shown to
+ * the client and nothing else — add a daily accrual job when balances need to grow.
+ */
+
+app.get('/portfolio-types', { preHandler: auth() }, async () =>
+  (await pool.query('SELECT * FROM portfolio_types ORDER BY sort_order')).rows);
+
+/** Portfolios belong to a client; staff with crm:read may look at someone else's. */
+async function portfolioScope(req: any, reply: any) {
+  if (!(await authenticate(req, reply))) return null;
+  const q = z.object({ client_id: z.string().uuid().optional() }).parse(req.query ?? {});
+  if (req.principal.kind === 'client') return req.principal.sub as string;
+  if (!can(req.principal.role, 'crm:read')) {
+    reply.code(403).send({ error: 'forbidden' });
+    return null;
+  }
+  return q.client_id ?? null;
+}
+
+app.get('/portfolios', async (req: any, reply) => {
+  const clientId = await portfolioScope(req, reply);
+  if (clientId === null) return reply.sent ? undefined : [];
+  const { rows } = await pool.query(
+    `SELECT p.*, t.name AS type_name, t.indicative_rate
+       FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
+      WHERE p.client_id = $1 ORDER BY p.status, p.created_at`, [clientId]);
+
+  return Promise.all(rows.map(async (p) => {
+    const rate = await rateToUsd(p.currency);
+    const years = p.target_date
+      ? (new Date(p.target_date).getTime() - Date.now()) / (365.25 * 86400_000) : 0;
+    return {
+      ...p,
+      usd_value: rate === null ? null : round8(Number(p.balance) * rate),
+      progress: progress(Number(p.balance), p.target_amount === null ? null : Number(p.target_amount)),
+      projected: project({
+        balance: Number(p.balance),
+        annualRate: p.indicative_rate === null ? null : Number(p.indicative_rate),
+        years,
+      }),
+    };
+  }));
+});
+
+const portfolioBody = z.object({
+  type_code: z.string().min(2).max(30),
+  name: z.string().min(1).max(80),
+  currency: z.string().min(2).max(10).default('USD'),
+  target_amount: z.number().positive().finite().optional(),
+  target_date: z.coerce.date().optional(),
+});
+
+app.post('/portfolios', { preHandler: trader }, async (req: any, reply) => {
+  const body = portfolioBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  if (!(await currencies()).has(b.currency)) return reply.code(404).send({ error: 'unknown currency' });
+  const { rowCount } = await pool.query('SELECT 1 FROM portfolio_types WHERE code = $1', [b.type_code]);
+  if (!rowCount) return reply.code(404).send({ error: 'unknown portfolio type' });
+
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO portfolios (client_id, type_code, name, currency, target_amount, target_date)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [req.principal.sub, b.type_code, b.name, b.currency,
+         b.target_amount ?? null, b.target_date ?? null]);
+      await logActivity(c, {
+        client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
+        summary: `Opened ${b.name} (${b.type_code.replace(/_/g, ' ')})`,
+        ref_table: 'portfolios', ref_id: rows[0].id,
+        data: { type: b.type_code, currency: b.currency, target: b.target_amount ?? null },
+      });
+      return reply.code(201).send(rows[0]);
+    });
+  } catch (err: any) {
+    // One name per client, so the list stays legible.
+    if (err?.code === '23505') return reply.code(409).send({ error: 'you already have a portfolio with that name' });
+    throw err;
+  }
+});
+
+const moveBody = z.object({ amount: z.number().positive().finite(), note: z.string().max(200).optional() });
+
+/**
+ * Move money between a balance and a pot. `into` decides the direction; either way both
+ * sides move in one transaction, so money is never in neither place or in both.
+ */
+async function movePortfolio(req: any, reply: any, into: boolean) {
+  const body = moveBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { amount, note } = body.data;
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [p] } = await c.query<{ id: string; currency: string; balance: number; name: string; status: string }>(
+      'SELECT id, currency, balance, name, status FROM portfolios WHERE id = $1 AND client_id = $2 FOR UPDATE',
+      [req.params.id, req.principal.sub]);
+    if (!p) return 'missing' as const;
+    if (p.status !== 'open') return 'closed' as const;
+
+    const ccy = (await currencies()).get(p.currency)!;
+    // Opened on demand when money is coming back out, so a withdrawal always has a home.
+    const holding = await lockHolding(c, req.principal.sub, p.currency, ccy.kind, !into);
+    if (!holding) return 'no-holding' as const;
+    if (into && Number(holding.balance) < amount) return 'insufficient-balance' as const;
+    if (!into && Number(p.balance) < amount) return 'insufficient-portfolio' as const;
+
+    await moveBalance(c, holding, into ? -amount : amount);
+    await c.query('UPDATE portfolios SET balance = balance + $2 WHERE id = $1',
+      [p.id, into ? amount : -amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO portfolio_transactions (portfolio_id, client_id, kind, amount, note)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [p.id, req.principal.sub, into ? 'contribution' : 'withdrawal', into ? amount : -amount, note ?? null]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
+      summary: into
+        ? `Paid ${amount} ${p.currency} into ${p.name}`
+        : `Took ${amount} ${p.currency} out of ${p.name}`,
+      ref_table: 'portfolio_transactions', ref_id: String(entry.id),
+      data: { portfolio: p.name, amount, currency: p.currency },
+    });
+    return entry;
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such portfolio' });
+  if (out === 'closed') return reply.code(409).send({ error: 'that portfolio is closed' });
+  if (out === 'no-holding') return reply.code(400).send({ error: 'you hold no balance in that currency' });
+  if (out === 'insufficient-balance') return reply.code(400).send({ error: 'amount exceeds your balance' });
+  if (out === 'insufficient-portfolio') return reply.code(400).send({ error: 'amount exceeds the portfolio balance' });
+  return reply.code(201).send(out);
+}
+
+app.post('/portfolios/:id/contribute', { preHandler: trader }, (req, reply) => movePortfolio(req, reply, true));
+app.post('/portfolios/:id/withdraw', { preHandler: trader }, (req, reply) => movePortfolio(req, reply, false));
+
+app.patch('/portfolios/:id', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({
+    name: z.string().min(1).max(80).optional(),
+    target_amount: z.number().positive().finite().nullable().optional(),
+    target_date: z.coerce.date().nullable().optional(),
+    status: z.enum(['open', 'closed']).optional(),
+  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const entries = Object.entries(body.data);
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [p] } = await c.query<{ balance: number }>(
+      'SELECT balance FROM portfolios WHERE id = $1 AND client_id = $2 FOR UPDATE',
+      [req.params.id, req.principal.sub]);
+    if (!p) return 'missing' as const;
+    // Closing a pot with money still in it would strand it: take it out first.
+    if (body.data.status === 'closed' && Number(p.balance) > 0) return 'not-empty' as const;
+
+    const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+    const { rows } = await c.query(
+      `UPDATE portfolios SET ${set} WHERE id = $1 RETURNING *`,
+      [req.params.id, ...entries.map(([, v]) => v)]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
+      summary: body.data.status === 'closed' ? `Closed ${rows[0].name}` : `Updated ${rows[0].name}`,
+      ref_table: 'portfolios', ref_id: rows[0].id, data: body.data,
+    });
+    return rows[0];
+  });
+  if (out === 'missing') return reply.code(404).send({ error: 'no such portfolio' });
+  if (out === 'not-empty') return reply.code(409).send({ error: 'take the balance out before closing' });
+  return out;
+});
+
+app.get('/portfolios/:id/transactions', { preHandler: trader }, async (req: any) =>
+  (await pool.query(
+    `SELECT t.* FROM portfolio_transactions t JOIN portfolios p ON p.id = t.portfolio_id
+      WHERE t.portfolio_id = $1 AND p.client_id = $2 ORDER BY t.at DESC LIMIT 200`,
+    [req.params.id, req.principal.sub])).rows);
 
 // --------------------------------------------------------------- dashboard
 

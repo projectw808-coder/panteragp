@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyFill, convert, floorTo, MAX_FLOOR_DECIMALS, isTriggered, positionSize, trailStop, unrealized } from '../src/trading.ts';
+import { applyFill, convert, floorTo, MAX_FLOOR_DECIMALS, isTriggered, positionSize, progress, project, trailStop, unrealized } from '../src/trading.ts';
 
 describe('applyFill', () => {
   test('opens a position at the fill price', () => {
@@ -209,5 +209,50 @@ describe('currency conversion', () => {
     for (const decimals of [0, 2, 6, 8, 15, 18]) {
       assert.ok(floorTo(v, decimals) <= v, `floorTo rounded up at ${decimals} decimals`);
     }
+  });
+});
+
+describe('portfolio projection', () => {
+  test('compounds to the annual rate over a year', () => {
+    // Monthly compounding derived from the annual rate must land back on it after 12
+    // months, not overshoot the way naive rate/12 does.
+    const v = project({ balance: 1000, annualRate: 0.05, years: 1 });
+    assert.ok(Math.abs(v! - 1050) < 0.01, `a year at 5% gave ${v}`);
+  });
+
+  test('grows with time and with contributions', () => {
+    const alone = project({ balance: 1000, annualRate: 0.05, years: 10 })!;
+    const longer = project({ balance: 1000, annualRate: 0.05, years: 20 })!;
+    const topped = project({ balance: 1000, annualRate: 0.05, years: 10, monthly: 100 })!;
+    assert.ok(longer > alone);
+    assert.ok(topped > alone);
+    assert.ok(topped > 1000 + 100 * 120, 'contributions should themselves earn something');
+  });
+
+  test('a zero rate returns the money paid in, and nothing more', () => {
+    assert.equal(project({ balance: 500, annualRate: 0, years: 5 }), 500);
+    assert.equal(project({ balance: 0, annualRate: 0, years: 2, monthly: 50 }), 1200);
+  });
+
+  test('says nothing rather than implying growth it cannot promise', () => {
+    assert.equal(project({ balance: 1000, annualRate: null, years: 10 }), null);
+    assert.equal(project({ balance: 1000, annualRate: 0.05, years: 0 }), null);
+    assert.equal(project({ balance: 1000, annualRate: 0.05, years: -3 }), null);
+  });
+});
+
+describe('portfolio progress', () => {
+  test('reports the fraction of the target reached', () => {
+    assert.equal(progress(250, 1000), 0.25);
+    assert.equal(progress(0, 1000), 0);
+  });
+
+  test('caps at complete, so an overfunded pot is not shown as 340%', () => {
+    assert.equal(progress(3400, 1000), 1);
+  });
+
+  test('has nothing to report without a target', () => {
+    assert.equal(progress(250, null), null);
+    assert.equal(progress(250, 0), null);
   });
 });

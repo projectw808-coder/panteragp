@@ -123,6 +123,32 @@ export function convert(
 }
 
 /**
+ * What a pot would be worth after `years` at `annualRate`, compounded annually, if
+ * `monthly` is also paid in at the end of each month.
+ *
+ * This is a projection for display, not a promise and not an accrual: nothing in this
+ * system pays interest into a portfolio. Returns null without a rate, so the caller shows
+ * nothing rather than implying growth that will not happen.
+ */
+export function project(
+  { balance, annualRate, years, monthly = 0 }:
+  { balance: number; annualRate: number | null; years: number; monthly?: number },
+): number | null {
+  if (annualRate === null || !(years > 0)) return null;
+  const months = Math.round(years * 12);
+  const monthlyRate = (1 + annualRate) ** (1 / 12) - 1;
+  let value = balance;
+  for (let m = 0; m < months; m++) value = value * (1 + monthlyRate) + monthly;
+  return round8(value);
+}
+
+/** How far a pot is towards its target, capped at 1. Null when there is no target. */
+export function progress(balance: number, target: number | null): number | null {
+  if (!target || target <= 0) return null;
+  return Math.min(1, round8(balance / target));
+}
+
+/**
  * Position sizing: how many units risk `riskPct` of `balance` if the stop is hit.
  * Leverage caps the notional the account can carry, it does not change the risk.
  */

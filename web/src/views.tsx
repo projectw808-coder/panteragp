@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { btn, card, input } from './App.tsx';
 import { FlagList, KycPanel } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
+import { ClientPortfolios } from './portfolio.tsx';
 import { api, useApi, type Activity, type Client, type ClientRow, type Stage, type Staff, type Task } from './api.ts';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -155,6 +156,8 @@ export function ClientDetail({ id, me }: { id: string; me: { sub: string; role?:
         </div>
 
         {me?.role === 'admin' && <CreditForm clientId={id} onDone={timeline.reload} />}
+
+        <ClientPortfolios clientId={id} />
 
         <KycPanel clientId={id} canUpload />
 

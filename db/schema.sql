@@ -371,6 +371,55 @@ CREATE TABLE conversions (
   CHECK (from_code <> to_code)
 );
 CREATE INDEX ON conversions (client_id, at DESC);
+-- ------------------------------------------------------------- portfolios
+
+-- The product catalogue. Reference data, so adding "Trust" or "Junior ISA" is an INSERT
+-- rather than a deploy. `indicative_rate` is a headline annual rate for display and
+-- projection only — nothing accrues it (see the ponytail note in server.ts).
+CREATE TABLE portfolio_types (
+  code            text PRIMARY KEY,
+  name            text NOT NULL,
+  description     text NOT NULL,
+  indicative_rate numeric(6,4),
+  sort_order      smallint NOT NULL DEFAULT 0
+);
+INSERT INTO portfolio_types (code, name, description, indicative_rate, sort_order) VALUES
+  ('retirement','Retirement plan','Long-term savings intended to be drawn down in retirement.',0.0500,1),
+  ('savings','Savings account','Set money aside and earn a headline rate on the balance.',0.0350,2),
+  ('education','Education fund','Earmarked for tuition or study costs.',0.0300,3),
+  ('emergency','Emergency fund','Readily available cash for the unexpected.',0.0200,4),
+  ('property','Property deposit','Saving towards a deposit on a home.',0.0250,5),
+  ('general','General investment','An unrestricted pot with no particular purpose.',NULL,6);
+
+CREATE TABLE portfolios (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES clients(id),
+  type_code     text NOT NULL REFERENCES portfolio_types(code),
+  name          text NOT NULL,
+  currency      text NOT NULL REFERENCES currencies(code),
+  -- A pot cannot go negative: money reaches it only by being moved in from a balance.
+  balance       numeric(38,18) NOT NULL DEFAULT 0 CHECK (balance >= 0),
+  target_amount numeric(38,18) CHECK (target_amount IS NULL OR target_amount > 0),
+  target_date   date,
+  status        text NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (client_id, name)
+);
+CREATE INDEX ON portfolios (client_id, status);
+
+CREATE TABLE portfolio_transactions (
+  id           bigserial PRIMARY KEY,
+  portfolio_id uuid NOT NULL REFERENCES portfolios(id),
+  client_id    uuid NOT NULL REFERENCES clients(id),
+  kind         text NOT NULL CHECK (kind IN ('contribution','withdrawal','interest','adjustment')),
+  amount       numeric(38,18) NOT NULL,     -- signed: withdrawals are negative
+  note         text,
+  at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ON portfolio_transactions (client_id, at DESC);
+CREATE INDEX ON portfolio_transactions (portfolio_id, at DESC);
+
 
 
 -- ------------------------------------------------------------------ audit log
@@ -419,7 +468,8 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['staff','clients','client_tags','tasks','kyc_documents','flags',
                            'trading_accounts','orders','fills','positions','cash_transactions',
-                           'wallets','wallet_transactions','conversions'] LOOP
+                           'wallets','wallet_transactions','conversions',
+                           'portfolios','portfolio_transactions'] LOOP
     EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
   END LOOP;
@@ -427,7 +477,7 @@ BEGIN
     EXECUTE format('CREATE TRIGGER %I_immutable BEFORE UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION append_only()', t, t);
   END LOOP;
-  FOREACH t IN ARRAY ARRAY['staff','clients','tasks','orders'] LOOP
+  FOREACH t IN ARRAY ARRAY['staff','clients','tasks','orders','portfolios'] LOOP
     EXECUTE format('CREATE TRIGGER %I_touch BEFORE UPDATE ON %I
                     FOR EACH ROW EXECUTE FUNCTION touch()', t, t);
   END LOOP;

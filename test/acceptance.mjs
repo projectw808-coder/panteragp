@@ -392,6 +392,91 @@ await step('exchanges are recorded and reach the timeline', async () => {
   assert.ok(kinds.includes('convert'), 'conversions missing from the timeline');
 });
 
+console.log('\nPortfolios');
+const gbp = async () => {
+  const a = await get('/accounts', { token: T });
+  const row = a.cash.find((c) => c.currency === 'GBP');
+  return row ? Number(row.balance) : 0;
+};
+let retirement, savings;
+
+await step('the product catalogue offers the named plans', async () => {
+  const types = await get('/portfolio-types', { token: T });
+  const codes = types.map((t) => t.code);
+  for (const expected of ['retirement', 'savings']) assert.ok(codes.includes(expected), `missing ${expected}`);
+  assert.ok(types.find((t) => t.code === 'retirement').indicative_rate > 0);
+  assert.equal(types.find((t) => t.code === 'general').indicative_rate, null, 'no rate means no projection');
+});
+
+await step('a client opens portfolios, and names stay unique', async () => {
+  retirement = await get('/portfolios', { token: T, method: 'POST', body: {
+    type_code: 'retirement', name: 'Retirement 2055', currency: 'GBP',
+    target_amount: 250000, target_date: '2055-01-01' } });
+  savings = await get('/portfolios', { token: T, method: 'POST', body: {
+    type_code: 'savings', name: 'Rainy day', currency: 'GBP', target_amount: 5000 } });
+  assert.ok(retirement.id && savings.id);
+  assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'savings', name: 'Rainy day', currency: 'GBP' } }), 409);
+  assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'yacht', name: 'Yacht', currency: 'GBP' } }), 404);
+  assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'savings', name: 'Odd', currency: 'ZZZ' } }), 404);
+  assert.equal(await status('/portfolios', { token: A, method: 'POST', body: { type_code: 'savings', name: 'x', currency: 'GBP' } }), 403);
+});
+
+await step('contributing moves money out of the balance, and back again', async () => {
+  const before = await gbp();
+  await get(`/portfolios/${retirement.id}/contribute`, { token: T, method: 'POST', body: { amount: 3000 } });
+  const afterIn = await gbp();
+  assert.ok(Math.abs((before - afterIn) - 3000) < 1e-9, 'the balance should fall by exactly the contribution');
+
+  const pots = await get('/portfolios', { token: T });
+  const pot = pots.find((p) => p.id === retirement.id);
+  assert.equal(Number(pot.balance), 3000);
+
+  await get(`/portfolios/${retirement.id}/withdraw`, { token: T, method: 'POST', body: { amount: 1000 } });
+  assert.ok(Math.abs((await gbp() - afterIn) - 1000) < 1e-9, 'taking money out must return it to the balance');
+  assert.equal(Number((await get('/portfolios', { token: T })).find((p) => p.id === retirement.id).balance), 2000);
+});
+
+await step('progress and projection reflect the target', async () => {
+  const pot = (await get('/portfolios', { token: T })).find((p) => p.id === retirement.id);
+  assert.ok(Math.abs(pot.progress - 2000 / 250000) < 1e-9);
+  assert.ok(pot.projected > Number(pot.balance), 'a dated pot with a rate should project growth');
+  const rainy = (await get('/portfolios', { token: T })).find((p) => p.id === savings.id);
+  assert.equal(rainy.projected, null, 'no target date means no projection');
+});
+
+await step('a portfolio refuses what it cannot do', async () => {
+  assert.equal(await status(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: 1e9 } }), 400, 'over balance');
+  assert.equal(await status(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: 1e9 } }), 400, 'over the pot');
+  assert.equal(await status(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: -50 } }), 400);
+  assert.equal(await status(`/portfolios/${retirement.id}`, { token: T, method: 'PATCH', body: { status: 'closed' } }), 409, 'closing a funded pot would strand the money');
+});
+
+await step('one client cannot pay into another client portfolio', async () => {
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Pot', email: `pot+${Date.now()}@example.com`, password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/portfolios/${retirement.id}/contribute`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
+  assert.equal(await status(`/portfolios/${retirement.id}/withdraw`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
+});
+
+await step('an emptied portfolio can be closed, and then takes nothing more', async () => {
+  const pot = (await get('/portfolios', { token: T })).find((p) => p.id === savings.id);
+  if (Number(pot.balance) > 0) {
+    await get(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: Number(pot.balance) } });
+  }
+  const closed = await get(`/portfolios/${savings.id}`, { token: T, method: 'PATCH', body: { status: 'closed' } });
+  assert.equal(closed.status, 'closed');
+  assert.equal(await status(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: 10 } }), 409);
+});
+
+await step('staff can read a client portfolio, and it is on the timeline', async () => {
+  const staffView = await get(`/portfolios?client_id=${client.id}`, { token: A });
+  assert.ok(staffView.length >= 2);
+  const kinds = (await get(`/clients/${client.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('portfolio'), 'portfolio activity missing from the timeline');
+});
+
+
+
 
 
 

@@ -36,6 +36,8 @@ Live feed: `WS /feed` — the client authenticates in its first message, then re
 for its own account (staff with `trade:read` see them too).
 Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
 Converter: `GET /convert/quote` · `POST /convert` · `GET /conversions`
+Portfolios: `GET /portfolio-types` · `GET|POST /portfolios` · `PATCH /portfolios/:id`
+`POST /portfolios/:id/contribute` · `POST /portfolios/:id/withdraw`
 `POST /wallets/:id/withdraw` · `GET /wallet-transactions` · `POST /wallet-transactions/:id/decide`
 `POST /clients/:id/credit` · `POST /clients/:id/wallet-credit` (both admin-only)
 Trading (account holders only): `GET /account` · `GET|POST /orders` · `DELETE /orders/:id`
@@ -140,6 +142,27 @@ price source is reported as unpriced and excluded from the total, and the UI nam
 rather than being silently valued at zero and understating the client's holdings.
 
 
+## Portfolios
+
+A portfolio is a labelled pot: a named container with a product type, a currency, an
+optional target amount and date. Money reaches it only by being moved out of a balance the
+client already holds, and both sides move in one transaction — money is never in neither
+place, or in both.
+
+`portfolio_types` is seeded reference data (Retirement plan, Savings account, Education
+fund, Emergency fund, Property deposit, General investment), so adding "Junior ISA" or
+"Trust" is an INSERT rather than a deploy.
+
+**Nothing accrues interest.** `indicative_rate` drives a projection shown to the client and
+nothing else, labelled in the UI as an illustration rather than interest paid. A pot with
+no target date shows no projection at all, and a type with no rate (General investment)
+never projects — saying nothing beats implying growth that will not arrive. Add a daily
+accrual job when balances actually need to grow.
+
+A pot cannot go negative (a CHECK constraint, not just a guard), and closing one that still
+holds money is refused rather than stranding it — take the balance out first.
+
+
 ## Compliance
 KYC: a client uploads JPEG/PNG/PDF (10 MB cap, anything else refused). The stored filename
 is generated — an uploaded name never reaches the filesystem — and documents are served
@@ -205,6 +228,7 @@ live list. At the time of writing:
 | `src/server.ts` | `numeric`/`bigint` parsed as JS numbers. | Same as the float note above. |
 | `src/server.ts` | Client search is `ILIKE '%x%'` — a sequential scan. | When the client list gets long: pg_trgm index. |
 | `src/server.ts` | One process, one broadcast interval, in-memory socket set. | More than one API instance: Redis pub/sub, same message shape. |
+| `src/server.ts` | Portfolios never accrue their indicative rate; it only drives a projection. | When balances must actually grow: a daily accrual job. |
 | `web/src/App.tsx` | Hash routing, five flat routes. | When routes nest: react-router. |
 | `web/src/chart.tsx` | Resizing a chart re-fits and so resets zoom. | When someone complains. |
 
