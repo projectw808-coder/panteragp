@@ -339,6 +339,60 @@ await step('credits and wallet movements reach the CRM timeline', async () => {
   assert.ok(kinds.includes('credit'), 'credits missing from the timeline');
   assert.ok(kinds.includes('wallet'), 'wallet creation missing from the timeline');
 });
+await step('a quote prices the pair without moving anything', async () => {
+  const q = await get('/convert/quote?from=GBP&to=USD&amount=1000', { token: T });
+  assert.ok(q.received > 1000, 'sterling buys more than its face in dollars');
+  assert.ok(q.rate > 1);
+  assert.equal(await status('/convert/quote?from=GBP&to=GBP&amount=10', { token: T }), 400, 'same currency');
+  assert.equal(await status('/convert/quote?from=GBP&to=ZZZ&amount=10', { token: T }), 404);
+  assert.equal(await status('/convert/quote?from=SOL&to=USD&amount=1', { token: T }), 422, 'no price source');
+});
+await step('exchanging debits one balance and credits the other exactly', async () => {
+  const held = async (code) => {
+    const a = await get('/accounts', { token: T });
+    const row = a.cash.find((c) => c.currency === code) ?? a.wallets.find((w) => w.asset === code);
+    return row ? Number(row.balance) : 0;
+  };
+  const gbpBefore = await held('GBP');
+  const usdBefore = await held('USD');
+  const done = await get('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 1000 } });
+  assert.ok(Math.abs((gbpBefore - await held('GBP')) - 1000) < 1e-9, 'the debit must be exactly the amount asked for');
+  assert.ok(Math.abs((await held('USD') - usdBefore) - Number(done.to_amount)) < 1e-6, 'the credit must match the recorded amount');
+});
+await step('converting into a zero-decimal currency yields whole units', async () => {
+  const done = await get('/convert', { token: T, method: 'POST', body: { from: 'USD', to: 'JPY', amount: 100 } });
+  assert.equal(Number(done.to_amount) % 1, 0, `${done.to_amount} is not a whole number of yen`);
+});
+await step('a round trip never ends with more than it started', async () => {
+  const held = async (code) => {
+    const a = await get('/accounts', { token: T });
+    const row = a.cash.find((c) => c.currency === code);
+    return row ? Number(row.balance) : 0;
+  };
+  const start = await held('GBP');
+  const out = await get('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 500 } });
+  await get('/convert', { token: T, method: 'POST', body: { from: 'USD', to: 'GBP', amount: Number(out.to_amount) } });
+  const end = await held('GBP');
+  assert.ok(end <= start, `a round trip created money: ${start} -> ${end}`);
+  assert.ok(start - end < 0.05, `a round trip lost too much: ${start - end}`);
+});
+await step('conversion refuses what it cannot do', async () => {
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 1e9 } }), 400, 'over balance');
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'CHF', to: 'USD', amount: 10 } }), 400, 'currency not held');
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'SOL', to: 'USD', amount: 1 } }), 422, 'unpriced');
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: -5 } }), 400);
+  assert.equal(await status('/convert', { token: A, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 1 } }), 403, 'staff do not hold balances');
+});
+await step('the slippage guard refuses an exchange that would underdeliver', async () => {
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 10, min_receive: 1e6 } }), 409);
+});
+await step('exchanges are recorded and reach the timeline', async () => {
+  assert.ok((await get('/conversions', { token: T })).length > 0);
+  const kinds = (await get(`/clients/${client.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('convert'), 'conversions missing from the timeline');
+});
+
+
 
 
 console.log('\nPhase 7 — admin dashboard');

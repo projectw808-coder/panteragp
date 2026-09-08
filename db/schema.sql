@@ -357,6 +357,21 @@ CREATE TABLE wallet_transactions (
 );
 CREATE INDEX ON wallet_transactions (client_id, created_at DESC);
 CREATE INDEX ON wallet_transactions (status);
+-- Every exchange between a client's own balances, kept as its own record so a
+-- conversion is legible without reading two balance movements and inferring the link.
+CREATE TABLE conversions (
+  id          bigserial PRIMARY KEY,
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  from_code   text NOT NULL REFERENCES currencies(code),
+  from_amount numeric(38,18) NOT NULL CHECK (from_amount > 0),
+  to_code     text NOT NULL REFERENCES currencies(code),
+  to_amount   numeric(38,18) NOT NULL CHECK (to_amount > 0),
+  rate        numeric(38,18) NOT NULL CHECK (rate > 0),
+  at          timestamptz NOT NULL DEFAULT now(),
+  CHECK (from_code <> to_code)
+);
+CREATE INDEX ON conversions (client_id, at DESC);
+
 
 -- ------------------------------------------------------------------ audit log
 
@@ -404,7 +419,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['staff','clients','client_tags','tasks','kyc_documents','flags',
                            'trading_accounts','orders','fills','positions','cash_transactions',
-                           'wallets','wallet_transactions'] LOOP
+                           'wallets','wallet_transactions','conversions'] LOOP
     EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
   END LOOP;

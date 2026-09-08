@@ -35,6 +35,7 @@ Live feed: `WS /feed` — the client authenticates in its first message, then re
 `{type:'tick', ticks:[{symbol, price}]}` once a second, plus `order` and `fill` events
 for its own account (staff with `trade:read` see them too).
 Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
+Converter: `GET /convert/quote` · `POST /convert` · `GET /conversions`
 `POST /wallets/:id/withdraw` · `GET /wallet-transactions` · `POST /wallet-transactions/:id/decide`
 `POST /clients/:id/credit` · `POST /clients/:id/wallet-credit` (both admin-only)
 Trading (account holders only): `GET /account` · `GET|POST /orders` · `DELETE /orders/:id`
@@ -115,6 +116,22 @@ Making these real is a different product, not a feature flag: key custody or a c
 integration, HSM or KMS for signing, chain reorg and confirmation handling, hot/cold
 separation, and the licensing and travel-rule obligations that come with holding client
 crypto.
+
+**Converting between balances.** Clients exchange their own holdings at the same rates used
+for valuation, fiat or crypto in either direction. The credited amount is floored to the
+destination's minor unit and never rounded up: rounding up hands out a fraction the rate
+did not earn, which across many conversions is money created from nothing. The dust is
+reported rather than hidden. Both sides move inside one transaction, locking the two
+holdings in a fixed order so that `GBP->USD` and `USD->GBP` running concurrently cannot
+each hold what the other waits for. An optional `min_receive` refuses the exchange if the
+rate moved against the quote, which matters most for crypto pairs that reprice every second.
+
+`floorTo` caps at 15 decimal places. Above that, `n * 10**decimals` passes
+`Number.MAX_SAFE_INTEGER` and `Math.floor` stops truncating — it can even return more than
+it was given — so ETH's declared 18 decimals is truncated at 15. That is the float
+limitation already noted for money, made explicit rather than left to quietly break the
+no-rounding-up guarantee.
+
 
 **Valuation.** `rateToUsd` prices crypto from the live feed where an instrument exists
 (BTC, ETH), dollar-pegged stablecoins from a seeded rate of 1, and fiat from the seeded

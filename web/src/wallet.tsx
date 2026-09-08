@@ -54,6 +54,9 @@ export function HoldingsPanel() {
         )}
       </div>
 
+      <Converter held={[...(a?.cash.map((c) => c.currency) ?? []), ...(a?.wallets.map((w) => w.asset) ?? [])]}
+        currencies={currencies.data ?? []} onDone={reload} />
+
       <div>
         <h3 className="mb-1 text-xs font-medium text-slate-500">Cash</h3>
         <table className="w-full text-sm">
@@ -111,6 +114,79 @@ export function HoldingsPanel() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+type Quote = { from: string; to: string; amount: number; received: number; rate: number; dustUsd: number };
+
+/** Exchange one of the client's own balances for another. */
+function Converter({ held, currencies, onDone }: {
+  held: string[]; currencies: Currency[]; onDone: () => void;
+}) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('USD');
+  const [amt, setAmt] = useState('');
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const source = from || held[0] || '';
+  const amount = Number(amt);
+  const ready = source && to && source !== to && amount > 0;
+
+  // Quote on demand rather than on every keystroke: it is only indicative anyway, since
+  // the rate is read again when the exchange actually runs.
+  async function getQuote() {
+    setError(null); setQuote(null);
+    try {
+      setQuote(await api<Quote>(`/convert/quote?from=${source}&to=${to}&amount=${amount}`));
+    } catch (err) { setError((err as Error).message); }
+  }
+
+  async function exchange() {
+    setBusy(true); setError(null);
+    try {
+      // Accept a little movement, but not a collapse: if the rate has moved enough that
+      // 1% less would arrive, the exchange is refused rather than silently repriced.
+      await api('/convert', {
+        method: 'POST',
+        body: JSON.stringify({ from: source, to, amount, ...(quote ? { min_receive: quote.received * 0.99 } : {}) }),
+      });
+      setAmt(''); setQuote(null);
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="rounded border border-slate-200 p-3 dark:border-slate-700">
+      <h3 className="mb-2 text-xs font-medium text-slate-500">Exchange between your balances</h3>
+      <div className="flex flex-wrap items-end gap-2">
+        <input className={`${field} w-28`} type="number" step="any" min="0" placeholder="Amount"
+          value={amt} onChange={(e) => { setAmt(e.target.value); setQuote(null); }} />
+        <select className={`${field} w-28`} value={source} onChange={(e) => { setFrom(e.target.value); setQuote(null); }}>
+          {held.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <span className="pb-2 text-slate-500">to</span>
+        <select className={`${field} w-36`} value={to} onChange={(e) => { setTo(e.target.value); setQuote(null); }}>
+          {currencies.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+        </select>
+        {quote
+          ? <button className={btn} disabled={busy} onClick={exchange}>{busy ? 'Exchanging…' : 'Confirm'}</button>
+          : <button className={btn} disabled={!ready} onClick={getQuote}>Quote</button>}
+      </div>
+      {quote && (
+        <p className="mt-2 text-sm">
+          {quote.amount} {quote.from} → <strong>{quote.received} {quote.to}</strong>
+          <span className="text-slate-500"> at {quote.rate.toPrecision(6)}</span>
+          {/* Only worth saying when it rounds to something visible; sub-cent dust shown
+              as "$0.00 lost" reads as a bug rather than as nothing. */}
+          {quote.dustUsd >= 0.005 && <span className="text-slate-500"> · {usd(quote.dustUsd)} lost to rounding</span>}
+        </p>
+      )}
+      {error && <p role="alert" className="mt-1 text-sm text-red-600">{error}</p>}
     </div>
   );
 }

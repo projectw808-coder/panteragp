@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyFill, isTriggered, positionSize, trailStop, unrealized } from '../src/trading.ts';
+import { applyFill, convert, floorTo, MAX_FLOOR_DECIMALS, isTriggered, positionSize, trailStop, unrealized } from '../src/trading.ts';
 
 describe('applyFill', () => {
   test('opens a position at the fill price', () => {
@@ -136,5 +136,78 @@ describe('positionSize', () => {
     assert.equal(positionSize({ balance: 10_000, riskPct: 1, entry: 100, stop: 100 }), 0);
     assert.equal(positionSize({ balance: 0, riskPct: 1, entry: 100, stop: 98 }), 0);
     assert.equal(positionSize({ balance: 10_000, riskPct: 0, entry: 100, stop: 98 }), 0);
+  });
+});
+
+describe('currency conversion', () => {
+  // Rates are USD per unit: 1 GBP = 1.266 USD, 1 USD = 1 USD, 1 JPY = 0.0066 USD.
+  const GBP = 1.266, USD = 1, JPY = 0.0066, BTC = 64000;
+  const conv = (o: Parameters<typeof convert>[0]) => {
+    const r = convert(o);
+    assert.ok(r, 'expected this conversion to be possible');
+    return r;
+  };
+
+  test('converts at the cross rate', () => {
+    const r = conv({ amount: 100, fromUsd: GBP, toUsd: USD, decimals: 2 });
+    assert.equal(r.rate, 1.266);
+    assert.equal(r.received, 126.6);
+  });
+
+  test('is reversible to within the rounding it declares', () => {
+    const there = conv({ amount: 100, fromUsd: GBP, toUsd: USD, decimals: 2 });
+    const back = conv({ amount: there.received, fromUsd: USD, toUsd: GBP, decimals: 2 });
+    assert.ok(Math.abs(back.received - 100) <= 0.01, `round trip drifted to ${back.received}`);
+  });
+
+  test('rounds down, never up - a conversion must not create money', () => {
+    assert.equal(conv({ amount: 1, fromUsd: GBP, toUsd: USD, decimals: 2 }).received, 1.26);
+    assert.equal(conv({ amount: 0.999, fromUsd: BTC, toUsd: USD, decimals: 2 }).received, 63936);
+  });
+
+  test('reports the dust it rounded away', () => {
+    const r = conv({ amount: 1, fromUsd: GBP, toUsd: USD, decimals: 2 });
+    assert.ok(r.dustUsd > 0 && r.dustUsd < 0.01, `dust was ${r.dustUsd}`);
+  });
+
+  test('honours the destination minor unit', () => {
+    const r = conv({ amount: 100, fromUsd: USD, toUsd: JPY, decimals: 0 });
+    assert.equal(r.received % 1, 0, `${r.received} is not a whole number of yen`);
+    assert.ok(r.received > 15000 && r.received < 15200);
+    const sats = conv({ amount: 1000, fromUsd: USD, toUsd: BTC, decimals: 8 });
+    assert.ok((String(sats.received).split('.')[1] ?? '').length <= 8);
+  });
+
+  test('refuses when either side has no price', () => {
+    assert.equal(convert({ amount: 10, fromUsd: null, toUsd: USD, decimals: 2 }), null);
+    assert.equal(convert({ amount: 10, fromUsd: USD, toUsd: null, decimals: 2 }), null);
+    assert.equal(convert({ amount: 10, fromUsd: 0, toUsd: USD, decimals: 2 }), null);
+  });
+
+  test('refuses an amount that would round away to nothing', () => {
+    // A dust amount of BTC into yen is worth under one yen: debiting it and crediting
+    // zero would simply consume the balance.
+    assert.equal(convert({ amount: 0.000000001, fromUsd: BTC, toUsd: JPY, decimals: 0 }), null);
+    assert.equal(convert({ amount: 0, fromUsd: USD, toUsd: GBP, decimals: 2 }), null);
+    assert.equal(convert({ amount: -5, fromUsd: USD, toUsd: GBP, decimals: 2 }), null);
+  });
+
+  test('floorTo does not mangle values already on the boundary', () => {
+    assert.equal(floorTo(0.1 + 0.2, 2), 0.3);
+    assert.equal(floorTo(126.6, 2), 126.6);
+    assert.equal(floorTo(2.675, 2), 2.67);
+    assert.equal(floorTo(15151.5151, 0), 15151);
+  });
+
+  test('floorTo never rounds up, even for assets declaring 18 decimals', () => {
+    // 10**18 is past Number.MAX_SAFE_INTEGER, where Math.floor stops truncating and can
+    // hand back more than it was given. Capping at MAX_FLOOR_DECIMALS is what stops a
+    // conversion into ETH from crediting a fraction the rate never earned.
+    const v = 0.31994266627420376;
+    assert.ok(floorTo(v, 18) <= v, 'flooring must never increase a value');
+    assert.equal(floorTo(v, 18), floorTo(v, MAX_FLOOR_DECIMALS));
+    for (const decimals of [0, 2, 6, 8, 15, 18]) {
+      assert.ok(floorTo(v, decimals) <= v, `floorTo rounded up at ${decimals} decimals`);
+    }
   });
 });

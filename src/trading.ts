@@ -83,6 +83,46 @@ export function trailStop(
 }
 
 /**
+ * The most decimal places a double can actually floor. Above this, n * 10**decimals
+ * passes Number.MAX_SAFE_INTEGER (9.007e15) and Math.floor becomes a no-op that can even
+ * round *up* — so ETH's declared 18 decimals is truncated here to 15. That is the same
+ * float limitation already flagged at the top of this file, made explicit rather than
+ * silently breaking the guarantee below.
+ */
+export const MAX_FLOOR_DECIMALS = 15;
+
+/** Round down to `decimals` places. Never rounds up: see convert(). */
+export function floorTo(n: number, decimals: number): number {
+  const f = 10 ** Math.min(decimals, MAX_FLOOR_DECIMALS);
+  // The *(1+ε) nudges values a hair under an exact multiple back onto it, so 0.1+0.2 at
+  // 2dp gives 0.30 rather than 0.29.
+  return Math.floor(n * f * (1 + Number.EPSILON)) / f;
+}
+
+/**
+ * Exchange `amount` of one currency for another, both priced in USD.
+ *
+ * The credited amount is rounded *down* to the destination's minor unit: rounding up
+ * would hand out a fraction the rate did not earn, and across many conversions that is
+ * money created from nothing. The dust is reported so the caller can show it rather than
+ * quietly lose it.
+ *
+ * Returns null when either side has no price, or when the whole amount would round away
+ * to nothing — debiting a balance and crediting zero is never the right answer.
+ */
+export function convert(
+  { amount, fromUsd, toUsd, decimals }:
+  { amount: number; fromUsd: number | null; toUsd: number | null; decimals: number },
+): { received: number; rate: number; dustUsd: number } | null {
+  if (!(amount > 0) || !fromUsd || !toUsd || fromUsd <= 0 || toUsd <= 0) return null;
+  const rate = fromUsd / toUsd;
+  const exact = amount * rate;
+  const received = floorTo(exact, decimals);
+  if (received <= 0) return null;
+  return { received, rate, dustUsd: round8((exact - received) * toUsd) };
+}
+
+/**
  * Position sizing: how many units risk `riskPct` of `balance` if the stop is hit.
  * Leverage caps the notional the account can carry, it does not change the risk.
  */

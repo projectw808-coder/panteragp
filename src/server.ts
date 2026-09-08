@@ -11,7 +11,7 @@ import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
-  applyFill, isTriggered, round8, trailStop, unrealized,
+  applyFill, convert, isTriggered, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
 } from './trading.ts';
 import { RULES, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
@@ -1128,6 +1128,131 @@ app.post('/clients/:id/credit', { preHandler: auth('funds:credit') }, async (req
     return { transaction: entry, currency, amount };
   });
 });
+
+// ------------------------------------------------------- currency converter
+
+/**
+ * Lock a client's holding of one currency and return its balance. Fiat lives in
+ * trading_accounts, crypto in wallets; the caller should not have to care which.
+ * `open` creates the holding when it does not exist yet, which is what the receiving
+ * side of a conversion needs.
+ */
+async function lockHolding(
+  c: pg.PoolClient, clientId: string, code: string, kind: 'fiat' | 'crypto', open: boolean,
+): Promise<{ table: 'trading_accounts' | 'wallets'; id: string; balance: number } | null> {
+  if (kind === 'fiat') {
+    if (open) {
+      await c.query(
+        `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo',$2,0)
+         ON CONFLICT (client_id, mode, currency) DO NOTHING`, [clientId, code]);
+    }
+    const { rows } = await c.query<{ id: string; balance: number }>(
+      `SELECT id, balance FROM trading_accounts
+        WHERE client_id = $1 AND mode = 'demo' AND currency = $2 FOR UPDATE`, [clientId, code]);
+    return rows[0] ? { table: 'trading_accounts', ...rows[0] } : null;
+  }
+  if (open) {
+    await c.query(
+      `INSERT INTO wallets (client_id, asset, address) VALUES ($1,$2,$3)
+       ON CONFLICT (client_id, asset) DO NOTHING`, [clientId, code, demoAddress(code)]);
+  }
+  const { rows } = await c.query<{ id: string; balance: number }>(
+    'SELECT id, balance FROM wallets WHERE client_id = $1 AND asset = $2 FOR UPDATE', [clientId, code]);
+  return rows[0] ? { table: 'wallets', ...rows[0] } : null;
+}
+
+const moveBalance = (c: pg.PoolClient, h: { table: string; id: string }, delta: number) =>
+  c.query(`UPDATE ${h.table === 'wallets' ? 'wallets' : 'trading_accounts'}
+            SET balance = balance + $2 WHERE id = $1`, [h.id, delta]);
+
+const convertBody = z.object({
+  from: z.string().min(2).max(10),
+  to: z.string().min(2).max(10),
+  amount: z.number().positive().finite(),
+  /** Slippage guard: refuse if the rate moved and this much would not be received. */
+  min_receive: z.number().positive().finite().optional(),
+});
+
+/** What a conversion would give right now. Indicative — the rate is re-read on execution. */
+app.get('/convert/quote', { preHandler: trader }, async (req: any, reply) => {
+  const q = convertBody.omit({ min_receive: true }).safeParse(req.query && {
+    ...req.query, amount: Number(req.query.amount),
+  });
+  if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
+  const all = await currencies();
+  const from = all.get(q.data.from), to = all.get(q.data.to);
+  if (!from || !to) return reply.code(404).send({ error: 'unknown currency' });
+  if (from.code === to.code) return reply.code(400).send({ error: 'same currency' });
+
+  const quoted = convert({
+    amount: q.data.amount,
+    fromUsd: await rateToUsd(from.code), toUsd: await rateToUsd(to.code),
+    decimals: to.decimals,
+  });
+  if (!quoted) return reply.code(422).send({ error: 'cannot price this pair right now' });
+  return { from: from.code, to: to.code, amount: q.data.amount, ...quoted };
+});
+
+/**
+ * Exchange one of a client's balances for another. Both sides move inside a single
+ * transaction: a conversion that debited without crediting would simply destroy money.
+ */
+app.post('/convert', { preHandler: trader }, async (req: any, reply) => {
+  const body = convertBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { from, to, amount, min_receive } = body.data;
+
+  const all = await currencies();
+  const src = all.get(from), dst = all.get(to);
+  if (!src || !dst) return reply.code(404).send({ error: 'unknown currency' });
+  if (src.code === dst.code) return reply.code(400).send({ error: 'same currency' });
+
+  const priced = convert({
+    amount, fromUsd: await rateToUsd(src.code), toUsd: await rateToUsd(dst.code), decimals: dst.decimals,
+  });
+  if (!priced) return reply.code(422).send({ error: 'cannot price this pair, or the amount is too small' });
+  if (min_receive !== undefined && priced.received < min_receive) {
+    return reply.code(409).send({ error: 'rate moved', would_receive: priced.received, min_receive });
+  }
+
+  const out = await tx(req.principal.sub, async (c) => {
+    // Always lock in the same order whatever the direction, or GBP->USD and USD->GBP
+    // running at once can each hold what the other is waiting for.
+    const order = [src, dst].sort((a, b) => a.code.localeCompare(b.code));
+    const locked = new Map<string, Awaited<ReturnType<typeof lockHolding>>>();
+    for (const ccy of order) {
+      locked.set(ccy.code, await lockHolding(c, req.principal.sub, ccy.code, ccy.kind, ccy.code === dst.code));
+    }
+    const source = locked.get(src.code);
+    const target = locked.get(dst.code);
+    if (!source) return 'no-holding' as const;
+    if (Number(source.balance) < amount) return 'insufficient' as const;
+    if (!target) return 'no-holding' as const;
+
+    await moveBalance(c, source, -amount);
+    await moveBalance(c, target, priced.received);
+    const { rows: [record] } = await c.query(
+      `INSERT INTO conversions (client_id, from_code, from_amount, to_code, to_amount, rate)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.principal.sub, src.code, amount, dst.code, priced.received, priced.rate]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'convert', actor: req.principal.sub,
+      summary: `Exchanged ${amount} ${src.code} for ${priced.received} ${dst.code}`,
+      ref_table: 'conversions', ref_id: String(record.id),
+      data: { from: src.code, to: dst.code, amount, received: priced.received, rate: priced.rate },
+    });
+    return record;
+  });
+
+  if (out === 'no-holding') return reply.code(400).send({ error: `no ${from} balance to exchange` });
+  if (out === 'insufficient') return reply.code(400).send({ error: `amount exceeds your ${from} balance` });
+  return reply.code(201).send({ ...out, dust_usd: priced.dustUsd });
+});
+
+app.get('/conversions', { preHandler: trader }, async (req: any) =>
+  (await pool.query(
+    `SELECT * FROM conversions WHERE client_id = $1 ORDER BY at DESC LIMIT 100`,
+    [req.principal.sub])).rows);
 
 // ------------------------------------------------------------ crypto wallets
 
