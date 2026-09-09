@@ -67,3 +67,40 @@ DO $$ BEGIN
   ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
     CHECK (status IN ('open', 'in_progress', 'blocked', 'done', 'cancelled'));
 END $$;
+
+-- ------------------------------------------------- negotiated portfolio rates
+
+-- The rate a pot earns came from its product type, the same for everybody holding that
+-- product. A desk negotiates: this is the rate agreed with one client on one pot, and it
+-- wins over the product's when it is set. Null means "whatever the product pays", which is
+-- what every existing pot means today, so nothing has to be backfilled.
+--
+-- Bounded in the column rather than only in the handler. It is the multiplier on somebody
+-- else's money: a typo of 35 for 3.5 is a hundredfold, and the place to stop that is the
+-- one thing every path has to go through.
+ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS rate_override numeric(6,4);
+DO $$ BEGIN
+  ALTER TABLE portfolios ADD CONSTRAINT portfolios_rate_override_sane
+    CHECK (rate_override IS NULL OR (rate_override >= 0 AND rate_override <= 1));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ---------------------------------------------------------- linked wallets
+
+-- An address a client has proved they control, by signing a challenge with it.
+--
+-- Identification, not custody: the platform holds no keys and this table is never a
+-- destination for anything. It exists so the desk can tell whose address is whose, which
+-- is the prerequisite for ever paying one — an address nobody proved is an address that
+-- could belong to anybody.
+--
+-- Unique globally, not per client: one address belonging to two accounts is either a
+-- mistake or somebody borrowing a wallet, and both are worth refusing at the column.
+CREATE TABLE IF NOT EXISTS linked_wallets (
+  id         bigserial PRIMARY KEY,
+  client_id  uuid NOT NULL REFERENCES clients(id),
+  address    text NOT NULL UNIQUE,
+  label      text,
+  linked_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS linked_wallets_by_client ON linked_wallets (client_id);

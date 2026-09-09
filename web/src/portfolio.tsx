@@ -10,13 +10,17 @@ type PortfolioType = {
 type Portfolio = {
   id: string; type_code: string; type_name: string; name: string; currency: string;
   balance: number; target_amount: number | null; target_date: string | null;
-  status: 'open' | 'closed'; indicative_rate: number | null;
+  status: 'open' | 'closed'; indicative_rate: number | null; standard_rate: number | null;
+  rate_override: number | null;
   usd_value: number | null; progress: number | null; projected: number | null;
 };
 
 const money = (n: number, code: string) =>
   `${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${code}`;
-const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+// One decimal is enough for a progress bar and wrong for a rate: an agreed 7.25% shown as
+// 7.2% is a smaller number than the one on the client's screen everywhere else. Up to two,
+// with trailing zeros trimmed, so 3.5% does not become 3.50%.
+const pct = (n: number) => `${Number((n * 100).toFixed(2))}%`;
 const day = (d: string) => new Date(d).toLocaleDateString();
 
 /**
@@ -76,6 +80,7 @@ type On = { client_id?: string };
 
 function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   const [action, setAction] = useState<'contribute' | 'withdraw' | null>(null);
+  const [rate, setRate] = useState(false);
   const [amt, setAmt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,7 +117,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
       {p.progress !== null && (
         <div className="mt-2">
           <div className="h-1.5 w-full rounded-md bg-bone dark:bg-white/10">
-            <div className="h-1.5 rounded-md bg-onyx dark:bg-mist" style={{ width: pct(p.progress) }} />
+            <div className="h-1.5 rounded-md bg-ember" style={{ width: pct(p.progress) }} />
           </div>
           <p className="mt-1 text-xs text-slate-ink">
             {pct(p.progress)} of {money(p.target_amount!, p.currency)}
@@ -125,13 +130,13 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         <p className="mt-1 text-xs text-slate-ink">
           {/* Interest is genuinely credited daily at this rate, so the projection is a
               forecast of the accrual rather than a decorative illustration. */}
-          Earning {pct(p.indicative_rate ?? 0)} a year, credited daily —
+          Earning {pct(p.indicative_rate ?? 0)} a year{p.rate_override !== null && ' (agreed with the desk)'}, credited daily —
           projected {money(p.projected, p.currency)} by then if left untouched.
         </p>
       )}
       {p.projected === null && p.indicative_rate !== null && (
         <p className="mt-1 text-xs text-slate-ink">
-          Earning {pct(p.indicative_rate)} a year, credited daily.
+          Earning {pct(p.indicative_rate)} a year{p.rate_override !== null && ' (agreed with the desk)'}, credited daily.
         </p>
       )}
 
@@ -140,6 +145,10 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">pay in</button>
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); }}
           className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">take out</button>
+        {on.client_id && (
+          <button onClick={() => { setRate((v) => !v); setError(null); }}
+            className="text-ember hover:underline">set rate</button>
+        )}
         {Number(p.balance) === 0 && (
           <button onClick={close} className="ml-auto text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">close</button>
         )}
@@ -154,8 +163,71 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           </button>
         </form>
       )}
+      {rate && on.client_id && (
+        <SetRate p={p} on={on} onDone={() => { setRate(false); onDone(); }} onError={setError} />
+      )}
       {error && <p role="alert" className={`${alertBox} mt-1 `}>{error}</p>}
     </div>
+  );
+}
+
+/**
+ * The rate this one pot earns, as agreed with this one client.
+ *
+ * Entered as a percentage because that is how it is agreed and how it is shown; stored as
+ * a fraction, converted once, here. Clearing it puts the pot back on the product's rate
+ * rather than on nothing — a blank box meaning "earns zero" would be a quiet way to stop
+ * paying somebody.
+ */
+function SetRate({ p, on, onDone, onError }: {
+  p: Portfolio; on: On; onDone: () => void; onError: (m: string | null) => void;
+}) {
+  const asPercent = (n: number | null) => (n === null ? '' : String(Number((n * 100).toFixed(4))));
+  const [value, setValue] = useState(asPercent(p.rate_override));
+  const [busy, setBusy] = useState(false);
+
+  async function save(next: number | null) {
+    setBusy(true);
+    onError(null);
+    try {
+      await api(`/portfolios/${p.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...on, rate_override: next }),
+      });
+      onDone();
+    } catch (err) {
+      onError((err as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <form className="mt-2 space-y-2 rounded-md border border-ember/40 p-2"
+      onSubmit={(e) => { e.preventDefault(); save(value === '' ? null : Number(value) / 100); }}>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-ink">
+          Rate
+          <span className="mt-1 flex items-center gap-1">
+            <input className={`${field} w-24`} type="number" step="0.01" min="0" max="100" autoFocus
+              placeholder={asPercent(p.standard_rate) || '0'}
+              value={value} onChange={(e) => setValue(e.target.value)} />
+            <span className="font-mono text-xs">% a year</span>
+          </span>
+        </label>
+        <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Set rate'}</button>
+        {p.rate_override !== null && (
+          <button type="button" disabled={busy} onClick={() => save(null)}
+            className="font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
+            back to standard
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-ink">
+        {p.rate_override === null
+          ? `On the standard ${p.standard_rate === null ? 'rate' : pct(p.standard_rate)} for this product.`
+          : `Agreed rate. The standard for this product is ${p.standard_rate === null ? 'nothing' : pct(p.standard_rate)}.`}
+        {' '}Credited daily, and the client is told when it changes.
+      </p>
+    </form>
   );
 }
 

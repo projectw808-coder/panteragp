@@ -10,6 +10,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { challengeMessage, checksumAddress, isAddress, recoverSigner } from './wallet-link.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
@@ -229,6 +230,14 @@ app.post('/auth/register', async (req, reply) => {
       await logActivity(c, {
         client_id: rows[0].id, kind: 'note', actor: rows[0].id,
         summary: 'Account created by the client',
+      });
+      // Somebody who signed themselves up has nobody looking after them yet, which is the
+      // whole reason to say so: an account nobody knows arrived is an account nobody picks up.
+      await notifyStaff(c, { roles: ['sales', 'admin'] }, {
+        kind: 'client.registered',
+        title: `New account: ${rows[0].name}`,
+        body: `${rows[0].email} — registered themselves, unassigned and unverified.`,
+        ref_table: 'clients', ref_id: rows[0].id,
       });
       // Signed straight in: making someone register and then immediately log in again is
       // friction with no security benefit, since they just proved the password.
@@ -858,6 +867,102 @@ app.patch('/me/profile', { preHandler: trader }, async (req: any, reply) => {
   });
 });
 
+// ------------------------------------------------------------ linked wallets
+
+/*
+ * A client proving an Ethereum address is theirs.
+ *
+ * Two steps, and neither of them touches money. The server issues a challenge; the wallet
+ * signs it; the server recovers the signer and stores the address if it matches. Signing
+ * is free, moves nothing, and cannot be replayed as a transaction — see the EIP-191 prefix
+ * in src/wallet-link.ts.
+ *
+ * The challenge is a short-lived token rather than a row in a nonce table: it already
+ * carries who asked and when it expires, and there is nothing left behind to clean up. It
+ * is bound to the client, so one person cannot hand their challenge to another to sign.
+ */
+app.post('/me/wallet/challenge', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({ address: z.string() }).safeParse(req.body);
+  if (!body.success || !isAddress(body.data.address)) {
+    return reply.code(400).send({ error: 'that is not an Ethereum address' });
+  }
+  const nonce = await signToken({ sub: req.principal.sub, kind: 'client', role: 'trader' }, '5m');
+  return { message: challengeMessage(body.data.address, nonce), nonce };
+});
+
+app.post('/me/wallet', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({
+    address: z.string(),
+    nonce: z.string().max(4000),
+    signature: z.string().max(400),
+    label: z.string().max(60).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (!isAddress(body.data.address)) return reply.code(400).send({ error: 'that is not an Ethereum address' });
+
+  // The challenge has to be this client's and still live. An expired one is not an error
+  // worth explaining away — ask for a new one and sign that.
+  try {
+    const issued = await verifyToken(body.data.nonce);
+    if (issued.sub !== req.principal.sub) throw new Error('not yours');
+  } catch {
+    return reply.code(400).send({ error: 'that challenge has expired — start again' });
+  }
+
+  const address = checksumAddress(body.data.address);
+  const signer = recoverSigner(challengeMessage(address, body.data.nonce), body.data.signature);
+  if (signer !== address) {
+    return reply.code(400).send({ error: 'that signature does not come from this address' });
+  }
+
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO linked_wallets (client_id, address, label) VALUES ($1,$2,$3)
+         RETURNING id, address, label, linked_at`,
+        [req.principal.sub, address, body.data.label ?? null]);
+      await logActivity(c, {
+        client_id: req.principal.sub, kind: 'wallet', actor: req.principal.sub,
+        summary: `Linked wallet ${address.slice(0, 6)}…${address.slice(-4)}`,
+        ref_table: 'linked_wallets', ref_id: String(rows[0].id),
+      });
+      return reply.code(201).send(rows[0]);
+    });
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'that address is already linked to an account' });
+    throw err;
+  }
+});
+
+app.get('/me/wallet', { preHandler: trader }, async (req: any) =>
+  (await pool.query(
+    'SELECT id, address, label, linked_at FROM linked_wallets WHERE client_id = $1 ORDER BY linked_at',
+    [req.principal.sub])).rows);
+
+app.delete('/me/wallet/:id', { preHandler: trader }, async (req: any, reply) => {
+  const out = await tx(req.principal.sub, async (c) => {
+    // Scoped by client as well as id: unlinking is the one thing here somebody might try
+    // to do to an address that is not theirs.
+    const { rows } = await c.query(
+      'DELETE FROM linked_wallets WHERE id = $1 AND client_id = $2 RETURNING address',
+      [req.params.id, req.principal.sub]);
+    if (!rows[0]) return null;
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'wallet', actor: req.principal.sub,
+      summary: `Unlinked wallet ${rows[0].address.slice(0, 6)}…${rows[0].address.slice(-4)}`,
+    });
+    return rows[0];
+  });
+  if (!out) return reply.code(404).send({ error: 'no such wallet' });
+  return { unlinked: out.address };
+});
+
+/** Staff see what a client has proved, from the client record. */
+app.get('/clients/:id/wallets', { preHandler: clientScope }, async (req: any) =>
+  (await pool.query(
+    'SELECT id, address, label, linked_at FROM linked_wallets WHERE client_id = $1 ORDER BY linked_at',
+    [req.params.id])).rows);
+
 app.get('/account', { preHandler: trader }, async (req) => {
   const a = await demoAccount(req.principal.sub);
   const { rows: pos } = await pool.query<{ symbol: string; qty: number; avg_price: number }>(
@@ -1426,6 +1531,7 @@ const NOTIFY_KINDS = {
     { kind: 'ticket.activity',    label: 'Support tickets', note: 'A client opened a ticket or replied on one.' },
     { kind: 'withdrawal.request', label: 'Withdrawal requests', note: 'A client asked to take money out.' },
     { kind: 'task.assigned',      label: 'Tasks assigned to you', note: 'Somebody put a task on your list.' },
+    { kind: 'client.registered',  label: 'New sign-ups', note: 'Somebody opened an account themselves.' },
   ],
 } as const;
 
@@ -2382,11 +2488,14 @@ async function accrueInterest(): Promise<{ portfolios: number; posted: number }>
     balance: number; rate: number; days: number;
   }>(`
     SELECT p.id, p.client_id, p.name, p.currency, p.balance,
-           t.indicative_rate AS rate,
+           -- The rate agreed on this pot wins over the product's. One expression, used by
+           -- the job that pays the money and by the screens that promise it, so what the
+           -- client is shown and what lands in the pot cannot drift apart.
+           coalesce(p.rate_override, t.indicative_rate) AS rate,
            (current_date - p.last_accrued_on) AS days
       FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
      WHERE p.status = 'open'
-       AND t.indicative_rate IS NOT NULL
+       AND coalesce(p.rate_override, t.indicative_rate) IS NOT NULL
        AND p.balance > 0
        AND p.last_accrued_on < current_date`);
 
@@ -2484,7 +2593,9 @@ app.get('/portfolios', async (req: any, reply) => {
   const clientId = await portfolioScope(req, reply);
   if (clientId === null) return reply.sent ? undefined : [];
   const { rows } = await pool.query(
-    `SELECT p.*, t.name AS type_name, t.indicative_rate
+    `SELECT p.*, t.name AS type_name,
+            coalesce(p.rate_override, t.indicative_rate) AS indicative_rate,
+            t.indicative_rate AS standard_rate
        FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
       WHERE p.client_id = $1 ORDER BY p.status, p.created_at`, [clientId]);
 
@@ -2620,6 +2731,10 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
   const body = z.object({
     // client_id is how staff say whose portfolio this is; it is not a field to change.
     client_id: z.string().uuid().optional(),
+    // The rate this pot earns. A fraction, so 0.045 is 4.5% a year. Null puts it back on
+    // the product's rate. Bounded here and in the column: it multiplies somebody else's
+    // money, and 35 typed for 3.5 is a hundredfold.
+    rate_override: z.number().min(0).max(1).nullable().optional(),
     name: z.string().min(1).max(80).optional(),
     target_amount: z.number().positive().finite().nullable().optional(),
     target_date: z.coerce.date().nullable().optional(),
@@ -2627,6 +2742,13 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
   }).transform(({ client_id: _ignored, ...rest }) => rest)
     .refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  // A client may rename their pot and set their own target. They may not decide what it
+  // pays them — that is a term of the account, agreed with the desk, and it needs the same
+  // permission as putting money on the account by hand.
+  if (body.data.rate_override !== undefined && !who.onBehalf) {
+    return reply.code(403).send({ error: 'the rate on a portfolio is set by the desk' });
+  }
 
   const entries = Object.entries(body.data);
   const out = await tx(req.principal.sub, async (c) => {
@@ -2641,13 +2763,35 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
     const { rows } = await c.query(
       `UPDATE portfolios SET ${set} WHERE id = $1 RETURNING *`,
       [req.params.id, ...entries.map(([, v]) => v)]);
+    // A rate change is the one edit here that changes what the client is owed, so it is
+    // named in the summary rather than filed under "updated" with everything else.
+    const rate = body.data.rate_override;
+    const summary = rate !== undefined
+      ? (rate === null
+        ? `Desk put ${rows[0].name} back on the standard rate`
+        : `Desk set ${rows[0].name} to ${(rate * 100).toFixed(2)}% a year`)
+      : who.onBehalf
+        ? (body.data.status === 'closed' ? `Desk closed ${rows[0].name}` : `Desk updated ${rows[0].name}`)
+        : (body.data.status === 'closed' ? `Closed ${rows[0].name}` : `Updated ${rows[0].name}`);
+
     await logActivity(c, {
       client_id: who.clientId, kind: 'portfolio', actor: req.principal.sub,
-      summary: who.onBehalf
-        ? (body.data.status === 'closed' ? `Desk closed ${rows[0].name}` : `Desk updated ${rows[0].name}`)
-        : (body.data.status === 'closed' ? `Closed ${rows[0].name}` : `Updated ${rows[0].name}`),
-      ref_table: 'portfolios', ref_id: rows[0].id, data: body.data,
+      summary, ref_table: 'portfolios', ref_id: rows[0].id, data: body.data,
     });
+    // What their savings earn is a term of their account. They are told when it moves,
+    // whichever way it moves.
+    if (rate !== undefined) {
+      const { rows: [t] } = await c.query<{ indicative_rate: number | null }>(
+        'SELECT indicative_rate FROM portfolio_types WHERE code = $1', [rows[0].type_code]);
+      const effective = rate ?? (t?.indicative_rate === null || t?.indicative_rate === undefined
+        ? null : Number(t.indicative_rate));
+      await notifyClientOf(c, {
+        client_id: who.clientId, kind: 'interest',
+        title: `${rows[0].name} now earns ${effective === null ? 'no interest' : `${(effective * 100).toFixed(2)}% a year`}`,
+        body: 'Credited daily on the balance in the pot.',
+        ref_table: 'portfolios', ref_id: rows[0].id,
+      });
+    }
     return rows[0];
   });
   if (out === 'missing') return reply.code(404).send({ error: 'no such portfolio' });

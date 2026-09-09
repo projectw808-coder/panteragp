@@ -53,7 +53,9 @@ export function ClientList() {
                 badge={(v) => <Badge value={v} />}
                 canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'}
                 canResetPassword={me?.role === 'admin'}
-                canMoveFunds={me?.role === 'admin'} />
+                canMoveFunds={me?.role === 'admin'}
+                canWrite={me?.role === 'sales' || me?.role === 'support' || me?.role === 'admin'}
+                stages={stages.data ?? []} />
             ))}
           </tbody>
         </table>

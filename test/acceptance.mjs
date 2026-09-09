@@ -9,6 +9,8 @@
  * It asserts rather than prints, so a regression anywhere fails the run.
  */
 import assert from 'node:assert/strict';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { keccak_256 } from '@noble/hashes/sha3';
 import { WebSocket } from 'ws';
 import { SignJWT } from 'jose';
 
@@ -511,6 +513,39 @@ await step("money moved into a pot is still the client's money", async () => {
   await get(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: 500 } });
 });
 
+await step('the desk sets what a pot earns, and nobody else does', async () => {
+  const before = (await get('/portfolios', { token: T })).find((x) => x.id === savings.id);
+  assert.equal(before.rate_override, null, 'a new pot is on the product rate');
+
+  await get(`/portfolios/${savings.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, rate_override: 0.0725 } });
+  const after = (await get('/portfolios', { token: T })).find((x) => x.id === savings.id);
+  // indicative_rate is the effective one, so the client is shown what they will actually
+  // be paid rather than the product's headline.
+  assert.equal(Number(after.indicative_rate), 0.0725);
+  assert.equal(Number(after.standard_rate), Number(before.indicative_rate));
+
+  // A client may rename their pot. What it pays them is a term of the account.
+  assert.equal(await status(`/portfolios/${savings.id}`, { token: T, method: 'PATCH', body: { rate_override: 0.9 } }), 403);
+  assert.equal(Number((await get('/portfolios', { token: T })).find((x) => x.id === savings.id).indicative_rate), 0.0725);
+
+  // 35 typed for 3.5 is a hundredfold, so the range is refused rather than stored.
+  assert.equal(await status(`/portfolios/${savings.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, rate_override: 35 } }), 400);
+
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.title.includes('7.25% a year')),
+    'the client is told when what they earn changes');
+  assert.ok((await get(`/clients/${client.id}/timeline`, { token: A }))
+    .some((x) => x.summary.includes('7.25% a year')));
+
+  // Clearing it puts the pot back on the product rate rather than on nothing.
+  await get(`/portfolios/${savings.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, rate_override: null } });
+  const back = (await get('/portfolios', { token: T })).find((x) => x.id === savings.id);
+  assert.equal(back.rate_override, null);
+  assert.equal(Number(back.indicative_rate), Number(before.indicative_rate));
+});
+
 await step('contributing moves money out of the balance, and back again', async () => {
   const before = await gbp();
   await get(`/portfolios/${retirement.id}/contribute`, { token: T, method: 'POST', body: { amount: 3000 } });
@@ -742,6 +777,60 @@ await step('staff are told when something needs them, unless they said not to', 
   await get('/me/notification-prefs', { token: A, method: 'PUT', body: { 'ticket.activity': true } });
 });
 
+await step('a wallet is linked by proving it, not by claiming it', async () => {
+  // Signs the way MetaMask does, so the endpoint is exercised through its real shape.
+  const sign = (message, priv) => {
+    const body = new TextEncoder().encode(message);
+    const prefix = new TextEncoder().encode(`\x19Ethereum Signed Message:\n${body.length}`);
+    const joined = new Uint8Array(prefix.length + body.length);
+    joined.set(prefix);
+    joined.set(body, prefix.length);
+    const sig = secp256k1.sign(keccak_256(joined), priv);
+    return '0x' + Buffer.from(sig.toCompactRawBytes()).toString('hex')
+      + (27 + sig.recovery).toString(16).padStart(2, '0');
+  };
+  const addressOf = (priv) => '0x' + Buffer.from(
+    keccak_256(secp256k1.getPublicKey(priv, false).subarray(1))).subarray(-20).toString('hex');
+
+  const priv = Buffer.from('a1'.repeat(32), 'hex');
+  const address = addressOf(priv);
+  const challenge = await get('/me/wallet/challenge', { token: T, method: 'POST', body: { address } });
+  assert.ok(challenge.message.includes(challenge.nonce), 'the nonce is in what gets signed');
+
+  const linked = await get('/me/wallet', { token: T, method: 'POST', body: {
+    address, nonce: challenge.nonce, signature: sign(challenge.message, priv) } });
+  assert.equal(linked.address.toLowerCase(), address.toLowerCase());
+
+  // Claiming an address without the key gets nowhere: the signature has to come from it.
+  const someoneElse = addressOf(Buffer.from('b2'.repeat(32), 'hex'));
+  const other = await get('/me/wallet/challenge', { token: T, method: 'POST', body: { address: someoneElse } });
+  assert.equal(await status('/me/wallet', { token: T, method: 'POST', body: {
+    address: someoneElse, nonce: other.nonce, signature: sign(other.message, priv) } }), 400,
+    'signing with the wrong key must not link the address');
+  assert.equal(await status('/me/wallet', { token: T, method: 'POST', body: {
+    address: someoneElse, nonce: other.nonce, signature: '0xgarbage' } }), 400);
+  assert.equal(await status('/me/wallet', { token: T, method: 'POST', body: {
+    address, nonce: 'not-a-challenge', signature: sign(challenge.message, priv) } }), 400);
+
+  // One address, one account.
+  const nosy = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Nosy Wallet', email: unique('wallet'), password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  const theirs = await get('/me/wallet/challenge', { token: N, method: 'POST', body: { address } });
+  assert.equal(await status('/me/wallet', { token: N, method: 'POST', body: {
+    address, nonce: theirs.nonce, signature: sign(theirs.message, priv) } }), 409,
+    'an address already linked elsewhere is refused even with a good signature');
+
+  // A challenge is bound to whoever asked for it, so one client cannot hand theirs over.
+  assert.equal(await status('/me/wallet', { token: N, method: 'POST', body: {
+    address: someoneElse, nonce: challenge.nonce, signature: sign(challenge.message, priv) } }), 400);
+
+  // Staff can see what a client proved; the client can take it back.
+  assert.ok((await get(`/clients/${client.id}/wallets`, { token: A })).some((w) => w.id === linked.id));
+  assert.equal((await get(`/me/wallet/${linked.id}`, { token: T, method: 'DELETE' })).unlinked, linked.address);
+  assert.equal(await status(`/me/wallet/${linked.id}`, { token: T, method: 'DELETE' }), 404);
+});
+
 console.log('\nSupport tickets');
 let ticket;
 
@@ -862,7 +951,7 @@ await step('only an admin may set somebody else\'s, and the client is told', asy
   // claim on an admin's id would still be an admin and the check would pass for nothing.
   for (const role of ['sales', 'support', 'compliance']) {
     const colleague = await get('/staff', { token: A, method: 'POST', body: {
-      name: `Reset ${role}`, email: `reset-${role}+${Date.now()}@example.com`, role,
+      name: `Reset ${role}`, email: unique(`reset-${role}`), role,
       password: 'a-long-enough-password' } });
     const token = (await login(colleague.email, 'a-long-enough-password', 'staff')).token;
     assert.equal(await status(`/clients/${subject.id}/password`, { token, method: 'POST', body: {

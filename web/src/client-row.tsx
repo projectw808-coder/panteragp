@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, field, mono } from './App.tsx';
-import { api, token, useApi, type ClientRow as Client } from './api.ts';
+import { api, token, useApi, type ClientRow as Client, type Stage } from './api.ts';
 import { PortfoliosPanel } from './portfolio.tsx';
+import { ClientWallets } from './wallet-connect.tsx';
 import { ResetPassword } from './settings.tsx';
 
 /**
@@ -20,7 +21,7 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds }: {
+export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds, canWrite, stages }: {
   c: Client;
   open: boolean;
   onToggle: () => void;
@@ -29,6 +30,8 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
   canReviewKyc: boolean;
   canResetPassword: boolean;
   canMoveFunds: boolean;
+  canWrite: boolean;
+  stages: Stage[];
 }) {
   // Only fetched once the row is opened: a list of fifty clients should not pull fifty
   // holdings summaries nobody asked to see.
@@ -48,7 +51,12 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
         </td>
         {/* Contact details and timestamps read as data, so they take the mono face. */}
         <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{c.email}</td>
-        <td className="px-4 py-2">{c.stage}</td>
+        {/* A select, not a label: moving somebody down the pipeline is the commonest edit
+            on this screen, and it should not cost two navigations. The click is stopped
+            here so choosing a stage does not also unfold the row underneath it. */}
+        <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+          <StageCell c={c} stages={stages} onChanged={onChanged} />
+        </td>
         <td className="px-4 py-2">{badge(c.kyc_status)}</td>
         <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? '—'}</td>
         <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{when(c.created_at)}</td>
@@ -94,8 +102,10 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
               </div>
 
               <div className="space-y-6">
+                {canWrite && <QuickNote clientId={c.id} onDone={onChanged} />}
                 <QuickCredit clientId={c.id} onDone={() => { holdings.reload(); onChanged(); }} />
                 <Documents clientId={c.id} canDownload={canReviewKyc} />
+                <ClientWallets clientId={c.id} />
                 {canMoveFunds && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <PortfoliosPanel clientId={c.id} />
@@ -108,6 +118,71 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
         </tr>
       )}
     </>
+  );
+}
+
+/** The pipeline stage, changed in place. Saves on choosing — there is nothing to confirm. */
+function StageCell({ c, stages, onChanged }: { c: Client; stages: Stage[]; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  return (
+    <select value={c.stage_id} disabled={busy} aria-label={`Stage for ${c.name}`}
+      onChange={async (e) => {
+        setBusy(true);
+        setError(false);
+        try {
+          await api(`/clients/${c.id}`, { method: 'PATCH', body: JSON.stringify({ stage_id: Number(e.target.value) }) });
+          onChanged();
+        } catch { setError(true); } finally { setBusy(false); }
+      }}
+      className={`-mx-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm hover:border-pebble dark:hover:border-white/20 ${error ? 'text-down' : ''}`}>
+      {stages.length
+        ? stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
+        : <option value={c.stage_id}>{c.stage}</option>}
+    </select>
+  );
+}
+
+/**
+ * A note on the client, from the list.
+ *
+ * The same audited route the full record uses, so a line typed here reads identically on
+ * their timeline — the point is to save the trip, not to create a second kind of note.
+ */
+function QuickNote({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      await api(`/clients/${clientId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
+      setText('');
+      setDone(true);
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="space-y-2">
+      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Note</h3>
+      <div className="flex flex-wrap gap-2">
+        <input className={`${field} min-w-64 flex-1`} required maxLength={4000}
+          placeholder="What happened — goes on their timeline"
+          value={text} onChange={(e) => setText(e.target.value)} />
+        <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Add note'}</button>
+      </div>
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+      {done && <p role="status" className="font-mono text-xs text-slate-ink">Added to their timeline.</p>}
+    </form>
   );
 }
 

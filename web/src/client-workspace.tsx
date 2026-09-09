@@ -29,6 +29,9 @@ const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFraction
 const pnlColour = (n: number) => (n >= 0 ? 'text-up' : 'text-down');
 
 const TABS = ['overview', 'assets', 'trading', 'funding', 'documents', 'tickets', 'activity', 'audit'] as const;
+// What the desk sells. Free text in the database because the list is a commercial decision
+// rather than a structural one, and changing it should not be a migration.
+const TIERS = ['standard', 'silver', 'gold', 'platinum'];
 type Tab = (typeof TABS)[number];
 
 const KYC: Record<string, string> = {
@@ -60,7 +63,8 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <Header client={c} holdings={holdings.data ?? undefined} onSaved={refresh} compliance={compliance} />
+      <Header client={c} holdings={holdings.data ?? undefined} onSaved={refresh}
+        compliance={compliance} admin={admin} />
 
       <div className="flex flex-wrap gap-1 text-xs">
         {TABS.map((name) => (
@@ -136,9 +140,9 @@ function Balances({ holdings }: { holdings?: Holdings }) {
   );
 }
 
-function Header({ client: c, holdings, onSaved, compliance }: {
+function Header({ client: c, holdings, onSaved, compliance, admin }: {
   client: Person;
-  holdings?: Holdings; onSaved: () => void; compliance: boolean;
+  holdings?: Holdings; onSaved: () => void; compliance: boolean; admin: boolean;
 }) {
   const totals = holdings?.totals;
   const [editing, setEditing] = useState(false);
@@ -216,6 +220,18 @@ function Header({ client: c, holdings, onSaved, compliance }: {
             {['low', 'medium', 'high'].map((r) => <option key={r}>{r}</option>)}
           </select>
         </Labelled>
+        {admin && (
+          <Labelled label="Tier">
+            {/* A select rather than the free-text box in the edit form: a tier is one of a
+                known set, and "Gold " with a trailing space is a tier nothing matches. The
+                client's existing value is kept as an option so an older record set by hand
+                is not silently rewritten by opening this menu. */}
+            <select className={`${field} w-32`} value={c.tier}
+              onChange={(e) => patch({ tier: e.target.value })}>
+              {[...new Set([...TIERS, c.tier])].map((t) => <option key={t}>{t}</option>)}
+            </select>
+          </Labelled>
+        )}
         {compliance && (
           <Labelled label="KYC (override)">
             <select className={`${field} w-32`} value={c.kyc_status}
