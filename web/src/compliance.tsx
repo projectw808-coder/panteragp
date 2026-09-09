@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
 
 type PendingDoc = {
@@ -25,7 +25,7 @@ const SEVERITY: Record<string, string> = {
   low: 'bg-bone text-obsidian dark:bg-white/10 dark:text-mist',
 };
 const STATUS: Record<string, string> = {
-  approved: 'text-slate-ink', rejected: 'text-ember', pending: 'text-ember',
+  approved: 'text-slate-ink', rejected: 'text-slate-ink', pending: 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite',
 };
 
 /** Documents are behind auth, so fetch as a blob and hand the viewer an object URL. */
@@ -130,7 +130,7 @@ export function FlagList({ rows, review, onDone, showClient = false }: {
           {review && (
             <div className="ml-auto flex gap-2 text-xs">
               <button onClick={() => decide(f.id, 'cleared')} className="text-slate-ink hover:text-slate-ink">clear</button>
-              <button onClick={() => decide(f.id, 'escalated')} className="text-slate-ink hover:text-ember">escalate</button>
+              <button onClick={() => decide(f.id, 'escalated')} className="text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">escalate</button>
             </div>
           )}
         </div>
@@ -179,14 +179,14 @@ export function ReportsView() {
       </div>
       <p className="text-sm text-slate-ink">{REPORTS.find((r) => r.name === open)?.blurb}</p>
 
-      <div className={`${card} overflow-x-auto p-0`}>
+      <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
-          <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
+          <thead className={thead}>
             <tr>{cols.map((c) => <th key={c} className="px-3 py-2 font-medium">{pretty(c)}</th>)}</tr>
           </thead>
           <tbody>
             {rows.data?.map((r, i) => (
-              <tr key={i} className="border-b border-pebble last:border-0 dark:border-white/10">
+              <tr key={i} className="border-t border-pebble dark:border-white/10">
                 {cols.map((c) => (
                   <td key={c} className={`px-3 py-1.5 ${typeof r[c] === 'number' ? 'tabular-nums' : ''}`}>
                     {r[c] === null ? '—' : String(r[c])}
@@ -250,7 +250,7 @@ export function KycPanel({ clientId, canUpload }: { clientId: string; canUpload:
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf"
             className="block w-full text-xs text-slate-ink" />
           <p className="text-xs text-slate-ink">JPEG, PNG or PDF, up to 10 MB.</p>
-          {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+          {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
           <button onClick={upload} disabled={busy} className={`${btn} w-full`}>
             {busy ? 'Uploading…' : 'Upload'}
           </button>
@@ -298,9 +298,9 @@ export function FundingPanel() {
         A withdrawal leaves your balance immediately and is returned if it is rejected.
         A deposit is credited once it has been approved.
       </p>
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       {raised.length > 0 && (
-        <p className="text-sm text-ember dark:text-ember">
+        <p className="text-sm text-slate-ink">
           Submitted for review — compliance was notified ({raised.map(pretty).join(', ')}).
         </p>
       )}

@@ -209,6 +209,12 @@ export const card = 'rounded-lg bg-bone p-4 dark:bg-onyx dark:[box-shadow:var(--
 export const tableCard = 'overflow-hidden rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx';
 export const thead = 'bg-bone text-left text-xs font-medium tracking-wide text-slate-ink dark:bg-vellum/5 dark:text-mist';
 
+// Ember is a fill and a mark, never small text on a light surface: measured, it is 2.64:1
+// on vellum and 2.22:1 on bone, so it fails even the 3:1 floor for large text and no
+// amount of weight or size rescues it. Attention is carried by an ember edge with the
+// words in obsidian (14.9:1), or by pillAction below, whose black-on-ember is 7.95:1.
+export const alertBox = 'rounded-md border-l-2 border-ember bg-bone px-3 py-2 text-sm text-obsidian dark:bg-white/5 dark:text-vellum';
+
 // Status chips: neutral by default. Orange is reserved for states needing action now, so
 // it keeps meaning the same thing everywhere.
 export const pill = 'inline-block rounded-full bg-pebble px-2 py-0.5 text-xs text-obsidian dark:bg-vellum/10 dark:text-vellum';

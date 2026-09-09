@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
 import { FundingPanel, KycPanel } from './compliance.tsx';
@@ -51,7 +51,8 @@ export function TradeView() {
   return (
     <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
       <div className={`${card} flex flex-wrap items-center gap-6 py-3 text-sm`}>
-        <span className="rounded-md bg-bone px-2 py-0.5 text-xs font-semibold text-ember">
+        {/* A filled chip, not ember text: black on ember is 7.95:1, ember on bone is 2.22. */}
+        <span className="rounded-full bg-ember px-2 py-0.5 font-mono text-xs font-medium text-graphite">
           PAPER / DEMO
         </span>
         <Stat label="Trading balance" value={a ? `${money(a.balance)} ${a.currency}` : '—'} />
@@ -229,7 +230,7 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
         </p>
       </div>
 
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       <button className={`${btn} w-full`} disabled={busy}>
         {busy ? 'Placing…' : `${side.toUpperCase()} ${symbol}`}
       </button>
@@ -292,7 +293,7 @@ function Orders({ rows, onCancel }: { rows: Order[]; onCancel: (id: string) => v
             <Td className="tabular-nums">{o.qty}</Td>
             <Td className="tabular-nums">{o.limit_price ?? o.stop_price ?? '—'}</Td>
             <Td><button onClick={() => onCancel(o.id)}
-              className="text-xs text-slate-ink hover:text-ember">cancel</button></Td>
+              className="text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">cancel</button></Td>
           </tr>
         ))}
       </tbody>

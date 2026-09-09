@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { FlagList, KycPanel } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
@@ -48,7 +48,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
   const admin = me?.role === 'admin';
   const compliance = me?.role === 'compliance' || admin;
 
-  if (client.error) return <p role="alert" className="text-sm text-ember">{client.error}</p>;
+  if (client.error) return <p role="alert" className={`${alertBox} `}>{client.error}</p>;
   if (!client.data) return <p className="text-sm text-slate-ink">Loading…</p>;
   const c = client.data;
   const t = holdings.data?.totals;
@@ -179,7 +179,7 @@ function Header({ client: c, totals, onSaved, compliance }: {
           <button className={btn}>Save</button>
         </form>
       )}
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
     </div>
   );
 }
@@ -202,10 +202,11 @@ const Empty = ({ children }: { children: React.ReactNode }) =>
 
 function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
   return (
-    <div className={`${card} overflow-x-auto p-0`}>
+    // The system's data table: vellum inside a pebble hairline, header row on bone.
+    <div className={`${tableCard} overflow-x-auto`}>
       <table className="w-full text-sm">
-        <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
-          <tr>{head.map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
+        <thead className={thead}>
+          <tr>{head.map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
         </thead>
         <tbody>{children}</tbody>
       </table>
@@ -213,7 +214,7 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
   );
 }
 const Tr = ({ children }: { children: React.ReactNode }) =>
-  <tr className="border-b border-pebble last:border-0 dark:border-white/10">{children}</tr>;
+  <tr className="border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">{children}</tr>;
 const Td = ({ children, className = '' }: { children: React.ReactNode; className?: string }) =>
   <td className={`px-3 py-1.5 ${className}`}>{children}</td>;
 
@@ -226,7 +227,7 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
       <div className="space-y-4">
         {!!flags.data?.length && <FlagList rows={flags.data} review={false} onDone={flags.reload} />}
         {!!totals?.unpriced.length && (
-          <p className="text-xs text-ember">
+          <p className={`${alertBox} text-xs`}>
             Holdings exclude {totals.unpriced.join(', ')} — no price source for those assets.
           </p>
         )}
@@ -381,7 +382,7 @@ function Funding({ id, h, compliance, onChanged }: {
           <Td>{t.kind}</Td>
           <Td className="tabular-nums">{num(t.amount)}</Td>
           {/* Only "pending" is waiting on someone; rejected and settled are just facts. */}
-          <Td className={t.status === 'pending' ? 'text-ember' : 'text-slate-ink'}>
+          <Td className={t.status === 'pending' ? 'font-medium text-obsidian dark:text-vellum' : 'text-slate-ink'}>
             {t.status}
           </Td>
           <Td>
@@ -390,7 +391,7 @@ function Funding({ id, h, compliance, onChanged }: {
                 <button disabled={busy === t.id} onClick={() => decide(t.id, 'approved')}
                   className="text-slate-ink hover:text-slate-ink">approve</button>
                 <button disabled={busy === t.id} onClick={() => decide(t.id, 'rejected')}
-                  className="text-slate-ink hover:text-ember">reject</button>
+                  className="text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">reject</button>
               </span>
             )}
           </Td>

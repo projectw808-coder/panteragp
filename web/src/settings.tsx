@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { btn, btnGhost, card, input, mono, tableCard, thead } from './App.tsx';
+import { alertBox, btn, btnGhost, card, input, mono, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
@@ -86,7 +86,7 @@ function ChangePassword() {
           autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
         <input className={input} type="password" placeholder="Repeat new password" required minLength={8}
           autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-        {error && <p role="alert" className="font-mono text-xs text-ember">{error}</p>}
+        {error && <p role="alert" className={`${alertBox} font-mono text-xs`}>{error}</p>}
         {done && <p role="status" className="font-mono text-xs text-slate-ink">Password changed.</p>}
         <button className={btn} disabled={busy}>{busy ? 'Changing…' : 'Change password'}</button>
       </form>
@@ -123,7 +123,7 @@ function StaffAccounts({ meId }: { meId?: string }) {
                 <td className="px-4 py-2 text-right">
                   {s.id === meId
                     ? <span className="text-xs text-mist">you</span>
-                    : <button className="text-xs text-slate-ink hover:text-ember"
+                    : <button className="text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum"
                         onClick={() => setResetting(resetting === s.id ? null : s.id)}>
                         reset password
                       </button>}
@@ -178,7 +178,7 @@ export function ResetPassword({ path, who, onDone }: { path: string; who: string
         <button className={btn} disabled={busy}>{busy ? 'Setting…' : 'Set password'}</button>
         <button type="button" className={btnGhost} onClick={onDone}>Close</button>
       </div>
-      {error && <p role="alert" className="font-mono text-xs text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} font-mono text-xs`}>{error}</p>}
       {done && <p role="status" className="font-mono text-xs text-slate-ink">Password set. They were notified.</p>}
     </form>
   );

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { btn, card, input, mono, tableCard, thead } from './App.tsx';
+import { alertBox, btn, card, input, mono, tableCard, thead } from './App.tsx';
 import { api, useApi, type ClientRow, type Stage, type Task } from './api.ts';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -34,7 +34,7 @@ export function ClientList() {
 
       {adding && <NewClient onDone={() => { setAdding(false); clients.reload(); }} />}
 
-      {clients.error && <p role="alert" className="text-sm text-ember">{clients.error}</p>}
+      {clients.error && <p role="alert" className={`${alertBox} `}>{clients.error}</p>}
       <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead className={thead}>
@@ -96,7 +96,7 @@ function NewClient({ onDone }: { onDone: () => void }) {
       <label className="text-xs text-slate-ink">Country
         <input name="country" maxLength={2} minLength={2} placeholder="GB" className={input} /></label>
       <button className={btn} disabled={busy}>Create</button>
-      {error && <p role="alert" className="w-full text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} w-full `}>{error}</p>}
     </form>
   );
 }

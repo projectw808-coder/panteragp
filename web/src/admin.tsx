@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { card } from './App.tsx';
+import { alertBox, card } from './App.tsx';
 import { useApi } from './api.ts';
 
 type Overview = {
@@ -34,7 +34,7 @@ const pretty = (s: string) => s.replace(/_/g, ' ');
 
 // Only "high" is asking for someone's attention now, so only "high" gets the accent.
 const SEVERITY: Record<string, string> = {
-  high: 'text-ember', medium: 'text-obsidian dark:text-vellum', low: 'text-slate-ink',
+  high: 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite', medium: 'text-obsidian dark:text-vellum', low: 'text-slate-ink',
 };
 
 export function AdminView() {
@@ -49,7 +49,7 @@ export function AdminView() {
     return () => clearInterval(id);
   }, [overview.reload, activity.reload]);
 
-  if (overview.error) return <p role="alert" className="text-sm text-ember">{overview.error}</p>;
+  if (overview.error) return <p role="alert" className={`${alertBox} `}>{overview.error}</p>;
   const o = overview.data;
   const c = config.data;
   const maxStage = Math.max(1, ...(o?.pipeline ?? []).map((p) => Number(p.clients)));
@@ -102,7 +102,7 @@ export function AdminView() {
             <Row label="Client balances" value={o ? n0(o.cash.balances) : '—'} />
             <Row label="Net flows 30d" value={o ? n0(o.cash.net_30d) : '—'} />
             <Row label="Withdrawals to pay" value={o ? `${n0(o.cash.pending_withdrawals)} (${n0(o.cash.pending_amount)})` : '—'}
-              className={o && o.cash.pending_withdrawals > 0 ? 'text-ember' : ''} />
+              className={o && o.cash.pending_withdrawals > 0 ? 'font-medium text-obsidian dark:text-vellum' : ''} />
           </dl>
         </div>
       </div>
@@ -112,7 +112,7 @@ export function AdminView() {
         <ol className="divide-y divide-pebble dark:divide-white/10">
           {activity.data?.map((a) => (
             <li key={a.id} className="flex flex-wrap items-baseline gap-2 py-1.5 text-sm">
-              <span className={`w-28 shrink-0 text-xs ${a.kind === 'flag' ? 'text-ember' : 'text-slate-ink'}`}>
+              <span className={`w-28 shrink-0 text-xs ${a.kind === 'flag' ? 'font-medium text-obsidian dark:text-vellum' : 'text-slate-ink'}`}>
                 {pretty(a.kind)}
               </span>
               <a className="font-medium hover:underline" href={`#/clients/${a.client_id}`}>{a.client_name}</a>
@@ -135,7 +135,7 @@ export function AdminView() {
             <h3 className="mb-1 text-xs font-medium text-slate-ink">Execution</h3>
             <dl className="grid grid-cols-2 gap-y-1">
               <Row label="Live trading" value={c ? (c.live_trading_enabled ? 'ENABLED' : 'disabled') : '—'}
-                className={c?.live_trading_enabled ? 'font-semibold text-ember' : 'text-slate-ink'} />
+                className={c?.live_trading_enabled ? 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite' : 'text-slate-ink'} />
               <Row label="Demo balance" value={c ? n0(c.demo_starting_balance) : '—'} />
               <Row label="Instruments" value={c ? String(c.instruments.length) : '—'} />
               <Row label="Pipeline stages" value={c ? String(c.pipeline_stages.length) : '—'} />
@@ -163,10 +163,10 @@ function Tile({ label, value, sub, href, alert }: {
   label: string; value: string; sub?: string; href: string; alert?: boolean;
 }) {
   return (
-    <a href={href} className={`${card} block transition-colors hover:bg-pebble dark:hover:bg-white/10`}>
+    <a href={href} className={`${card} block border-l-2 transition-colors hover:bg-pebble dark:hover:bg-white/10 ${alert ? 'border-ember' : 'border-transparent'}`}>
       <p className="text-xs text-slate-ink">{label}</p>
       {/* Mono numerals at tile size: the stat should read as a terminal readout. */}
-      <p className={`font-mono text-[32px] font-medium leading-none tabular-nums ${alert ? 'text-ember' : ''}`}>{value}</p>
+      <p className={`font-mono text-[32px] font-medium leading-none tabular-nums`}>{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-ink">{sub}</p>}
     </a>
   );

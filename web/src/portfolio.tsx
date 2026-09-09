@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 import type { Currency } from './wallet.tsx';
 
@@ -129,7 +129,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); }}
           className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">take out</button>
         {Number(p.balance) === 0 && (
-          <button onClick={close} className="ml-auto text-slate-ink hover:text-ember">close</button>
+          <button onClick={close} className="ml-auto text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">close</button>
         )}
       </div>
 
@@ -142,7 +142,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
           </button>
         </form>
       )}
-      {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} mt-1 `}>{error}</p>}
     </div>
   );
 }
@@ -196,7 +196,7 @@ function NewPortfolio({ types, currencies, onDone }: {
         <label className="text-xs text-slate-ink">Target date (optional)
           <input name="target_date" type="date" className={field} /></label>
       </div>
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       <button className={btn} disabled={busy}>{busy ? 'Opening…' : 'Open portfolio'}</button>
     </form>
   );

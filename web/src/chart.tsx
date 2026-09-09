@@ -241,10 +241,10 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
             </button>
           ))}
           {drawings.length > 0 &&
-            <button className="rounded-md px-2 py-1 text-slate-ink hover:text-ember"
+            <button className="rounded-md px-2 py-1 text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum"
               onClick={() => { setDrawings([]); pending.current = null; setAwaiting(false); }}>clear</button>}
         </span>
-        {awaiting && <span className="text-ember">click the second point…</span>}
+        {awaiting && <span className="font-medium text-obsidian dark:text-vellum">click the second point…</span>}
       </div>
 
       <div className="relative min-h-0 flex-1">

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 export type Currency = { code: string; name: string; kind: 'fiat' | 'crypto'; decimals: number };
@@ -18,7 +18,7 @@ const amount = (n: number, decimals: number) =>
   Number(n).toLocaleString(undefined, { minimumFractionDigits: Math.min(decimals, 2), maximumFractionDigits: decimals });
 
 const STATUS: Record<string, string> = {
-  confirmed: 'text-slate-ink', rejected: 'text-ember', pending: 'text-ember',
+  confirmed: 'text-slate-ink', rejected: 'text-slate-ink', pending: 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite',
 };
 
 /** Every balance the client holds: fiat accounts and crypto wallets, plus a USD total. */
@@ -48,7 +48,7 @@ export function HoldingsPanel() {
         <span className="text-sm text-slate-ink">Total holdings</span>
         <span className="text-xl font-semibold tabular-nums">{a ? usd(a.total_usd) : '—'}</span>
         {!!a?.unpriced.length && (
-          <span className="text-xs text-ember">
+          <span className="text-xs text-slate-ink">
             excludes {a.unpriced.join(', ')} — no price source
           </span>
         )}
@@ -76,7 +76,8 @@ export function HoldingsPanel() {
 
       <div>
         <h3 className="mb-1 text-xs font-medium text-slate-ink">Crypto wallets</h3>
-        <p className="mb-2 rounded-md bg-bone px-2 py-1 text-xs text-ember dark:bg-white/10 dark:text-ember">
+        {/* A real safety warning, so it must be readable: ember edge, obsidian words. */}
+        <p className={`${alertBox} mb-2 text-xs`}>
           Simulated wallets. Addresses are labelled <code>DEMO-</code> and belong to no chain —
           never send real funds to one.
         </p>
@@ -91,7 +92,7 @@ export function HoldingsPanel() {
           </select>
           <button className={btn} onClick={openWallet}>Open wallet</button>
         </div>
-        {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
+        {error && <p role="alert" className={`${alertBox} mt-1 `}>{error}</p>}
       </div>
 
       {!!history.data?.length && (
@@ -186,7 +187,7 @@ function Converter({ held, currencies, onDone }: {
           {quote.dustUsd >= 0.005 && <span className="text-slate-ink"> · {usd(quote.dustUsd)} lost to rounding</span>}
         </p>
       )}
-      {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} mt-1 `}>{error}</p>}
     </div>
   );
 }
@@ -230,7 +231,7 @@ function Wallet({ wallet, decimals, onDone }: { wallet: Wallet; decimals: number
           <span className="text-xs text-slate-ink">Debited now; returned if rejected.</span>
         </form>
       )}
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
     </div>
   );
 }
@@ -288,7 +289,7 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
         <input className={input} maxLength={500} placeholder="Reason (appears on the timeline)"
           value={note} onChange={(e) => setNote(e.target.value)} />
       )}
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       {result && <p className="text-sm text-slate-ink">{result}</p>}
       <button className={`${btn} w-full`} disabled={busy}>{busy ? 'Crediting…' : 'Credit'}</button>
       <p className="text-xs text-slate-ink">

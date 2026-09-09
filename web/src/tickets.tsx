@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 type Ticket = {
@@ -24,7 +24,7 @@ const STATUS: Record<string, string> = {
   closed: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 const PRIORITY: Record<string, string> = {
-  urgent: 'text-ember font-medium', high: 'text-ember', normal: '', low: 'text-mist',
+  urgent: 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite', high: 'font-medium text-obsidian dark:text-vellum', normal: '', low: 'text-mist',
 };
 
 const Badge = ({ status }: { status: string }) =>
@@ -100,7 +100,7 @@ function NewTicket({ onDone }: { onDone: () => void }) {
       </div>
       <textarea name="body" required maxLength={5000} rows={4} placeholder="Tell us what happened…"
         className={input} />
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Raise ticket'}</button>
     </form>
   );
@@ -136,16 +136,16 @@ export function SupportQueue({ role }: { role?: string }) {
         ))}
       </div>
 
-      <div className={`${card} p-0`}>
+      <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
-          <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
+          <thead className={thead}>
             <tr>{['Subject', 'Client', 'Category', 'Priority', 'Status', 'Assigned', 'Updated'].map((h) =>
               <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {tickets.data?.map((t) => (
               <tr key={t.id} onClick={() => setOpenId(t.id)}
-                className="cursor-pointer border-b border-pebble last:border-0 hover:bg-bone dark:border-white/10 dark:hover:bg-white/10">
+                className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
                 <td className="px-3 py-2 font-medium">{t.subject}</td>
                 <td className="px-3 py-2">{t.client_name}</td>
                 <td className="px-3 py-2 text-slate-ink">{t.category}</td>
@@ -235,7 +235,7 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
                 ? 'bg-bone dark:bg-white/10'
                 : 'bg-vellum dark:bg-onyx'}`}>
             <p className="text-xs text-slate-ink">
-              {m.internal && <span className="font-medium text-ember dark:text-ember">internal note · </span>}
+              {m.internal && <span className="font-medium text-obsidian dark:text-vellum">internal note · </span>}
               {m.author_name ?? m.author_kind} · {when(m.created_at)}
             </p>
             <p className="whitespace-pre-wrap">{m.body}</p>
@@ -260,7 +260,7 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
         </form>
       )}
       {t.status === 'closed' && <p className="text-sm text-slate-ink">This ticket is closed.</p>}
-      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
     </div>
   );
 }
