@@ -5,3 +5,4 @@ dist/
 tsconfig.tsbuildinfo
 .pgdata/
 .pgdata-ephemeral/
+.claude/
