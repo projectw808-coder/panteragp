@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, field, mono } from './App.tsx';
 import { api, token, useApi, type ClientRow as Client } from './api.ts';
+import { PortfoliosPanel } from './portfolio.tsx';
 import { ResetPassword } from './settings.tsx';
 
 /**
@@ -19,7 +20,7 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword }: {
+export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds }: {
   c: Client;
   open: boolean;
   onToggle: () => void;
@@ -27,6 +28,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
   badge: (value: string) => React.ReactNode;
   canReviewKyc: boolean;
   canResetPassword: boolean;
+  canMoveFunds: boolean;
 }) {
   // Only fetched once the row is opened: a list of fifty clients should not pull fifty
   // holdings summaries nobody asked to see.
@@ -94,6 +96,11 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
               <div className="space-y-6">
                 <QuickCredit clientId={c.id} onDone={() => { holdings.reload(); onChanged(); }} />
                 <Documents clientId={c.id} canDownload={canReviewKyc} />
+                {canMoveFunds && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <PortfoliosPanel clientId={c.id} />
+                  </div>
+                )}
                 {canResetPassword && <SignIn clientId={c.id} name={c.name} />}
               </div>
             </div>

@@ -3,11 +3,14 @@ import { api, token, useApi } from './api.ts';
 import { AdminView } from './admin.tsx';
 import { ChartsView } from './chart.tsx';
 import { NotificationBell } from './notifications.tsx';
-import { SupportQueue } from './tickets.tsx';
+import { SupportPanel, SupportQueue } from './tickets.tsx';
+import { PortfoliosPanel } from './portfolio.tsx';
+import { ProfileView } from './profile.tsx';
+import { TaskBoard } from './board.tsx';
 import { ComplianceView, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
-import { ClientList, TaskList } from './views.tsx';
+import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
 import { Landing } from './landing.tsx';
 
@@ -160,12 +163,14 @@ function Shell({ dark, setDark, onLogout }: {
   const nav: [string, string, boolean][] = [
     ['#/admin', 'Dashboard', !!admin],
     ['#/clients', 'Clients', crm],
-    ['#/tasks', 'My tasks', crm],
+    ['#/tasks', 'Tasks', crm],
     ['#/compliance', 'Compliance', !!compliance],
-    ['#/support', 'Support', crm],
+    ['#/support', 'Support', true],
     ['#/reports', 'Reports', crm],
     ['#/charts', 'Charts', true],
     ['#/trade', 'Trade', trading],
+    ['#/portfolios', 'Portfolios', trading],
+    ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', true],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
@@ -204,7 +209,7 @@ function Shell({ dark, setDark, onLogout }: {
 
         <div className="relative z-10 mt-auto flex items-center gap-3 border-t border-white/10 px-5 py-4 text-mist">
           <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
-          {trading && <NotificationBell />}
+          <NotificationBell />
           <button onClick={onLogout}
             className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
             Sign out
@@ -216,13 +221,15 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
-          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <Denied />)
+          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
+          : hash === '/portfolios' ? (trading ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div> : <Denied />)
+          : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-ink">Trading is for account holders.</p>)
           // Settings is for everyone, so it has to be matched before the trader fallback.
           : hash === '/settings' ? <SettingsView me={me} dark={dark} setDark={setDark} />
           : !crm ? <TradeView />
           : clientId ? <ClientWorkspace id={clientId} me={me} />
-          : hash === '/tasks' ? <TaskList />
+          : hash === '/tasks' ? <TaskBoard />
           : <ClientList />}
       </main>
     </div>

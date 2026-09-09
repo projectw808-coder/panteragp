@@ -39,10 +39,78 @@ export function SettingsView({ me, dark, setDark }: {
         <Field label="Role"><span className={`text-xs ${mono}`}>{me?.role ?? '—'}</span></Field>
       </Section>
 
+      <Notifications />
+
       <ChangePassword />
 
       {admin && <StaffAccounts meId={me?.sub} />}
     </div>
+  );
+}
+
+// --------------------------------------------------------------- notifications
+
+type Pref = { kind: string; label: string; note: string; enabled: boolean; locked: boolean };
+
+/**
+ * Which notifications you want. The same panel on both sides — the API answers with the
+ * kinds that apply to whoever is asking, so this component never has to know whether it is
+ * showing a trader's fills or a compliance officer's flags.
+ *
+ * Saved on the toggle rather than behind a Save button: there is nothing to get half-right,
+ * and a preferences page you can leave without saving is a preferences page that lies. The
+ * switch moves at once and rolls back if the write fails.
+ */
+function Notifications() {
+  const prefs = useApi<Pref[]>('/me/notification-prefs');
+  const [local, setLocal] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const value = (p: Pref) => local[p.kind] ?? p.enabled;
+
+  async function toggle(p: Pref) {
+    const next = !value(p);
+    setLocal((v) => ({ ...v, [p.kind]: next }));
+    setError(null);
+    try {
+      await api('/me/notification-prefs', { method: 'PUT', body: JSON.stringify({ [p.kind]: next }) });
+    } catch (err) {
+      setLocal((v) => ({ ...v, [p.kind]: !next }));
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <Section title="Notifications"
+      note="What reaches your bell. Switching one off stops it being written at all — it will not appear later.">
+      {!prefs.data ? <p className="text-sm text-slate-ink">Loading…</p> : prefs.data.map((p) => (
+        <div key={p.kind} className="flex items-start gap-4 border-t border-pebble py-2 first:border-0 dark:border-white/10">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">{p.label}</p>
+            <p className="text-xs text-slate-ink">{p.note}</p>
+          </div>
+          <Switch on={value(p)} locked={p.locked} label={p.label} onChange={() => toggle(p)} />
+        </div>
+      ))}
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+    </Section>
+  );
+}
+
+/**
+ * A locked switch is drawn on and disabled rather than hidden: somebody looking for the
+ * setting should find it and see why it is not theirs to move, not wonder whether the
+ * notification exists at all.
+ */
+function Switch({ on, locked, label, onChange }: {
+  on: boolean; locked: boolean; label: string; onChange: () => void;
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label}
+      disabled={locked} onClick={onChange} title={locked ? 'Security notices cannot be switched off' : undefined}
+      className={`mt-1 h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors ${on ? 'bg-ember' : 'bg-pebble dark:bg-white/15'} ${locked ? 'cursor-not-allowed opacity-60' : ''}`}>
+      <span className={`block h-5 w-5 rounded-full bg-vellum shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
+    </button>
   );
 }
 

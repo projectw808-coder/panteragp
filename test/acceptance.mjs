@@ -440,7 +440,42 @@ await step('a client opens portfolios, and names stay unique', async () => {
   assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'savings', name: 'Rainy day', currency: 'GBP' } }), 409);
   assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'yacht', name: 'Yacht', currency: 'GBP' } }), 404);
   assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'savings', name: 'Odd', currency: 'ZZZ' } }), 404);
-  assert.equal(await status('/portfolios', { token: A, method: 'POST', body: { type_code: 'savings', name: 'x', currency: 'GBP' } }), 403);
+  // Staff act on a named client or not at all: no client_id is a 400, not a portfolio
+  // silently opened against the staff member's own id.
+  assert.equal(await status('/portfolios', { token: A, method: 'POST', body: { type_code: 'savings', name: 'x', currency: 'GBP' } }), 400);
+});
+
+await step('the desk can run a client portfolio, and it is recorded as the desk doing it', async () => {
+  const pot = await get('/portfolios', { token: A, method: 'POST', body: {
+    client_id: client.id, type_code: 'savings', name: 'Opened by the desk', currency: 'GBP' } });
+  assert.ok(pot.id);
+
+  // It belongs to the client, not to the staff member who opened it.
+  const theirs = await get(`/portfolios?client_id=${client.id}`, { token: A });
+  assert.ok(theirs.some((x) => x.id === pot.id), 'the pot should be on the client');
+  assert.ok((await get('/portfolios', { token: T })).some((x) => x.id === pot.id),
+    'and the client should see it as their own');
+
+  // Money moved by the desk reaches the client's timeline as the desk, and tells them.
+  await get(`/portfolios/${pot.id}/contribute`, { token: A, method: 'POST', body: { client_id: client.id, amount: 25 } });
+  const timeline = await get(`/clients/${client.id}/timeline`, { token: A });
+  assert.ok(timeline.some((a) => a.summary.startsWith('Desk moved')), 'the timeline should say who moved it');
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.title.includes('Opened by the desk')),
+    'the client should be told about money they did not move');
+
+  // Ordinary CRM write access is not enough: this is the funds:credit power, which is
+  // admin-only for the same reason crediting an account is.
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Portfolio Sales', email: `pf-sales+${Date.now()}@example.com`,
+    role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/portfolios/${pot.id}/contribute`,
+    { token: sellerToken, method: 'POST', body: { client_id: client.id, amount: 1 } }), 403);
+
+  // A client naming somebody else is ignored rather than obeyed: they act on themselves.
+  const other = await get(`/portfolios/${pot.id}/withdraw`, { token: T, method: 'POST', body: {
+    client_id: '00000000-0000-4000-8000-000000000000', amount: 5 } });
+  assert.ok(other.id, 'a client_id from a client changes nothing');
 });
 
 await step('contributing moves money out of the balance, and back again', async () => {
@@ -575,14 +610,103 @@ await step('reading is idempotent and scoped to the owner', async () => {
   assert.equal(await unreadNow(), 0);
 });
 
-await step('an inbox belongs to one client, and staff have none', async () => {
+await step('an inbox belongs to one person, staff and client alike', async () => {
   const mine = (await get('/notifications', { token: T }))[0];
   const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Inbox', email: `inbox+${Date.now()}@example.com`, password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal((await get('/notifications', { token: N })).length, 0);
   assert.equal(await status(`/notifications/${mine.id}/read`, { token: N, method: 'POST' }), 404);
-  assert.equal(await status('/notifications', { token: A }), 403, 'staff read the CRM timeline, not an inbox');
   assert.equal(await status(`/clients/${client.id}/notify`, { token: T, method: 'POST', body: { title: 'hi' } }), 403);
+
+  // Staff have an inbox of their own now. It must never contain a client's: the two are
+  // the same table, and the only thing keeping them apart is the column each side is
+  // scoped by, so this is the check that catches a query that forgets.
+  const staffInbox = await get('/notifications', { token: A });
+  assert.ok(Array.isArray(staffInbox), 'staff read their own inbox');
+  assert.ok(staffInbox.every((n) => n.staff_id && !n.client_id),
+    'a staff inbox holds staff rows only');
+  assert.equal(await status(`/notifications/${mine.id}/read`, { token: A, method: 'POST' }), 404,
+    'and staff cannot mark a client notification read');
+});
+
+await step('switching a kind off stops it being written', async () => {
+  const kinds = await get('/me/notification-prefs', { token: T });
+  assert.ok(kinds.some((k) => k.kind === 'credit'), 'the catalogue is for whoever is asking');
+  assert.ok(kinds.every((k) => k.enabled), 'everything is on until somebody turns it off');
+
+  // Security notices are the one thing nobody may silence.
+  const locked = kinds.find((k) => k.locked);
+  assert.equal(locked.kind, 'security');
+  assert.equal(await status('/me/notification-prefs', { token: T, method: 'PUT', body: { security: false } }), 422);
+  assert.equal(await status('/me/notification-prefs', { token: T, method: 'PUT', body: { 'not.a.kind': false } }), 400);
+  // A trader has no business setting a compliance officer's preferences.
+  assert.equal(await status('/me/notification-prefs', { token: T, method: 'PUT', body: { 'flag.raised': false } }), 400);
+
+  await get('/me/notification-prefs', { token: T, method: 'PUT', body: { credit: false } });
+  const before = (await get('/notifications', { token: T, limit: 100 })).length;
+  await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'GBP', amount: 11 } });
+  const after = await get('/notifications', { token: T });
+  assert.equal(after.length, before, 'a switched-off kind is not written at all');
+  assert.ok(!after.some((n) => n.title.includes('11 GBP')));
+
+  // The money still moved and is still on the timeline: the preference governs the bell,
+  // never the record.
+  const timeline = await get(`/clients/${client.id}/timeline`, { token: A });
+  assert.ok(timeline.some((a) => a.summary.includes('Credited 11 GBP')), 'the audit trail is not a preference');
+
+  await get('/me/notification-prefs', { token: T, method: 'PUT', body: { credit: true } });
+  await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'GBP', amount: 12 } });
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.title.includes('12 GBP')),
+    'and switching it back on resumes them');
+});
+
+await step("a client corrects their own details, but not the desk's assessment of them", async () => {
+  const before = await get('/me/profile', { token: T });
+  assert.equal(before.email, email);
+
+  const saved = await get('/me/profile', { token: T, method: 'PATCH', body: {
+    date_of_birth: '1988-04-02', address: '12 Ludgate Hill, London', phone: '+353 1 234 5678' } });
+  // A date has no timezone. Stored as 1988-04-02 it must come back as 1988-04-02, not as
+  // the 1st, which is what a Date parsed at local midnight turns into on the way out.
+  assert.equal(saved.date_of_birth, '1988-04-02');
+  assert.equal(saved.address, '12 Ludgate Hill, London');
+
+  // Emptying a field clears it rather than being ignored.
+  assert.equal((await get('/me/profile', { token: T, method: 'PATCH', body: { address: null } })).address, null);
+
+  // Tier, KYC status and the login are the desk's, not theirs. Unknown keys are refused
+  // outright rather than quietly dropped, so nobody promotes themselves by guessing a
+  // field name and getting a 200 back.
+  assert.equal(await status('/me/profile', { token: T, method: 'PATCH', body: { tier: 'platinum' } }), 400);
+  assert.equal(await status('/me/profile', { token: T, method: 'PATCH', body: { kyc_status: 'approved' } }), 400);
+  assert.equal(await status('/me/profile', { token: T, method: 'PATCH', body: { email: 'someone@else.test' } }), 400);
+  assert.equal((await get('/me/profile', { token: T })).tier, before.tier);
+
+  // Staff have no /me/profile: their record is not a client record.
+  assert.equal(await status('/me/profile', { token: A }), 403);
+
+  // And the correction lands on the timeline, like every other change to the record.
+  assert.ok((await get(`/clients/${client.id}/timeline`, { token: A }))
+    .some((x) => x.summary.startsWith('Updated their own details')));
+});
+
+await step('staff are told when something needs them, unless they said not to', async () => {
+  // Compared by what is at the top rather than by how many there are: the inbox is capped
+  // at a page, so a busy desk would show the same count either way.
+  const top = async () => (await get('/notifications', { token: A }))[0];
+  await get('/tickets', { token: T, method: 'POST', body: {
+    subject: 'Notifying the desk', category: 'other', body: 'Please look at this.' } });
+  const arrived = await top();
+  assert.equal(arrived.kind, 'ticket.activity');
+  assert.ok(arrived.title.includes('Notifying the desk'), 'a new ticket should reach the desk');
+  assert.ok(arrived.staff_id && !arrived.client_id);
+
+  // Switched off, the same event writes nothing: one preference table, both audiences.
+  await get('/me/notification-prefs', { token: A, method: 'PUT', body: { 'ticket.activity': false } });
+  await get('/tickets', { token: T, method: 'POST', body: {
+    subject: 'Should not reach the desk', category: 'other', body: 'Silence please.' } });
+  assert.equal((await top()).id, arrived.id, 'nothing new should have been written');
+  await get('/me/notification-prefs', { token: A, method: 'PUT', body: { 'ticket.activity': true } });
 });
 
 console.log('\nSupport tickets');

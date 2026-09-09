@@ -46,6 +46,9 @@ const { rows: [existing] } = await client.query<{ present: string | null }>(
   "SELECT to_regclass('public.clients')::text AS present");
 // Reference data, applied every start so a new trading pair appears without a reset.
 const instruments = () => client.query(readFileSync(join(root, 'db', 'instruments.sql'), 'utf8'));
+// Schema changes made after go-live, idempotent and applied every start — a dev database
+// kept with DEV_DB_DIR has to reach today the same way a deployed one does.
+const upgrades = () => client.query(readFileSync(join(root, 'db', 'upgrades.sql'), 'utf8'));
 
 if (!existing?.present) {
   await client.query(readFileSync(join(root, 'db', 'schema.sql'), 'utf8'));
@@ -56,6 +59,7 @@ if (!existing?.present) {
   );
 }
 await instruments();
+await upgrades();
 await client.end();
 
 // Postgres is a child process, so leaving it running would hold port 5432 after this exits.

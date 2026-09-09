@@ -46,6 +46,10 @@ try {
   // database: adding a trading pair has to reach deployments that already exist. The file
   // is ON CONFLICT DO NOTHING throughout, so repeating it changes nothing.
   await client.query(readFileSync(join(root, 'db', 'instruments.sql'), 'utf8'));
+
+  // Schema changes made after go-live. Idempotent, so this runs on every deploy for the
+  // same reason instruments does: a database created last month has to reach today.
+  await client.query(readFileSync(join(root, 'db', 'upgrades.sql'), 'utf8'));
   const { rows: [{ count }] } = await client.query('SELECT count(*)::int AS count FROM instruments');
   console.log(`instruments available: ${count}`);
 } finally {

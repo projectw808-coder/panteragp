@@ -52,7 +52,8 @@ export function ClientList() {
                 onChanged={clients.reload}
                 badge={(v) => <Badge value={v} />}
                 canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'}
-                canResetPassword={me?.role === 'admin'} />
+                canResetPassword={me?.role === 'admin'}
+                canMoveFunds={me?.role === 'admin'} />
             ))}
           </tbody>
         </table>
@@ -101,30 +102,6 @@ function NewClient({ onDone }: { onDone: () => void }) {
 }
 
 // ----------------------------------------------------------- client detail
-
-export function TaskList() {
-  const tasks = useApi<Task[]>('/tasks');
-  return (
-    <div className={`${card} mx-auto max-w-3xl space-y-2`}>
-      <h1 className="text-sm font-semibold">My open tasks</h1>
-      {tasks.data?.map((t) => (
-        <div key={t.id} className="flex items-center gap-3 border-b border-pebble py-2 last:border-0 dark:border-white/10">
-          <input type="checkbox" onChange={async () => {
-            await api(`/tasks/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
-            tasks.reload();
-          }} />
-          <div className="text-sm">
-            {t.title}
-            <a className="block text-xs text-slate-ink hover:underline" href={`#/clients/${t.client_id}`}>
-              {t.client_name}{t.due_at ? ` · due ${when(t.due_at)}` : ''}
-            </a>
-          </div>
-        </div>
-      ))}
-      {tasks.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing open.</p>}
-    </div>
-  );
-}
 
 // ----------------------------------------------------------------- bits
 

@@ -15,6 +15,11 @@ type Holdings = {
   cash: { id: number; kind: string; amount: number; status: string; created_at: string }[];
   totals: { holdings_usd: number; unpriced: string[]; open_pnl: number; equity_usd: number };
 };
+/** The client record as the workspace reads it: the CRM row plus their personal details. */
+type Person = Client & {
+  phone: string | null; country: string | null;
+  date_of_birth: string | null; address: string | null;
+};
 type Ticket = { id: string; subject: string; status: string; priority: string; category: string; messages: number; updated_at: string };
 type Audit = { id: number; at: string; actor: string; tbl: string; action: string; before: any; after: any };
 
@@ -41,7 +46,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
   // watching for them. Bumping this remounts the tab body so it refetches.
   const [version, setVersion] = useState(0);
   const refresh = () => { setVersion((v) => v + 1); client.reload(); holdings.reload(); flags.reload(); };
-  const client = useApi<Client & { phone: string | null; country: string | null }>(`/clients/${id}`);
+  const client = useApi<Person>(`/clients/${id}`);
   const holdings = useApi<Holdings>(`/clients/${id}/holdings`);
   const flags = useApi<any[]>(`/flags?status=open&client_id=${id}`);
   const tickets = useApi<Ticket[]>(`/tickets?client_id=${id}`);
@@ -132,7 +137,7 @@ function Balances({ holdings }: { holdings?: Holdings }) {
 }
 
 function Header({ client: c, holdings, onSaved, compliance }: {
-  client: Client & { phone: string | null; country: string | null };
+  client: Person;
   holdings?: Holdings; onSaved: () => void; compliance: boolean;
 }) {
   const totals = holdings?.totals;
@@ -155,8 +160,20 @@ function Header({ client: c, holdings, onSaved, compliance }: {
         <div className="min-w-64">
           {/* The serif starts at 28px; below that the system uses the sans. */}
           <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
-          <p className="mt-2 font-mono text-xs text-slate-ink">{c.email}</p>
-          <p className="font-mono text-xs text-slate-ink">{c.phone ?? 'no phone'} · {c.country ?? '—'} · {c.tier}</p>
+          {/* Contact details are read aloud off this screen, so they are set at the full
+              ink rather than the muted grey the rest of the metadata uses. */}
+          <p className="mt-2 font-mono text-sm text-ember">{c.email}</p>
+          <p className="font-mono text-sm text-obsidian dark:text-vellum">
+            {c.phone ?? 'no phone'}
+            <span className="text-slate-ink"> · </span>{c.country ?? '—'}
+            <span className="text-slate-ink"> · </span>{c.tier}
+          </p>
+          {(c.date_of_birth || c.address) && (
+            <p className="font-mono text-sm text-obsidian dark:text-vellum">
+              {c.date_of_birth ? new Date(c.date_of_birth).toLocaleDateString() : '—'}
+              {c.address && <><span className="text-slate-ink"> · </span>{c.address}</>}
+            </p>
+          )}
           <p className="mt-2 flex items-center gap-2 text-xs">
             <span className={`rounded-full px-2 py-0.5 ${KYC[c.kyc_status] ?? ''}`}>KYC {c.kyc_status}</span>
             <span className="text-slate-ink">risk {c.risk_profile ?? 'not set'}</span>
@@ -214,14 +231,27 @@ function Header({ client: c, holdings, onSaved, compliance }: {
           onSubmit={async (e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
-            await patch(Object.fromEntries([...f.entries()].filter(([, v]) => v !== '')));
+            // A cleared box means remove it, for the fields that can be nothing. The rest
+            // are required, so blank there means "leave it" rather than "delete the name".
+            const clearable = new Set(['date_of_birth', 'address']);
+            await patch(Object.fromEntries([...f.entries()]
+              .filter(([k, v]) => v !== '' || clearable.has(k))
+              .map(([k, v]) => [k, v === '' ? null : v])));
             setEditing(false);
           }}>
+          <p className="w-full metric-label">Personal details</p>
           <Labelled label="Name"><input name="name" defaultValue={c.name} className={`${field} w-48`} /></Labelled>
           <Labelled label="Email"><input name="email" type="email" defaultValue={c.email} className={`${field} w-56`} /></Labelled>
           <Labelled label="Phone"><input name="phone" defaultValue={c.phone ?? ''} className={`${field} w-40`} /></Labelled>
-          <Labelled label="Country"><input name="country" maxLength={2} defaultValue={c.country ?? ''} className={`${field} w-16`} /></Labelled>
+          <Labelled label="Date of birth">
+            <input name="date_of_birth" type="date" defaultValue={c.date_of_birth?.slice(0, 10) ?? ''} className={`${field} w-40`} />
+          </Labelled>
+          <Labelled label="Country"><input name="country" maxLength={2} placeholder="GB" defaultValue={c.country ?? ''} className={`${field} w-16`} /></Labelled>
           <Labelled label="Tier"><input name="tier" defaultValue={c.tier} className={`${field} w-28`} /></Labelled>
+          <Labelled label="Address">
+            <input name="address" defaultValue={c.address ?? ''} placeholder="Street, city, postcode"
+              className={`${field} w-full min-w-72`} />
+          </Labelled>
           <button className={btn}>Save</button>
         </form>
       )}

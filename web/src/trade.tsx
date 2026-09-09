@@ -4,8 +4,6 @@ import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
 import { FundingPanel, KycPanel } from './compliance.tsx';
 import { HoldingsPanel } from './wallet.tsx';
-import { PortfoliosPanel } from './portfolio.tsx';
-import { SupportPanel } from './tickets.tsx';
 import { positionSize } from '../../src/trading.ts';
 
 type Instrument = { symbol: string; asset_class: string | null };
@@ -31,7 +29,7 @@ export function TradeView() {
   const orders = useApi<Order[]>('/orders?open=true');
   const trades = useApi<Trade[]>('/trades');
   const [prices, setPrices] = useState<Record<string, number>>({});
-  const [tab, setTab] = useState<'positions' | 'orders' | 'history' | 'funding' | 'holdings' | 'portfolios' | 'support'>('positions');
+  const [tab, setTab] = useState<'positions' | 'orders' | 'history' | 'funding' | 'holdings'>('positions');
 
   const refresh = useCallback(() => {
     account.reload(); positions.reload(); orders.reload(); trades.reload();
@@ -69,7 +67,7 @@ export function TradeView() {
 
         <div className={`${card} flex min-h-0 flex-col gap-3`}>
           <div className="flex gap-1 text-xs">
-            {(['positions', 'orders', 'history', 'funding', 'holdings', 'portfolios', 'support'] as const).map((t) => (
+            {(['positions', 'orders', 'history', 'funding', 'holdings'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
                 className={`rounded-md px-3 py-1 capitalize ${tab === t
                   ? 'bg-ember font-medium text-graphite'
@@ -88,8 +86,6 @@ export function TradeView() {
             {tab === 'history' && <History rows={trades.data ?? []} />}
             {tab === 'funding' && <FundingPanel />}
             {tab === 'holdings' && <HoldingsPanel />}
-            {tab === 'portfolios' && <PortfoliosPanel />}
-            {tab === 'support' && <SupportPanel />}
           </div>
         </div>
       </div>

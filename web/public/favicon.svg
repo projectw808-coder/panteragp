@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The mark from the nav rail: the three slashes that follow "Pantera GP". A monogram
+       would be a P nobody could tell from any other P at 16 pixels; three ember strokes on
+       the dark ground read as one shape at tab size and as the wordmark's tail up close. -->
+  <rect width="64" height="64" rx="14" fill="#0d0d0f"/>
+  <g stroke="#ff7817" stroke-width="7" stroke-linecap="round">
+    <path d="M20 44 L30 20"/>
+    <path d="M32 44 L42 20"/>
+    <path d="M44 44 L54 20" stroke-opacity="0.45"/>
+  </g>
+</svg>

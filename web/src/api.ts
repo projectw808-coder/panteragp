@@ -60,8 +60,9 @@ export type Activity = {
   id: number; at: string; kind: string; actor: string | null; summary: string;
   ref_table: string | null; ref_id: string | null; data: Record<string, unknown>;
 };
+export type TaskStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
 export type Task = {
   id: number; client_id: string; assigned_to: string; title: string;
-  due_at: string | null; status: 'open' | 'done' | 'cancelled';
+  due_at: string | null; status: TaskStatus;
   client_name: string; assignee_name: string;
 };

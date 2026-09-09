@@ -25,6 +25,10 @@ declare module 'fastify' {
 pg.types.setTypeParser(1700, Number);
 // bigint counts and bigserial ids: JSON should carry numbers, not quoted strings.
 pg.types.setTypeParser(20, Number);
+// date -> the string Postgres sent, not a Date. A date has no time and no zone, and the
+// default parser gives it both: a birth date of 1988-04-02 becomes local midnight, which
+// serialises to the 1st in UTC and shows the client a day they were not born on.
+pg.types.setTypeParser(1082, (v) => v);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -447,6 +451,10 @@ const patchBody = z.object({
   phone: z.string().max(40).optional(),
   country: z.string().length(2).optional(),
   tier: z.string().max(40).optional(),
+  // Personal details are clearable: a birth date entered wrong should be removable, not
+  // correctable only to another wrong date.
+  date_of_birth: z.coerce.date().nullable().optional(),
+  address: z.string().max(400).nullable().optional(),
   stage_id: z.number().int().min(1).optional(),
   owner_staff_id: z.string().uuid().nullable().optional(),
   risk_profile: z.enum(['low', 'medium', 'high']).nullable().optional(),
@@ -525,13 +533,21 @@ app.post('/tasks', { preHandler: auth('crm:write') }, async (req: any, reply) =>
       client_id: b.client_id, kind: 'task', actor: req.principal.sub,
       summary: `Task: ${b.title}`, ref_table: 'tasks', ref_id: String(rows[0].id),
     });
+    await notifyStaff(c, { staff_id: b.assigned_to }, {
+      kind: 'task.assigned',
+      title: `Task: ${b.title}`,
+      body: b.due_at ? `Due ${b.due_at.toISOString().slice(0, 10)}.` : undefined,
+      ref_table: 'clients', ref_id: b.client_id,
+    });
     return reply.code(201).send(rows[0]);
   });
 });
 
 app.get('/tasks', { preHandler: auth('crm:read') }, async (req: any) => {
   const q = z.object({
-    status: z.enum(['open', 'done', 'cancelled']).default('open'),
+    // 'all' is what a board asks for: every column at once, rather than one status per
+    // request. The default stays 'open' so existing callers see what they always did.
+    status: z.enum(['open', 'in_progress', 'blocked', 'done', 'cancelled', 'all']).default('open'),
     client_id: z.string().uuid().optional(),
     assigned_to: z.string().uuid().optional(),   // omit for "mine"; 'all' for everyone's
     scope: z.literal('all').optional(),
@@ -542,7 +558,7 @@ app.get('/tasks', { preHandler: auth('crm:read') }, async (req: any) => {
        FROM tasks t
        JOIN clients c ON c.id = t.client_id
        JOIN staff s ON s.id = t.assigned_to
-      WHERE t.status = $1
+      WHERE ($1 = 'all' OR t.status = $1)
         AND ($2::uuid IS NULL OR t.assigned_to = $2)
         AND ($3::uuid IS NULL OR t.client_id = $3)
       ORDER BY t.due_at NULLS LAST, t.created_at`,
@@ -551,7 +567,9 @@ app.get('/tasks', { preHandler: auth('crm:read') }, async (req: any) => {
 });
 
 app.patch('/tasks/:id', { preHandler: auth('crm:write') }, async (req: any, reply) => {
-  const body = z.object({ status: z.enum(['open', 'done', 'cancelled']) }).safeParse(req.body);
+  const body = z.object({
+    status: z.enum(['open', 'in_progress', 'blocked', 'done', 'cancelled']),
+  }).safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   return tx(req.principal.sub, async (c) => {
     const { rows } = await c.query(
@@ -559,7 +577,8 @@ app.patch('/tasks/:id', { preHandler: auth('crm:write') }, async (req: any, repl
     if (!rows[0]) return reply.code(404).send({ error: 'not found' });
     await logActivity(c, {
       client_id: rows[0].client_id, kind: 'task', actor: req.principal.sub,
-      summary: `Task ${body.data.status}: ${rows[0].title}`, ref_table: 'tasks', ref_id: String(rows[0].id),
+      summary: `Task ${body.data.status.replace(/_/g, ' ')}: ${rows[0].title}`,
+      ref_table: 'tasks', ref_id: String(rows[0].id),
     });
     return rows[0];
   });
@@ -793,6 +812,52 @@ const trader = async (req: any, reply: any) => {
   if (!rowCount) return reply.code(401).send({ error: 'unauthenticated' });
 };
 
+/**
+ * A client reading and correcting their own details.
+ *
+ * The fields are the subset of the CRM record that belongs to the person rather than to
+ * the desk: their name, how to reach them, where they live, when they were born. Tier,
+ * stage, owner, risk and KYC status are the desk's assessment of them and are not theirs
+ * to set — that is why this has its own schema instead of reusing the staff one.
+ *
+ * Email is not here either. It is the login, so changing it is an account change rather
+ * than a detail change: it needs the current password and a confirmed address, neither of
+ * which exists yet. Until then it goes through the desk, which the UI says plainly.
+ */
+const profileBody = z.object({
+  name: z.string().min(1).max(200).optional(),
+  phone: z.string().max(40).nullable().optional(),
+  country: z.string().length(2).nullable().optional(),
+  date_of_birth: z.coerce.date().nullable().optional(),
+  address: z.string().max(400).nullable().optional(),
+}).refine((o) => Object.keys(o).length > 0, 'no fields to update');
+
+app.get('/me/profile', { preHandler: trader }, async (req: any) => {
+  const { rows } = await pool.query(
+    `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at
+       FROM clients WHERE id = $1`, [req.principal.sub]);
+  return rows[0];
+});
+
+app.patch('/me/profile', { preHandler: trader }, async (req: any, reply) => {
+  const body = profileBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const entries = Object.entries(body.data);
+  const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      `UPDATE clients SET ${set} WHERE id = $1
+        RETURNING id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at`,
+      [req.principal.sub, ...entries.map(([, v]) => v)]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'note', actor: req.principal.sub,
+      summary: `Updated their own details: ${entries.map(([k]) => k.replace(/_/g, ' ')).join(', ')}`,
+    });
+    return rows[0];
+  });
+});
+
 app.get('/account', { preHandler: trader }, async (req) => {
   const a = await demoAccount(req.principal.sub);
   const { rows: pos } = await pool.query<{ symbol: string; qty: number; avg_price: number }>(
@@ -969,6 +1034,11 @@ app.post('/clients/:id/kyc', { preHandler: clientScope }, async (req: any, reply
       client_id: req.params.id, kind: 'kyc', actor: req.principal.sub,
       summary: `Uploaded ${kind.replace(/_/g, ' ')}`, ref_table: 'kyc_documents', ref_id: String(rows[0].id),
     });
+    await notifyStaff(c, { roles: ['compliance', 'admin'] }, {
+      kind: 'kyc.uploaded',
+      title: `Document to review: ${kind.replace(/_/g, ' ')}`,
+      ref_table: 'clients', ref_id: req.params.id,
+    });
     return rows[0];
   });
   return reply.code(201).send(doc);
@@ -1054,6 +1124,12 @@ async function raiseFlags(c: pg.PoolClient, clientId: string, flags: Flag[]) {
       client_id: clientId, kind: 'flag', actor: 'system',
       summary: `Flagged: ${f.rule.replace(/_/g, ' ')} (${f.severity})`, data: f.details,
     });
+    await notifyStaff(c, { roles: ['compliance', 'admin'] }, {
+      kind: 'flag.raised',
+      title: `${f.severity} flag: ${f.rule.replace(/_/g, ' ')}`,
+      body: 'Raised automatically. Open compliance to review it.',
+      ref_table: 'clients', ref_id: clientId,
+    });
   }
   return flags;
 }
@@ -1100,6 +1176,13 @@ app.post('/cash', { preHandler: trader }, async (req: any, reply) => {
         : `Requested deposit of ${amount} ${locked!.currency}`,
       ref_table: 'cash_transactions', ref_id: String(rows[0].id), data: { amount },
     });
+    if (kind === 'withdrawal') {
+      await notifyStaff(c, { roles: ['compliance', 'admin'] }, {
+        kind: 'withdrawal.request',
+        title: `Withdrawal to approve: ${amount} ${locked!.currency}`,
+        ref_table: 'clients', ref_id: req.principal.sub,
+      });
+    }
 
     let flags: Flag[] = [];
     if (kind === 'withdrawal') {
@@ -1299,6 +1382,54 @@ type Notice = {
 };
 
 /**
+ * What each side can be notified about, and what it is called on the settings page.
+ *
+ * A kind marked `locked` cannot be switched off. That is only ever used for the notice
+ * that somebody's password or sign-in changed: a person who can silence the one message
+ * that tells them their account was taken over is a person whose account can be taken over
+ * quietly, so that switch does not exist.
+ */
+const NOTIFY_KINDS = {
+  client: [
+    { kind: 'order.filled', label: 'Order fills', note: 'When a resting order is filled by the engine.' },
+    { kind: 'credit',       label: 'Balance changes', note: 'Money added to or taken off your account by the desk.' },
+    { kind: 'deposit',      label: 'Deposits', note: 'When a deposit is approved or declined.' },
+    { kind: 'withdrawal',   label: 'Withdrawals', note: 'When a withdrawal is approved, paid or returned.' },
+    { kind: 'interest',     label: 'Interest', note: 'Interest paid into a savings portfolio.' },
+    { kind: 'kyc',          label: 'Verification', note: 'Progress on your identity documents.' },
+    { kind: 'ticket',       label: 'Support replies', note: 'When we reply on one of your tickets.' },
+    { kind: 'message',      label: 'Messages from the desk', note: 'Direct messages from your account manager.' },
+    { kind: 'security',     label: 'Security', note: 'Password and sign-in changes.', locked: true },
+  ],
+  staff: [
+    { kind: 'flag.raised',        label: 'Compliance flags', note: 'A rule fired on a client.' },
+    { kind: 'kyc.uploaded',       label: 'Documents to review', note: 'A client uploaded identification.' },
+    { kind: 'ticket.activity',    label: 'Support tickets', note: 'A client opened a ticket or replied on one.' },
+    { kind: 'withdrawal.request', label: 'Withdrawal requests', note: 'A client asked to take money out.' },
+    { kind: 'task.assigned',      label: 'Tasks assigned to you', note: 'Somebody put a task on your list.' },
+  ],
+} as const;
+
+type SubjectKind = 'client' | 'staff';
+const kindsFor = (k: SubjectKind) => NOTIFY_KINDS[k] as readonly { kind: string; label: string; note: string; locked?: boolean }[];
+const isLocked = (k: SubjectKind, kind: string) => !!kindsFor(k).find((x) => x.kind === kind)?.locked;
+
+/**
+ * Whether this person still wants this kind of notification.
+ *
+ * Absent means yes. Preferences record only the exceptions, so a kind added in a later
+ * release reaches everybody by default instead of going nowhere until each person happens
+ * to find the setting and switch it on.
+ */
+async function wants(c: pg.PoolClient, subject: SubjectKind, id: string, kind: string) {
+  if (isLocked(subject, kind)) return true;
+  const { rows } = await c.query<{ enabled: boolean }>(
+    'SELECT enabled FROM notification_prefs WHERE subject_kind = $1 AND subject_id = $2 AND kind = $3',
+    [subject, id, kind]);
+  return rows[0]?.enabled ?? true;
+}
+
+/**
  * Tell a client something happened to them. Written in the caller's transaction so a
  * notification cannot outlive the event it describes, then pushed over the socket so an
  * open session sees it without polling.
@@ -1308,12 +1439,40 @@ type Notice = {
  * Compliance flags are never notified; see the note on the table.
  */
 async function notifyClientOf(c: pg.PoolClient, n: Notice) {
+  // Switched off means not written, not written-and-hidden: an inbox that fills with
+  // things the reader has said they do not want is an inbox they stop opening.
+  if (!(await wants(c, 'client', n.client_id, n.kind))) return null;
   const { rows: [row] } = await c.query(
     `INSERT INTO notifications (client_id, kind, title, body, ref_table, ref_id)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [n.client_id, n.kind, n.title, n.body ?? null, n.ref_table ?? null, n.ref_id ?? null]);
   pending.push(row);
   return row;
+}
+
+/**
+ * Tell staff something needs them. Either a named person, or everyone holding a role.
+ *
+ * One row each rather than one row addressed to a role: a notification is read by a
+ * person, and two people looking at the same queue should not un-read each other's.
+ */
+async function notifyStaff(
+  c: pg.PoolClient,
+  to: { staff_id: string } | { roles: readonly string[] },
+  n: { kind: string; title: string; body?: string; ref_table?: string; ref_id?: string },
+) {
+  const { rows: people } = 'staff_id' in to
+    ? await c.query<{ id: string }>('SELECT id FROM staff WHERE id = $1 AND active', [to.staff_id])
+    : await c.query<{ id: string }>('SELECT id FROM staff WHERE active AND role = ANY($1)', [to.roles]);
+
+  for (const person of people) {
+    if (!(await wants(c, 'staff', person.id, n.kind))) continue;
+    const { rows: [row] } = await c.query(
+      `INSERT INTO notifications (staff_id, kind, title, body, ref_table, ref_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [person.id, n.kind, n.title, n.body ?? null, n.ref_table ?? null, n.ref_id ?? null]);
+    pending.push(row);
+  }
 }
 
 /**
@@ -1324,46 +1483,112 @@ const pending: any[] = [];
 function flushNotifications() {
   while (pending.length) {
     const row = pending.shift();
-    notify(row.client_id, { type: 'notification', notification: row });
+    const to = row.staff_id ?? row.client_id;
+    toSubject(row.staff_id ? 'staff' : 'client', to, { type: 'notification', notification: row });
+  }
+}
+
+/**
+ * A notification is addressed to exactly one person, so it goes to that person's sockets
+ * and no further. notify() above is the other rule — an order event reaches the client and
+ * every staff member watching the desk — and the two must not be confused: a staff bell
+ * filling up with clients' private notices is a leak, not a feature.
+ */
+function toSubject(kind: 'staff' | 'client', id: string, msg: unknown) {
+  const text = JSON.stringify(msg);
+  for (const [sock, principal] of feed) {
+    if (principal.kind !== kind || principal.sub !== id) continue;
+    try { sock.send(text); } catch { feed.delete(sock); }
   }
 }
 
 app.addHook('onResponse', async () => flushNotifications());
 
-app.get('/notifications', { preHandler: trader }, async (req: any) => {
+/**
+ * The inbox belongs to whoever is asking, staff or client, so every query below is scoped
+ * by the column that matches the caller. Written as one expression rather than two branches
+ * of SQL: the day somebody adds a filter, they should not have to remember to add it twice.
+ */
+const mine = (req: any) => (req.principal.kind === 'staff'
+  ? { column: 'staff_id', subject: 'staff' as const }
+  : { column: 'client_id', subject: 'client' as const });
+
+app.get('/notifications', { preHandler: auth() }, async (req: any) => {
   const q = z.object({
     unread: z.coerce.boolean().default(false),
     limit: z.coerce.number().int().min(1).max(100).default(30),
   }).parse(req.query);
   const { rows } = await pool.query(
     `SELECT * FROM notifications
-      WHERE client_id = $1 AND ($2::bool IS NOT TRUE OR read_at IS NULL)
+      WHERE ${mine(req).column} = $1 AND ($2::bool IS NOT TRUE OR read_at IS NULL)
       ORDER BY created_at DESC, id DESC LIMIT $3`,
     [req.principal.sub, q.unread, q.limit]);
   return rows;
 });
 
-app.get('/notifications/unread-count', { preHandler: trader }, async (req: any) => {
+app.get('/notifications/unread-count', { preHandler: auth() }, async (req: any) => {
   const { rows: [row] } = await pool.query<{ unread: number }>(
-    'SELECT count(*) AS unread FROM notifications WHERE client_id = $1 AND read_at IS NULL',
+    `SELECT count(*) AS unread FROM notifications
+      WHERE ${mine(req).column} = $1 AND read_at IS NULL`,
     [req.principal.sub]);
   return { unread: Number(row!.unread) };
 });
 
-app.post('/notifications/:id/read', { preHandler: trader }, async (req: any, reply) => {
-  // Scoped by client_id as well as id, so one client cannot mark another's as read.
+app.post('/notifications/:id/read', { preHandler: auth() }, async (req: any, reply) => {
+  // Scoped by subject as well as id, so nobody can mark somebody else's as read.
   const { rows } = await pool.query(
     `UPDATE notifications SET read_at = coalesce(read_at, now())
-      WHERE id = $1 AND client_id = $2 RETURNING *`, [req.params.id, req.principal.sub]);
+      WHERE id = $1 AND ${mine(req).column} = $2 RETURNING *`, [req.params.id, req.principal.sub]);
   if (!rows[0]) return reply.code(404).send({ error: 'no such notification' });
   return rows[0];
 });
 
-app.post('/notifications/read-all', { preHandler: trader }, async (req: any) => {
+app.post('/notifications/read-all', { preHandler: auth() }, async (req: any) => {
   const { rowCount } = await pool.query(
-    'UPDATE notifications SET read_at = now() WHERE client_id = $1 AND read_at IS NULL',
+    `UPDATE notifications SET read_at = now() WHERE ${mine(req).column} = $1 AND read_at IS NULL`,
     [req.principal.sub]);
   return { marked: rowCount ?? 0 };
+});
+
+/**
+ * Which notifications the caller wants. The catalogue and their answers arrive together,
+ * so the settings page never has to know what the kinds are called or which are locked.
+ */
+app.get('/me/notification-prefs', { preHandler: auth() }, async (req: any) => {
+  const { subject } = mine(req);
+  const { rows } = await pool.query<{ kind: string; enabled: boolean }>(
+    'SELECT kind, enabled FROM notification_prefs WHERE subject_kind = $1 AND subject_id = $2',
+    [subject, req.principal.sub]);
+  const set = new Map(rows.map((r) => [r.kind, r.enabled]));
+  return kindsFor(subject).map((k) => ({
+    ...k, locked: !!k.locked, enabled: k.locked ? true : set.get(k.kind) ?? true,
+  }));
+});
+
+app.put('/me/notification-prefs', { preHandler: auth() }, async (req: any, reply) => {
+  const { subject } = mine(req);
+  const known = new Set(kindsFor(subject).map((k) => k.kind));
+  const body = z.record(z.string(), z.boolean()).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const unknown = Object.keys(body.data).filter((k) => !known.has(k));
+  if (unknown.length) return reply.code(400).send({ error: `not a notification kind: ${unknown.join(', ')}` });
+  const forced = Object.keys(body.data).filter((k) => isLocked(subject, k) && !body.data[k]);
+  if (forced.length) {
+    return reply.code(422).send({ error: `${forced.join(', ')} cannot be switched off` });
+  }
+
+  await tx(req.principal.sub, async (c) => {
+    for (const [kind, enabled] of Object.entries(body.data)) {
+      await c.query(
+        `INSERT INTO notification_prefs (subject_kind, subject_id, kind, enabled)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (subject_kind, subject_id, kind)
+         DO UPDATE SET enabled = excluded.enabled, updated_at = now()`,
+        [subject, req.principal.sub, kind, enabled]);
+    }
+  });
+  return { ok: true };
 });
 
 /** Staff message a client directly — the CRM side of the same inbox. */
@@ -1544,6 +1769,12 @@ app.post('/tickets', { preHandler: trader }, async (req: any, reply) => {
       summary: `Opened a support ticket: ${body.data.subject}`,
       ref_table: 'tickets', ref_id: t.id, data: { category: body.data.category },
     });
+    await notifyStaff(c, { roles: ['support', 'sales', 'admin'] }, {
+      kind: 'ticket.activity',
+      title: `New ticket: ${body.data.subject}`,
+      body: body.data.body.slice(0, 160),
+      ref_table: 'tickets', ref_id: t.id,
+    });
     return t;
   });
   return reply.code(201).send(ticket);
@@ -1592,6 +1823,13 @@ app.post('/tickets/:id/messages', async (req: any, reply) => {
       await notifyClientOf(c, {
         client_id: t.client_id, kind: 'ticket',
         title: `Reply on: ${t.subject}`,
+        body: parsed.data.body.slice(0, 160),
+        ref_table: 'tickets', ref_id: t.id,
+      });
+    } else if (!scope.staff) {
+      await notifyStaff(c, { roles: ['support', 'sales', 'admin'] }, {
+        kind: 'ticket.activity',
+        title: `Client replied: ${t.subject}`,
         body: parsed.data.body.slice(0, 160),
         ref_table: 'tickets', ref_id: t.id,
       });
@@ -2052,6 +2290,11 @@ app.post('/wallets/:id/withdraw', { preHandler: trader }, async (req: any, reply
       ref_table: 'wallet_transactions', ref_id: String(entry.id),
       data: { asset: w.asset, amount: body.data.amount, to_address: body.data.to_address },
     });
+    await notifyStaff(c, { roles: ['compliance', 'admin'] }, {
+      kind: 'withdrawal.request',
+      title: `Withdrawal to approve: ${body.data.amount} ${w.asset}`,
+      ref_table: 'clients', ref_id: req.principal.sub,
+    });
     return entry;
   });
   if (out === 'missing') return reply.code(404).send({ error: 'no such wallet' });
@@ -2179,6 +2422,37 @@ async function portfolioScope(req: any, reply: any) {
   return q.client_id ?? null;
 }
 
+/**
+ * Whose money a portfolio write moves.
+ *
+ * A client acts on themselves and cannot say otherwise. A staff member acts on a named
+ * client and must say which — the desk opening a pot for somebody, or moving money between
+ * their cash and their savings at their request, which is an ordinary thing for a desk to
+ * do and an unusual thing to do quietly. So it needs funds:credit, the same permission as
+ * every other route where staff touch a client's balance, the actor recorded against it is
+ * the staff member, and the client is told.
+ *
+ * Returns null when it has already answered the request.
+ */
+async function portfolioSubject(req: any, reply: any): Promise<{ clientId: string; onBehalf: boolean } | null> {
+  if (req.principal.kind === 'client') return { clientId: req.principal.sub, onBehalf: false };
+  if (!can(req.principal.role, 'funds:credit')) {
+    reply.code(403).send({ error: 'acting on a client portfolio needs funds:credit' });
+    return null;
+  }
+  const q = z.object({ client_id: z.string().uuid() }).safeParse(req.body ?? {});
+  if (!q.success) {
+    reply.code(400).send({ error: 'staff must name the client: client_id' });
+    return null;
+  }
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [q.data.client_id]);
+  if (!rowCount) {
+    reply.code(404).send({ error: 'no such client' });
+    return null;
+  }
+  return { clientId: q.data.client_id, onBehalf: true };
+}
+
 app.get('/portfolios', async (req: any, reply) => {
   const clientId = await portfolioScope(req, reply);
   if (clientId === null) return reply.sent ? undefined : [];
@@ -2212,7 +2486,9 @@ const portfolioBody = z.object({
   target_date: z.coerce.date().optional(),
 });
 
-app.post('/portfolios', { preHandler: trader }, async (req: any, reply) => {
+app.post('/portfolios', { preHandler: auth() }, async (req: any, reply) => {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
   const body = portfolioBody.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const b = body.data;
@@ -2225,11 +2501,11 @@ app.post('/portfolios', { preHandler: trader }, async (req: any, reply) => {
       const { rows } = await c.query(
         `INSERT INTO portfolios (client_id, type_code, name, currency, target_amount, target_date)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [req.principal.sub, b.type_code, b.name, b.currency,
+        [who.clientId, b.type_code, b.name, b.currency,
          b.target_amount ?? null, b.target_date ?? null]);
       await logActivity(c, {
-        client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
-        summary: `Opened ${b.name} (${b.type_code.replace(/_/g, ' ')})`,
+        client_id: who.clientId, kind: 'portfolio', actor: req.principal.sub,
+        summary: `${who.onBehalf ? 'Desk opened' : 'Opened'} ${b.name} (${b.type_code.replace(/_/g, ' ')})`,
         ref_table: 'portfolios', ref_id: rows[0].id,
         data: { type: b.type_code, currency: b.currency, target: b.target_amount ?? null },
       });
@@ -2237,7 +2513,7 @@ app.post('/portfolios', { preHandler: trader }, async (req: any, reply) => {
     });
   } catch (err: any) {
     // One name per client, so the list stays legible.
-    if (err?.code === '23505') return reply.code(409).send({ error: 'you already have a portfolio with that name' });
+    if (err?.code === '23505') return reply.code(409).send({ error: 'there is already a portfolio with that name' });
     throw err;
   }
 });
@@ -2249,20 +2525,23 @@ const moveBody = z.object({ amount: z.number().positive().finite(), note: z.stri
  * sides move in one transaction, so money is never in neither place or in both.
  */
 async function movePortfolio(req: any, reply: any, into: boolean) {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
   const body = moveBody.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const { amount, note } = body.data;
+  const subject = who.clientId;
 
   const out = await tx(req.principal.sub, async (c) => {
     const { rows: [p] } = await c.query<{ id: string; currency: string; balance: number; name: string; status: string }>(
       'SELECT id, currency, balance, name, status FROM portfolios WHERE id = $1 AND client_id = $2 FOR UPDATE',
-      [req.params.id, req.principal.sub]);
+      [req.params.id, subject]);
     if (!p) return 'missing' as const;
     if (p.status !== 'open') return 'closed' as const;
 
     const ccy = (await currencies()).get(p.currency)!;
     // Opened on demand when money is coming back out, so a withdrawal always has a home.
-    const holding = await lockHolding(c, req.principal.sub, p.currency, ccy.kind, !into);
+    const holding = await lockHolding(c, subject, p.currency, ccy.kind, !into);
     if (!holding) return 'no-holding' as const;
     if (into && Number(holding.balance) < amount) return 'insufficient-balance' as const;
     if (!into && Number(p.balance) < amount) return 'insufficient-portfolio' as const;
@@ -2273,15 +2552,27 @@ async function movePortfolio(req: any, reply: any, into: boolean) {
     const { rows: [entry] } = await c.query(
       `INSERT INTO portfolio_transactions (portfolio_id, client_id, kind, amount, note)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [p.id, req.principal.sub, into ? 'contribution' : 'withdrawal', into ? amount : -amount, note ?? null]);
+      [p.id, subject, into ? 'contribution' : 'withdrawal', into ? amount : -amount, note ?? null]);
+    const moved = into
+      ? `${amount} ${p.currency} into ${p.name}`
+      : `${amount} ${p.currency} out of ${p.name}`;
     await logActivity(c, {
-      client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
-      summary: into
-        ? `Paid ${amount} ${p.currency} into ${p.name}`
-        : `Took ${amount} ${p.currency} out of ${p.name}`,
+      client_id: subject, kind: 'portfolio', actor: req.principal.sub,
+      summary: who.onBehalf
+        ? `Desk moved ${moved}${note ? ` — ${note}` : ''}`
+        : into ? `Paid ${moved}` : `Took ${moved}`,
       ref_table: 'portfolio_transactions', ref_id: String(entry.id),
-      data: { portfolio: p.name, amount, currency: p.currency },
+      data: { portfolio: p.name, amount, currency: p.currency, on_behalf: who.onBehalf },
     });
+    // Money the client did not move themselves is money they should hear about.
+    if (who.onBehalf) {
+      await notifyClientOf(c, {
+        client_id: subject, kind: 'credit',
+        title: into ? `${amount} ${p.currency} moved into ${p.name}` : `${amount} ${p.currency} moved out of ${p.name}`,
+        body: note ?? 'Moved by the desk.',
+        ref_table: 'portfolio_transactions', ref_id: String(entry.id),
+      });
+    }
     return entry;
   });
 
@@ -2293,23 +2584,28 @@ async function movePortfolio(req: any, reply: any, into: boolean) {
   return reply.code(201).send(out);
 }
 
-app.post('/portfolios/:id/contribute', { preHandler: trader }, (req, reply) => movePortfolio(req, reply, true));
-app.post('/portfolios/:id/withdraw', { preHandler: trader }, (req, reply) => movePortfolio(req, reply, false));
+app.post('/portfolios/:id/contribute', { preHandler: auth() }, (req, reply) => movePortfolio(req, reply, true));
+app.post('/portfolios/:id/withdraw', { preHandler: auth() }, (req, reply) => movePortfolio(req, reply, false));
 
-app.patch('/portfolios/:id', { preHandler: trader }, async (req: any, reply) => {
+app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
   const body = z.object({
+    // client_id is how staff say whose portfolio this is; it is not a field to change.
+    client_id: z.string().uuid().optional(),
     name: z.string().min(1).max(80).optional(),
     target_amount: z.number().positive().finite().nullable().optional(),
     target_date: z.coerce.date().nullable().optional(),
     status: z.enum(['open', 'closed']).optional(),
-  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  }).transform(({ client_id: _ignored, ...rest }) => rest)
+    .refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
   const entries = Object.entries(body.data);
   const out = await tx(req.principal.sub, async (c) => {
     const { rows: [p] } = await c.query<{ balance: number }>(
       'SELECT balance FROM portfolios WHERE id = $1 AND client_id = $2 FOR UPDATE',
-      [req.params.id, req.principal.sub]);
+      [req.params.id, who.clientId]);
     if (!p) return 'missing' as const;
     // Closing a pot with money still in it would strand it: take it out first.
     if (body.data.status === 'closed' && Number(p.balance) > 0) return 'not-empty' as const;
@@ -2319,8 +2615,10 @@ app.patch('/portfolios/:id', { preHandler: trader }, async (req: any, reply) => 
       `UPDATE portfolios SET ${set} WHERE id = $1 RETURNING *`,
       [req.params.id, ...entries.map(([, v]) => v)]);
     await logActivity(c, {
-      client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
-      summary: body.data.status === 'closed' ? `Closed ${rows[0].name}` : `Updated ${rows[0].name}`,
+      client_id: who.clientId, kind: 'portfolio', actor: req.principal.sub,
+      summary: who.onBehalf
+        ? (body.data.status === 'closed' ? `Desk closed ${rows[0].name}` : `Desk updated ${rows[0].name}`)
+        : (body.data.status === 'closed' ? `Closed ${rows[0].name}` : `Updated ${rows[0].name}`),
       ref_table: 'portfolios', ref_id: rows[0].id, data: body.data,
     });
     return rows[0];

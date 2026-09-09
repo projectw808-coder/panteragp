@@ -18,6 +18,9 @@ const when = (iso: string) => {
 const ICON: Record<string, string> = {
   'order.filled': '✓', deposit: '↓', withdrawal: '↑',
   kyc: '🛡', interest: '%', credit: '+', message: '✉',
+  // Staff kinds. The bell is the same component on both sides — one inbox, two audiences.
+  'flag.raised': '⚑', 'kyc.uploaded': '🛡', 'ticket.activity': '✉',
+  'withdrawal.request': '↑', 'task.assigned': '☑',
 };
 
 /** The bell in the header: unread count, and the list when opened. */

@@ -19,9 +19,17 @@ const money = (n: number, code: string) =>
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const day = (d: string) => new Date(d).toLocaleDateString();
 
-/** A client's pots: open one, pay into it, take money back out. */
-export function PortfoliosPanel() {
-  const portfolios = useApi<Portfolio[]>('/portfolios');
+/**
+ * A client's pots: open one, pay into it, take money back out.
+ *
+ * The same panel serves both sides. A client passes no clientId and acts on themselves;
+ * staff pass one and act on that client, which the API requires them to name explicitly
+ * on every write. One component rather than a staff copy: two versions of a screen that
+ * moves money is two places for the rules to drift apart.
+ */
+export function PortfoliosPanel({ clientId }: { clientId?: string } = {}) {
+  const on = clientId ? { client_id: clientId } : {};
+  const portfolios = useApi<Portfolio[]>(clientId ? `/portfolios?client_id=${clientId}` : '/portfolios');
   const types = useApi<PortfolioType[]>('/portfolio-types');
   const currencies = useApi<Currency[]>('/currencies');
   const [adding, setAdding] = useState(false);
@@ -32,21 +40,23 @@ export function PortfoliosPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-ink">Your portfolios</h3>
+        <h3 className="metric-label">{clientId ? 'Portfolios' : 'Your portfolios'}</h3>
         <button className={btn} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New portfolio'}
         </button>
       </div>
 
       {adding && (
-        <NewPortfolio types={types.data ?? []} currencies={currencies.data ?? []}
+        <NewPortfolio types={types.data ?? []} currencies={currencies.data ?? []} on={on}
           onDone={() => { setAdding(false); portfolios.reload(); }} />
       )}
 
-      {open.map((p) => <Pot key={p.id} p={p} onDone={portfolios.reload} />)}
+      {open.map((p) => <Pot key={p.id} p={p} on={on} onDone={portfolios.reload} />)}
       {!open.length && !adding && (
         <p className="text-sm text-slate-ink">
-          No portfolios yet. Open one to set money aside for a particular purpose.
+          {clientId
+            ? 'No portfolios yet. Opening one here does it on the client’s behalf, and is recorded that way.'
+            : 'No portfolios yet. Open one to set money aside for a particular purpose.'}
         </p>
       )}
 
@@ -62,7 +72,9 @@ export function PortfoliosPanel() {
   );
 }
 
-function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
+type On = { client_id?: string };
+
+function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   const [action, setAction] = useState<'contribute' | 'withdraw' | null>(null);
   const [amt, setAmt] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +85,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/portfolios/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ amount: Number(amt) }) });
+      await api(`/portfolios/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ ...on, amount: Number(amt) }) });
       setAmt(''); setAction(null);
       onDone();
     } catch (err) {
@@ -84,7 +96,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
   async function close() {
     setError(null);
     try {
-      await api(`/portfolios/${p.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'closed' }) });
+      await api(`/portfolios/${p.id}`, { method: 'PATCH', body: JSON.stringify({ ...on, status: 'closed' }) });
       onDone();
     } catch (err) { setError((err as Error).message); }
   }
@@ -147,8 +159,8 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
   );
 }
 
-function NewPortfolio({ types, currencies, onDone }: {
-  types: PortfolioType[]; currencies: Currency[]; onDone: () => void;
+function NewPortfolio({ types, currencies, on, onDone }: {
+  types: PortfolioType[]; currencies: Currency[]; on: On; onDone: () => void;
 }) {
   const [type, setType] = useState('retirement');
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +176,7 @@ function NewPortfolio({ types, currencies, onDone }: {
       await api('/portfolios', {
         method: 'POST',
         body: JSON.stringify({
+          ...on,
           type_code: type,
           name: f.get('name'),
           currency: f.get('currency'),
