@@ -3,7 +3,7 @@ import {
   BarSeries, CandlestickSeries, HistogramSeries, LineSeries, createChart,
   type IChartApi, type ISeriesApi, type UTCTimestamp,
 } from 'lightweight-charts';
-import { card } from './App.tsx';
+import { card, grouped } from './App.tsx';
 
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
@@ -13,7 +13,7 @@ import { bollinger, ema, macd, rsi, sma } from './indicators.ts';
 const sel = 'rounded-md border border-pebble px-2 py-1 text-xs outline-none dark:border-white/10 dark:bg-onyx';
 
 export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
-type Instrument = { symbol: string; display_name: string };
+type Instrument = { symbol: string; display_name: string; asset_class: string | null };
 type Quote = { symbol: string; price: number; change: number; change_pct: number };
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'] as const;
@@ -55,7 +55,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
   instruments: Instrument[]; dark: boolean; symbol: string; onSymbol: (s: string) => void;
 }) {
   const [tf, setTf] = useState<(typeof TIMEFRAMES)[number]>('1H');
-  const [type, setType] = useState<(typeof TYPES)[number]>('candlestick');
+  const [type, setType] = useState<(typeof TYPES)[number]>('line');
   const [on, setOn] = useState<Indicator[]>(['MA']);
   const [tool, setTool] = useState<Tool>('none');
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -217,7 +217,11 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
     <div className={`${card} flex min-h-0 flex-col gap-2 p-2`}>
       <div className="flex flex-wrap items-center gap-1 text-xs">
         <select className={`${sel} w-28`} value={symbol} onChange={(e) => onSymbol(e.target.value)}>
-          {instruments.map((i) => <option key={i.symbol} value={i.symbol}>{i.symbol}</option>)}
+          {grouped(instruments).map(([label, items]) => (
+            <optgroup key={label} label={label}>
+              {items.map((i) => <option key={i.symbol} value={i.symbol}>{i.symbol}</option>)}
+            </optgroup>
+          ))}
         </select>
         <select className={`${sel} w-16`} value={tf} onChange={(e) => setTf(e.target.value as typeof tf)}>
           {TIMEFRAMES.map((f) => <option key={f}>{f}</option>)}

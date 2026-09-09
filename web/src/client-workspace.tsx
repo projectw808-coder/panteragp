@@ -61,7 +61,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
         {TABS.map((name) => (
           <button key={name} onClick={() => setTab(name)} aria-pressed={tab === name}
             className={`rounded-md px-3 py-1 capitalize ${tab === name
-              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {name}
             {name === 'tickets' && tickets.data?.some((x) => x.status === 'open') ? ' •' : ''}

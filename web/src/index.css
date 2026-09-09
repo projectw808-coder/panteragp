@@ -191,12 +191,14 @@
 .landing .stage { background: var(--stage); }
 .landing .soft { color: var(--ink-soft); }
 
-/* Display type: sans, medium weight, tracking tight enough to read as one mass. */
+/* Display type: sans, medium weight. The reference sets -0.045em, which at these sizes
+   pushes letters into each other — "sign-up" reads as one blur. Backed off to -0.022em:
+   still noticeably tight, still the same character, but the words stay separate. */
 .landing .display {
   font-family: var(--font-ui);
   font-weight: 500;
-  letter-spacing: -0.045em;
-  line-height: 1.06;
+  letter-spacing: -0.022em;
+  line-height: 1.1;
 }
 
 /* Square outline buttons, 8px 16px, exactly as the reference draws them. */

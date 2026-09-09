@@ -242,6 +242,9 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
   const [code, setCode] = useState('GBP');
   const [amt, setAmt] = useState('');
   const [note, setNote] = useState('');
+  // Which way the money goes. Crypto only supports crediting here — taking coin back
+  // out of a wallet is a withdrawal, which has its own flow and its own record.
+  const [dir, setDir] = useState<'credit' | 'debit'>('credit');
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -257,12 +260,14 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
     setResult(null);
     try {
       // Crypto goes to the wallet, fiat to the currency account. Same button, right route.
-      const path = chosen?.kind === 'crypto' ? `/clients/${clientId}/wallet-credit` : `/clients/${clientId}/credit`;
+      const path = chosen?.kind === 'crypto'
+        ? `/clients/${clientId}/wallet-credit`
+        : `/clients/${clientId}/${dir}`;
       const body = chosen?.kind === 'crypto'
         ? { asset: code, amount: Number(amt) }
         : { currency: code, amount: Number(amt), note: note || undefined };
       await api(path, { method: 'POST', body: JSON.stringify(body) });
-      setResult(`Credited ${amt} ${code}`);
+      setResult(`${dir === 'debit' ? 'Debited' : 'Credited'} ${amt} ${code}`);
       setAmt(''); setNote('');
       onDone();
     } catch (err) {
@@ -272,7 +277,19 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
 
   return (
     <form onSubmit={submit} className={`${card} space-y-2`}>
-      <h2 className="text-sm font-semibold">Credit this account</h2>
+      <h2 className="text-sm font-semibold">Adjust this account</h2>
+      {/* Direction first: it changes what the button does, so it should be read first. */}
+      <div className="flex gap-1">
+        {(['credit', 'debit'] as const).map((d) => (
+          <button key={d} type="button" onClick={() => setDir(d)} aria-pressed={dir === d}
+            disabled={d === 'debit' && chosen?.kind === 'crypto'}
+            className={`flex-1 rounded-md px-2 py-1 font-mono text-xs capitalize disabled:opacity-40 ${dir === d
+              ? 'bg-ember font-medium text-graphite'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+            {d}
+          </button>
+        ))}
+      </div>
       <div className="flex gap-2">
         <select className={`${field} w-40`} value={code} onChange={(e) => setCode(e.target.value)}>
           <optgroup label="Crypto">
@@ -291,10 +308,13 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
       )}
       {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       {result && <p className="text-sm text-slate-ink">{result}</p>}
-      <button className={`${btn} w-full`} disabled={busy}>{busy ? 'Crediting…' : 'Credit'}</button>
+      <button className={`${btn} w-full`} disabled={busy}>
+        {busy ? 'Working…' : dir === 'debit' ? 'Debit' : 'Credit'}
+      </button>
       <p className="text-xs text-slate-ink">
-        Creates funds out of nothing on a demo account. Audited, and written to the client's
-        timeline.
+        {dir === 'debit'
+          ? 'Removes funds from the account. Refused rather than overdrawn if the balance is short, and the client is notified.'
+          : "Creates funds out of nothing on a demo account. Audited, and written to the client's timeline."}
       </p>
     </form>
   );

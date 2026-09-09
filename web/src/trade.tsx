@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { alertBox, btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field, grouped, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
 import { FundingPanel, KycPanel } from './compliance.tsx';
@@ -8,7 +8,7 @@ import { PortfoliosPanel } from './portfolio.tsx';
 import { SupportPanel } from './tickets.tsx';
 import { positionSize } from '../../src/trading.ts';
 
-type Instrument = { symbol: string };
+type Instrument = { symbol: string; asset_class: string | null };
 type Account = { id: string; mode: string; currency: string; balance: number; leverage: number; equity: number; unrealized: number };
 type Order = {
   id: string; symbol: string; side: 'buy' | 'sell'; type: string; qty: number;
@@ -72,7 +72,7 @@ export function TradeView() {
             {(['positions', 'orders', 'history', 'funding', 'holdings', 'portfolios', 'support'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
                 className={`rounded-md px-3 py-1 capitalize ${tab === t
-                  ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+                  ? 'bg-ember font-medium text-graphite'
                   : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
                 {t === 'orders' ? 'open orders' : t}
               </button>
@@ -160,7 +160,11 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
       </div>
 
       <select className={input} value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-        {instruments.map((i) => <option key={i.symbol}>{i.symbol}</option>)}
+        {grouped(instruments).map(([label, items]) => (
+          <optgroup key={label} label={label}>
+            {items.map((i) => <option key={i.symbol}>{i.symbol}</option>)}
+          </optgroup>
+        ))}
       </select>
 
       <div className="flex gap-1">

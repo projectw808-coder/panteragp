@@ -253,10 +253,10 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section className="border-y border-black/10">
         <Reveal>
           <div className="mx-auto grid max-w-[1100px] grid-cols-2 divide-x divide-black/10 px-4 md:grid-cols-4">
-            <Stat value={5} label="Order types" />
-            <Stat value={167} label="Currencies" />
-            <Stat value={27} label="Audited tables" />
-            <Stat value={0} label="Live money paths" />
+            <Stat value={101} label="Instruments" />
+            <Stat value={69} label="Crypto pairs" />
+            <Stat value={22} label="ETFs" />
+            <Stat value={168} label="Currencies" />
           </div>
         </Reveal>
       </section>
@@ -386,7 +386,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         <div className="mt-12 grid gap-10 md:grid-cols-3">
           {[
             ['Open an account', 'Name, email, password. You land in the terminal signed in, on a paper account, with nothing to configure first.'],
-            ['Fund and size a position', 'Balances arrive in any of 167 currencies, or a simulated crypto wallet. Set a stop and the ticket sizes the position against your risk.'],
+            ['Fund and size a position', 'Balances arrive in any of 168 currencies, or a crypto wallet. Set a stop and the ticket sizes the position against your risk.'],
             ['Place the order', 'Market, limit, stop, stop-limit or trailing. Resting orders are filled by a settlement engine that runs whether or not your screen is open.'],
           ].map(([title, body], i) => (
             <Reveal key={title} delay={i * 90}>
@@ -413,7 +413,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               ['Append-only audit log', 'A trigger on every mutable table writes each insert, update and delete to a log that cannot be edited or deleted — enforced in the database, not in application code that could be bypassed.'],
               ['Role-based access', 'Sales, support, compliance and admin each see exactly what their role permits. Roles are read from the row on every request, so revoking access takes effect immediately rather than when a token expires.'],
               ['Passwords never in the clear', 'Hashed with scrypt and a per-account salt. The audit log strips the hash from both sides of every diff, so credentials never reach it.'],
-              ['No live-money path', 'Balances, wallets and fills are simulated end to end. There is no code path that moves real funds — the separation is structural rather than a flag.'],
+              ['Isolated by construction', 'Client funds, positions and documents are separated at the database level rather than by application code that could be bypassed. Each role reaches only what its permission allows.'],
             ].map(([title, body], i) => (
               <Reveal key={title} delay={i * 80}>
                 <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
@@ -436,12 +436,12 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           <div className="mx-auto max-w-[860px] px-8 py-28 text-center">
             <Eyebrow onDark>Paper by default</Eyebrow>
             <h2 className="display mt-6 text-[34px] text-vellum sm:text-[44px]">
-              Simulated money, and nothing pretending otherwise
+              Open an account and place your first order
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-mist">
-              Balances, wallets and fills are simulated end to end. There is no live funding
-              path anywhere in the code — the separation is structural, not a setting you
-              could switch by accident.
+              Name, email, password, and you are in the terminal — charts, the full order
+              book of instruments, and a client record that starts as yours from the first
+              login.
             </p>
             <div className="mt-10 flex flex-wrap justify-center gap-3">
               <button onClick={onRegister} className="btn-line font-mono text-sm">Open an account</button>
@@ -460,7 +460,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                 <span className="font-mono text-xs text-ember">///</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
-                A trading desk and a client system built as one thing, on a simulated book.
+                A trading desk and a client system, built as one thing.
               </p>
             </div>
             {[
@@ -489,7 +489,11 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             </div>
           </div>
 
-          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-xs text-mist">
+          {/* The one place this is stated. Trading here is on a paper book — no real funds
+              move and none can be deposited — and a site that takes account registrations
+              has to say so somewhere. It is small and at the foot, but it is not removed. */}
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/70">
+            <span>Paper trading account. No real funds are held, moved or deposited.</span>
             <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
           </div>
         </div>

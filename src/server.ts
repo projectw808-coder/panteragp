@@ -1769,6 +1769,59 @@ app.post('/clients/:id/credit', { preHandler: auth('funds:credit') }, async (req
   });
 });
 
+/**
+ * The other direction: take funds off a client's account — correcting a mistaken credit,
+ * settling a fee, or removing a balance that should not be there.
+ *
+ * Deliberately cannot overdraw. A negative balance would be a number the rest of the system
+ * has no meaning for: margin, equity and position sizing all assume a floor of zero. Taking
+ * more than is there is a mistake, so it is refused rather than clamped silently.
+ *
+ * Same permission as crediting, same audit trail, and the client is told — money leaving an
+ * account without the holder knowing is exactly what an audit log exists to prevent.
+ */
+app.post('/clients/:id/debit', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = creditBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { currency, amount, note } = body.data;
+
+  const ccy = (await currencies()).get(currency);
+  if (!ccy) return reply.code(404).send({ error: 'unknown currency' });
+  if (ccy.kind !== 'fiat') return reply.code(400).send({ error: 'crypto wallets are debited by withdrawal' });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+
+  return tx(req.principal.sub, async (c) => {
+    // FOR UPDATE: two debits landing together must not both read the same balance and
+    // between them take more than the account holds.
+    const { rows: [account] } = await c.query(
+      `SELECT * FROM trading_accounts WHERE client_id = $1 AND mode = 'demo' AND currency = $2 FOR UPDATE`,
+      [req.params.id, currency]);
+    if (!account) return reply.code(404).send({ error: `no ${currency} account` });
+    if (Number(account.balance) < amount) {
+      return reply.code(422).send({ error: `balance is ${account.balance} ${currency}` });
+    }
+
+    await c.query('UPDATE trading_accounts SET balance = balance - $2 WHERE id = $1', [account.id, amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
+       VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`,
+      [account.id, req.params.id, -amount, req.principal.sub]);
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'credit',
+      title: `${amount} ${currency} removed from your account`,
+      body: note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id),
+    });
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'credit', actor: req.principal.sub,
+      summary: `Debited ${amount} ${currency}${note ? ` — ${note}` : ''}`,
+      ref_table: 'cash_transactions', ref_id: String(entry.id),
+      data: { currency, amount: -amount, note: note ?? null },
+    });
+    return { transaction: entry, currency, amount: -amount };
+  });
+});
+
 // ------------------------------------------------------- currency converter
 
 /**

@@ -291,6 +291,27 @@ export const pillAction = 'inline-block rounded-full bg-ember px-2 py-0.5 text-x
 // IDs, timestamps, money and anything else that reads as a system readout.
 export const mono = 'font-mono tabular-nums';
 
+/**
+ * Group instruments by asset class for a picker, in a fixed order rather than whatever
+ * order the rows arrive in. Anything without a class — a row seeded before the column
+ * existed, or one added by hand — falls into "Other" rather than disappearing.
+ */
+const CLASS_LABEL: Record<string, string> = {
+  fx: 'Forex', metals: 'Metals', crypto: 'Crypto', etf: 'ETFs',
+};
+const CLASS_ORDER = ['crypto', 'fx', 'metals', 'etf', 'other'];
+
+export function grouped<T extends { symbol: string; asset_class?: string | null }>(items: T[]): [string, T[]][] {
+  const bins = new Map<string, T[]>();
+  for (const item of items) {
+    const key = item.asset_class && CLASS_LABEL[item.asset_class] ? item.asset_class : 'other';
+    (bins.get(key) ?? bins.set(key, []).get(key)!).push(item);
+  }
+  return CLASS_ORDER
+    .filter((k) => bins.get(k)?.length)
+    .map((k) => [CLASS_LABEL[k] ?? 'Other', bins.get(k)!] as [string, T[]]);
+}
+
 /** Page title: the serif, at the one size outside marketing where it belongs. */
 export const PageTitle = ({ children }: { children: React.ReactNode }) => (
   <h1 className="font-display text-[28px] leading-tight tracking-tight">{children}</h1>

@@ -129,7 +129,7 @@ export function SupportQueue({ role }: { role?: string }) {
         {['live', 'open', 'pending', 'resolved', 'closed'].map((s) => (
           <button key={s} onClick={() => setStatus(s)} aria-pressed={status === s}
             className={`rounded-md px-3 py-1 ${status === s
-              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {s}
           </button>

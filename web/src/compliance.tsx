@@ -51,7 +51,7 @@ export function ComplianceView({ role }: { role?: string }) {
         {(['kyc', 'flags'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
             className={`rounded-md px-3 py-1 ${tab === t
-              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {t === 'kyc' ? `KYC queue (${queue.data?.length ?? 0})` : `Open flags (${flags.data?.length ?? 0})`}
           </button>
@@ -169,7 +169,7 @@ export function ReportsView() {
         {REPORTS.map((r) => (
           <button key={r.name} onClick={() => setOpen(r.name)} aria-pressed={open === r.name}
             className={`rounded-md px-3 py-1 text-xs ${open === r.name
-              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {r.title}
           </button>
