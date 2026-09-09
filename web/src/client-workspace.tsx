@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
-import { FlagList, KycPanel } from './compliance.tsx';
+import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
 import { ResetPassword } from './settings.tsx';
 
@@ -82,7 +82,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
         {tab === 'assets' && <Assets h={holdings.data} />}
         {tab === 'trading' && <Trading h={holdings.data} />}
         {tab === 'funding' && <Funding id={id} h={holdings.data} compliance={compliance} onChanged={refresh} />}
-        {tab === 'documents' && <KycPanel clientId={id} canUpload={false} />}
+        {tab === 'documents' && <DocumentsPanel clientId={id} canUpload={false} />}
         {tab === 'tickets' && <Tickets rows={tickets.data ?? []} />}
         {tab === 'activity' && <ActivityTab id={id} />}
         {tab === 'audit' && <AuditTab id={id} />}

@@ -204,22 +204,42 @@ export function ReportsView() {
 
 // ------------------------------------------- panels used on other screens
 
-/** KYC documents for one client, with upload. Shown on the client record and to traders. */
-export function KycPanel({ clientId, canUpload }: { clientId: string; canUpload: boolean }) {
+/**
+ * Everything on one client's file, with upload.
+ *
+ * Two groups, because they answer different questions. Identity is what verification
+ * needs — those are the ones that move somebody from unverified to verified, and the
+ * panel says which are still missing rather than leaving people to guess. Everything else
+ * is what the desk asks for afterwards: where the money came from, a statement, a tax
+ * form. Sent up the same way, reviewed the same way, but they neither start nor finish a
+ * verification, so they are listed apart from the ones that do.
+ */
+const IDENTITY = ['id_front', 'id_back', 'proof_of_address', 'selfie'];
+const ADDITIONAL = ['bank_statement', 'source_of_funds', 'tax_document', 'other'];
+const REQUIRED = ['id_front', 'proof_of_address'];
+
+export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canUpload: boolean }) {
   const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
   const [kind, setKind] = useState('id_front');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const rows = docs.data ?? [];
+  const identity = rows.filter((d) => IDENTITY.includes(d.kind));
+  const extra = rows.filter((d) => !IDENTITY.includes(d.kind));
+  const missing = REQUIRED.filter((k) => !identity.some((d) => d.kind === k && d.status !== 'rejected'));
+
   async function upload() {
     const file = fileRef.current?.files?.[0];
-    if (!file) return;
+    if (!file) return setError('Choose a file first.');
     setBusy(true);
     setError(null);
     const form = new FormData();
     form.append('kind', kind);
     form.append('file', file);
+    // Sent with fetch rather than the api helper: this is multipart, and setting a JSON
+    // content-type on it would strip the boundary the server needs to read the parts.
     const res = await fetch(`/api/clients/${clientId}/kyc`, {
       method: 'POST', headers: { authorization: `Bearer ${token.get()}` }, body: form,
     });
@@ -230,35 +250,69 @@ export function KycPanel({ clientId, canUpload }: { clientId: string; canUpload:
   }
 
   return (
-    <div className={`${card} space-y-2`}>
-      <h2 className="text-sm font-semibold">KYC documents</h2>
-      {docs.data?.map((d) => (
-        <div key={d.id} className="flex items-center gap-2 text-sm">
-          <span className="flex-1">{pretty(d.kind)}</span>
-          <span className={STATUS[d.status] ?? ''}>{d.status}</span>
-          {d.note && <span className="text-xs text-slate-ink" title={d.note}>note</span>}
-        </div>
-      ))}
-      {docs.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing uploaded yet.</p>}
+    <div className={`${card} space-y-4`}>
+      <div>
+        <h2 className="metric-label">Identity</h2>
+        <p className="mt-1 text-xs text-slate-ink">
+          {missing.length === 0
+            ? 'Everything needed for verification is on file.'
+            : `Still needed: ${missing.map(pretty).join(', ')}.`}
+        </p>
+      </div>
+      <DocList rows={identity} empty="No identification uploaded yet." />
+
+      <div className="border-t border-pebble pt-4 dark:border-white/10">
+        <h2 className="metric-label">Additional documents</h2>
+        <p className="mt-1 text-xs text-slate-ink">
+          Anything else the desk has asked for. These are reviewed, but they do not change
+          your verification either way.
+        </p>
+      </div>
+      <DocList rows={extra} empty="Nothing else on file." />
 
       {canUpload && (
-        <div className="space-y-2 border-t border-pebble pt-2 dark:border-white/10">
-          <select className={input} value={kind} onChange={(e) => setKind(e.target.value)}>
-            {['id_front', 'id_back', 'proof_of_address', 'selfie'].map((k) =>
-              <option key={k} value={k}>{pretty(k)}</option>)}
-          </select>
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf"
-            className="block w-full text-xs text-slate-ink" />
+        <div className="space-y-2 border-t border-pebble pt-4 dark:border-white/10">
+          <h2 className="metric-label">Upload</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <select className={`${input} w-56`} value={kind} onChange={(e) => setKind(e.target.value)}
+              aria-label="Document type">
+              <optgroup label="Identity">
+                {IDENTITY.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
+              </optgroup>
+              <optgroup label="Additional">
+                {ADDITIONAL.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
+              </optgroup>
+            </select>
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf"
+              className="flex-1 text-xs text-slate-ink" />
+            <button onClick={upload} disabled={busy} className={btn}>
+              {busy ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
           <p className="text-xs text-slate-ink">JPEG, PNG or PDF, up to 10 MB.</p>
-          {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
-          <button onClick={upload} disabled={busy} className={`${btn} w-full`}>
-            {busy ? 'Uploading…' : 'Upload'}
-          </button>
+          {error && <p role="alert" className={alertBox}>{error}</p>}
         </div>
       )}
     </div>
   );
 }
+
+const DocList = ({ rows, empty }: { rows: Doc[]; empty: string }) => (
+  rows.length === 0 ? <p className="text-sm text-slate-ink">{empty}</p> : (
+    <ul className="divide-y divide-pebble dark:divide-white/10">
+      {rows.map((d) => (
+        <li key={d.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+          <span className="font-medium">{pretty(d.kind)}</span>
+          <span className={STATUS[d.status] ?? ''}>{d.status}</span>
+          {d.note && <span className="text-xs text-slate-ink">{d.note}</span>}
+          <span className="ml-auto font-mono text-xs text-slate-ink">
+            {new Date(d.uploaded_at).toLocaleDateString()}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+);
 
 /** Deposits and withdrawals for the signed-in trader. */
 export function FundingPanel() {

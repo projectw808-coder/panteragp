@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { alertBox, btn, card, field, grouped, input } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
-import { FundingPanel, KycPanel } from './compliance.tsx';
+import { FundingPanel } from './compliance.tsx';
 import { HoldingsPanel } from './wallet.tsx';
 import { positionSize } from '../../src/trading.ts';
 
@@ -62,7 +62,6 @@ export function TradeView() {
         <div className="space-y-4 self-start">
           <Ticket instruments={instruments.data ?? []} balance={a?.balance ?? 0}
             leverage={a?.leverage ?? 1} prices={prices} onPlaced={refresh} />
-          {me && <KycPanel clientId={me.sub} canUpload />}
         </div>
 
         <div className={`${card} flex min-h-0 flex-col gap-3`}>

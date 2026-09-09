@@ -8,7 +8,7 @@ import { PortfoliosPanel } from './portfolio.tsx';
 import { BalanceBar } from './balance.tsx';
 import { ProfileView } from './profile.tsx';
 import { TaskBoard } from './board.tsx';
-import { ComplianceView, ReportsView } from './compliance.tsx';
+import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
@@ -177,6 +177,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', true],
     ['#/support', 'Support', trading],
+    ['#/documents', 'Documents', trading],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
@@ -235,6 +236,12 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div> : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
+          : hash === '/documents' ? (trading && me
+            ? <div className="mx-auto max-w-3xl space-y-4">
+                <PageTitle>Documents</PageTitle>
+                <DocumentsPanel clientId={me.sub} canUpload />
+              </div>
+            : <Denied />)
           : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-ink">Trading is for account holders.</p>)
           // Settings is for everyone, so it has to be matched before the trader fallback.
           : hash === '/settings' ? <SettingsView me={me} dark={dark} setDark={setDark} />

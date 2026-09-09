@@ -991,8 +991,17 @@ app.get('/feed', { websocket: true }, (socket) => {
 
 // ----------------------------------------------------------- KYC documents
 
+// The documents that verify who somebody is. Only these decide whether a client counts as
+// verified, and only these put an account back into review when one arrives.
 const KYC_KINDS = ['id_front', 'id_back', 'proof_of_address', 'selfie'] as const;
 const REQUIRED_KYC = ['id_front', 'proof_of_address'];
+
+// Everything else a client is asked for: where the money came from, a statement, a tax
+// form. They are held on the same file and reviewed the same way, but they are not
+// identity — a bank statement arriving must not restart somebody's verification, and it
+// must never be able to complete it either.
+const EXTRA_KINDS = ['bank_statement', 'source_of_funds', 'tax_document', 'other'] as const;
+const DOC_KINDS: readonly string[] = [...KYC_KINDS, ...EXTRA_KINDS];
 // Only formats a reviewer actually needs to look at. Anything else is refused outright.
 const ALLOWED_UPLOAD = new Map([
   ['image/jpeg', '.jpg'], ['image/png', '.png'], ['application/pdf', '.pdf'],
@@ -1012,7 +1021,7 @@ app.post('/clients/:id/kyc', { preHandler: clientScope }, async (req: any, reply
   const ext = ALLOWED_UPLOAD.get(file.mimetype);
   const kind = String(file.fields?.kind?.value ?? '');
   if (!ext) return reply.code(415).send({ error: 'only jpeg, png or pdf' });
-  if (!KYC_KINDS.includes(kind as never)) return reply.code(400).send({ error: 'unknown document kind' });
+  if (!DOC_KINDS.includes(kind)) return reply.code(400).send({ error: 'unknown document kind' });
 
   // The stored name is generated: an uploaded filename never reaches the filesystem.
   const storageKey = `${randomUUID()}${ext}`;
@@ -1027,9 +1036,14 @@ app.post('/clients/:id/kyc', { preHandler: clientScope }, async (req: any, reply
     const { rows } = await c.query(
       `INSERT INTO kyc_documents (client_id, kind, storage_key) VALUES ($1,$2,$3) RETURNING *`,
       [req.params.id, kind, storageKey]);
-    await c.query(
-      `UPDATE clients SET kyc_status = 'pending' WHERE id = $1 AND kyc_status IN ('none','rejected','expired')`,
-      [req.params.id]);
+    // Only an identity document moves the verification along. A tax form from somebody who
+    // has never sent identification would otherwise mark them "pending verification" with
+    // nothing pending that could ever verify them.
+    if (KYC_KINDS.includes(kind as never)) {
+      await c.query(
+        `UPDATE clients SET kyc_status = 'pending' WHERE id = $1 AND kyc_status IN ('none','rejected','expired')`,
+        [req.params.id]);
+    }
     await logActivity(c, {
       client_id: req.params.id, kind: 'kyc', actor: req.principal.sub,
       summary: `Uploaded ${kind.replace(/_/g, ' ')}`, ref_table: 'kyc_documents', ref_id: String(rows[0].id),
@@ -1084,12 +1098,17 @@ app.post('/kyc/:id/review', { preHandler: auth('kyc:review') }, async (req: any,
     if (!doc) return null;
 
     // The client is approved once every required document is; one rejection rejects them.
+    //
+    // Identity documents only. A rejected bank statement is a rejected bank statement — it
+    // is not a statement about who the person is, and must not undo their verification.
     const { rows: all } = await c.query<{ kind: string; status: string }>(
       'SELECT kind, status FROM kyc_documents WHERE client_id = $1', [doc.client_id]);
     const approved = new Set(all.filter((d) => d.status === 'approved').map((d) => d.kind));
-    const status = body.data.status === 'rejected' ? 'rejected'
+    const identity = KYC_KINDS.includes(doc.kind);
+    const status = !identity ? null
+      : body.data.status === 'rejected' ? 'rejected'
       : REQUIRED_KYC.every((k) => approved.has(k)) ? 'approved' : 'pending';
-    await c.query('UPDATE clients SET kyc_status = $2 WHERE id = $1', [doc.client_id, status]);
+    if (status) await c.query('UPDATE clients SET kyc_status = $2 WHERE id = $1', [doc.client_id, status]);
 
     await notifyClientOf(c, {
       client_id: doc.client_id, kind: 'kyc',
@@ -2753,6 +2772,7 @@ app.get('/admin/config', { preHandler: auth('admin') }, async () => ({
   demo_starting_balance: DEMO_STARTING_BALANCE,
   flag_rules: RULES,
   required_kyc_documents: REQUIRED_KYC,
+  additional_documents: EXTRA_KINDS,
   accepted_uploads: [...ALLOWED_UPLOAD.keys()],
   instruments: (await pool.query('SELECT symbol, display_name, tick_size, lot_size FROM instruments ORDER BY symbol')).rows,
   pipeline_stages: (await pool.query('SELECT name, sort_order, is_terminal FROM pipeline_stages ORDER BY sort_order')).rows,

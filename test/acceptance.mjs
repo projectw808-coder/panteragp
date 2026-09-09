@@ -56,6 +56,12 @@ const admin = await login('admin@local.test', 'devpassword', 'staff');
 assert.ok(admin.token, 'seed account admin@local.test must exist (src/devdb.ts or src/seed.ts)');
 const A = admin.token;
 
+// Date.now() alone collides when two of these land in the same millisecond, which turns a
+// duplicate-email 409 into a confusing 401 three assertions later. The counter makes each
+// address unique within a run, the clock keeps it unique between runs.
+let seq = 0;
+const unique = (prefix) => `${prefix}+${Date.now()}-${++seq}@example.com`;
+
 await step('bad password is rejected', async () =>
   assert.equal(await status('/auth/login', { method: 'POST', body: { email: 'admin@local.test', password: 'wrongpassword', as: 'staff' } }), 401));
 await step('no token is 401', async () => assert.equal(await status('/clients'), 401));
@@ -66,7 +72,7 @@ await step('admin identity round-trips', async () => {
 });
 
 console.log('\nPhase 2 — CRM core');
-const email = `acceptance+${Date.now()}@example.com`;
+const email = unique('acceptance');
 const client = await get('/clients', { token: A, method: 'POST', body: { name: 'Acceptance Ada', email, country: 'IE', password: 'devpassword' } });
 await step('client is created and never returns its password hash', () => {
   assert.ok(client.id);
@@ -352,7 +358,7 @@ await step('a wallet withdrawal debits immediately and refunds on rejection', as
 });
 await step('one client cannot withdraw from another client wallet', async () => {
   const wallet = (await get('/wallets', { token: T })).find((w) => w.asset === 'BTC');
-  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy', email: `nosy+${Date.now()}@example.com`, password: 'devpassword' } });
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy', email: unique('nosy'), password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal(await status(`/wallets/${wallet.id}/withdraw`, { token: N, method: 'POST', body: { amount: 0.01, to_address: 'DEMO-x' } }), 404);
 });
@@ -466,7 +472,7 @@ await step('the desk can run a client portfolio, and it is recorded as the desk 
   // Ordinary CRM write access is not enough: this is the funds:credit power, which is
   // admin-only for the same reason crediting an account is.
   const seller = await get('/staff', { token: A, method: 'POST', body: {
-    name: 'Portfolio Sales', email: `pf-sales+${Date.now()}@example.com`,
+    name: 'Portfolio Sales', email: unique('pf-sales'),
     role: 'sales', password: 'a-long-enough-password' } });
   const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
   assert.equal(await status(`/portfolios/${pot.id}/contribute`,
@@ -536,7 +542,7 @@ await step('a portfolio refuses what it cannot do', async () => {
 });
 
 await step('one client cannot pay into another client portfolio', async () => {
-  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Pot', email: `pot+${Date.now()}@example.com`, password: 'devpassword' } });
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Pot', email: unique('pot'), password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal(await status(`/portfolios/${retirement.id}/contribute`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
   assert.equal(await status(`/portfolios/${retirement.id}/withdraw`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
@@ -639,7 +645,7 @@ await step('reading is idempotent and scoped to the owner', async () => {
 
 await step('an inbox belongs to one person, staff and client alike', async () => {
   const mine = (await get('/notifications', { token: T }))[0];
-  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Inbox', email: `inbox+${Date.now()}@example.com`, password: 'devpassword' } });
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Inbox', email: unique('inbox'), password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal((await get('/notifications', { token: N })).length, 0);
   assert.equal(await status(`/notifications/${mine.id}/read`, { token: N, method: 'POST' }), 404);
@@ -799,7 +805,7 @@ await step('resolving notifies, and a client reply reopens it', async () => {
 });
 
 await step('a ticket belongs to one client', async () => {
-  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Ticket', email: `tk+${Date.now()}@example.com`, password: 'devpassword' } });
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Ticket', email: unique('tk'), password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal(await status(`/tickets/${ticket.id}`, { token: N }), 404);
   assert.equal(await status(`/tickets/${ticket.id}/messages`, { token: N, method: 'POST', body: { body: 'hi' } }), 404);
@@ -821,7 +827,7 @@ await step('staff see the queue with the client attached', async () => {
 console.log('\nPasswords');
 await step('you can change your own, but only by proving the current one', async () => {
   // A fresh client, so the rest of the suite keeps the credentials it started with.
-  const email = `pw+${Date.now()}@example.com`;
+  const email = unique('pw');
   const subject = await get('/clients', { token: A, method: 'POST', body: {
     name: 'Password Pat', email, password: 'devpassword' } });
   const token = (await login(email, 'devpassword', 'client')).token;
@@ -847,7 +853,7 @@ await step('you can change your own, but only by proving the current one', async
 });
 
 await step('only an admin may set somebody else\'s, and the client is told', async () => {
-  const email = `pwreset+${Date.now()}@example.com`;
+  const email = unique('pwreset');
   const subject = await get('/clients', { token: A, method: 'POST', body: {
     name: 'Reset Rita', email, password: 'devpassword' } });
 
@@ -880,13 +886,13 @@ await step('only an admin may set somebody else\'s, and the client is told', asy
 });
 
 await step('a staff password is admin-only, and never your own by this route', async () => {
-  const email = `colleague+${Date.now()}@example.com`;
+  const email = unique('colleague');
   const colleague = await get('/staff', { token: A, method: 'POST', body: {
     name: 'Reset Colleague', email, role: 'support', password: 'a-long-enough-one' } });
   const me = (await get('/staff', { token: A })).find((s) => s.role === 'admin');
 
   const sales = await get('/staff', { token: A, method: 'POST', body: {
-    name: 'Reset Sales', email: `reset-staff-sales+${Date.now()}@example.com`, role: 'sales',
+    name: 'Reset Sales', email: unique('reset-staff-sales'), role: 'sales',
     password: 'a-long-enough-password' } });
   const salesToken = (await login(sales.email, 'a-long-enough-password', 'staff')).token;
   assert.equal(await status(`/staff/${colleague.id}/password`, { token: salesToken, method: 'POST',
@@ -925,7 +931,7 @@ await step('one call returns everything about a client to staff', async () => {
 await step('every staff role may read it; none may trade or credit through it', async () => {
   for (const role of ['sales', 'support', 'compliance']) {
     const colleague = await get('/staff', { token: A, method: 'POST', body: {
-      name: `Test ${role}`, email: `${role}+${Date.now()}@example.com`, role, password: 'a-long-enough-password' } });
+      name: `Test ${role}`, email: unique(role), role, password: 'a-long-enough-password' } });
     assert.equal(colleague.role, role);
     const token = (await login(colleague.email, 'a-long-enough-password', 'staff')).token;
     assert.equal(await status(`/clients/${client.id}/holdings`, { token }), 200, `${role} should read holdings`);
@@ -945,7 +951,7 @@ await step('every staff role may read it; none may trade or credit through it', 
 
 await step('deactivating a staff member ends their session immediately', async () => {
   const leaver = await get('/staff', { token: A, method: 'POST', body: {
-    name: 'On their way out', email: `leaver+${Date.now()}@example.com`, role: 'support', password: 'a-long-enough-password' } });
+    name: 'On their way out', email: unique('leaver'), role: 'support', password: 'a-long-enough-password' } });
   const token = (await login(leaver.email, 'a-long-enough-password', 'staff')).token;
   assert.equal(await status('/clients', { token }), 200, 'they should work while employed');
 
@@ -959,7 +965,7 @@ await step('deactivating a staff member ends their session immediately', async (
 
 await step('a role change applies at once, without a new token', async () => {
   const mover = await get('/staff', { token: A, method: 'POST', body: {
-    name: 'Promoted', email: `mover+${Date.now()}@example.com`, role: 'support', password: 'a-long-enough-password' } });
+    name: 'Promoted', email: unique('mover'), role: 'support', password: 'a-long-enough-password' } });
   const token = (await login(mover.email, 'a-long-enough-password', 'staff')).token;
   assert.equal(await status('/audit', { token }), 403, 'support cannot read the audit log');
   await get(`/staff/${mover.id}`, { token: A, method: 'PATCH', body: { role: 'compliance' } });
@@ -988,7 +994,7 @@ await step('the record is editable, and email stays unique', async () => {
   assert.equal(updated.country, 'IE');
   assert.equal(updated.tier, 'premium');
 
-  const other = await get('/clients', { token: A, method: 'POST', body: { name: 'Taken', email: `taken+${Date.now()}@example.com`, password: 'devpassword' } });
+  const other = await get('/clients', { token: A, method: 'POST', body: { name: 'Taken', email: unique('taken'), password: 'devpassword' } });
   assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { email: other.email } }), 409);
   assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { email: 'not-an-email' } }), 400);
 });
