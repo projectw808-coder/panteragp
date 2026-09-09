@@ -140,10 +140,19 @@ await step('an authenticated socket receives moving prices', async () => {
 console.log('\nPhase 5 — paper execution');
 const trader = await login(email, 'devpassword', 'client');
 const T = trader.token;
-await step('a demo account is opened on first use', async () => {
+await step('a demo account is opened on first use, and opens empty', async () => {
   const account = await get('/account', { token: T });
   assert.equal(account.mode, 'demo');
-  assert.equal(Number(account.balance), 100000);
+  // Accounts start at zero on purpose: holdings must trace back to a funding decision
+  // somebody made, not to a balance the system granted on first login.
+  assert.equal(Number(account.balance), 0);
+});
+
+await step('the desk funds the account before it can trade', async () => {
+  await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: {
+    currency: 'USD', amount: 100000, note: 'opening balance' } });
+  const account = await get('/account', { token: T });
+  assert.equal(Number(account.balance), 100000, 'the credit should reach the trading account');
 });
 await step('staff cannot place orders, and bad orders are refused', async () => {
   assert.equal(await status('/orders', { token: A, method: 'POST', body: { symbol: 'BTCUSD', side: 'buy', type: 'market', qty: 1 } }), 403);
@@ -358,7 +367,7 @@ await step('a quote prices the pair without moving anything', async () => {
   assert.ok(q.rate > 1);
   assert.equal(await status('/convert/quote?from=GBP&to=GBP&amount=10', { token: T }), 400, 'same currency');
   assert.equal(await status('/convert/quote?from=GBP&to=ZZZ&amount=10', { token: T }), 404);
-  assert.equal(await status('/convert/quote?from=SOL&to=USD&amount=1', { token: T }), 422, 'no price source');
+  assert.equal(await status('/convert/quote?from=XMR&to=USD&amount=1', { token: T }), 422, 'no price source');
 });
 await step('exchanging debits one balance and credits the other exactly', async () => {
   const held = async (code) => {
@@ -392,7 +401,7 @@ await step('a round trip never ends with more than it started', async () => {
 await step('conversion refuses what it cannot do', async () => {
   assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 1e9 } }), 400, 'over balance');
   assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'CHF', to: 'USD', amount: 10 } }), 400, 'currency not held');
-  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'SOL', to: 'USD', amount: 1 } }), 422, 'unpriced');
+  assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'XMR', to: 'USD', amount: 1 } }), 422, 'unpriced');
   assert.equal(await status('/convert', { token: T, method: 'POST', body: { from: 'GBP', to: 'USD', amount: -5 } }), 400);
   assert.equal(await status('/convert', { token: A, method: 'POST', body: { from: 'GBP', to: 'USD', amount: 1 } }), 403, 'staff do not hold balances');
 });

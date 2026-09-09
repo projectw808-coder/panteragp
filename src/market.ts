@@ -10,14 +10,90 @@ export const TIMEFRAMES = {
 } as const;
 export type Timeframe = keyof typeof TIMEFRAMES;
 
-/** Base price and daily volatility per symbol. */
+/**
+ * Base price, daily volatility and displayed digits per symbol. Every instrument in
+ * db/instruments.sql needs an entry here — without one it lists but never quotes.
+ * Volatility is set by asset class: FX moves least, then ETFs, then crypto, with the
+ * small-cap coins highest. The numbers are plausible starting points, not live prices.
+ */
 const BASE: Record<string, [price: number, vol: number, digits: number]> = {
+  // Foreign exchange
   EURUSD: [1.0850, 0.006, 5],
   GBPUSD: [1.2720, 0.007, 5],
   USDJPY: [151.40, 0.006, 3],
+  AUDUSD: [0.6580, 0.007, 5],
+  USDCAD: [1.3640, 0.006, 5],
+  USDCHF: [0.9020, 0.006, 5],
+  NZDUSD: [0.6010, 0.008, 5],
+  EURGBP: [0.8530, 0.005, 5],
+
+  // Metals
   XAUUSD: [2380.0, 0.011, 2],
+  XAGUSD: [28.40, 0.018, 3],
+
+  // Crypto
   BTCUSD: [64200, 0.035, 2],
   ETHUSD: [3120, 0.040, 2],
+  SOLUSD: [148.20, 0.055, 2],
+  XRPUSD: [0.5240, 0.050, 4],
+  ADAUSD: [0.4460, 0.052, 4],
+  DOGEUSD: [0.15200, 0.065, 5],
+  AVAXUSD: [35.60, 0.058, 2],
+  DOTUSD: [6.840, 0.050, 3],
+  LINKUSD: [17.250, 0.050, 3],
+  POLUSD: [0.5820, 0.055, 4],
+  LTCUSD: [84.30, 0.042, 2],
+  BCHUSD: [462.00, 0.048, 2],
+  ATOMUSD: [8.420, 0.052, 3],
+  UNIUSD: [9.860, 0.055, 3],
+  AAVEUSD: [96.40, 0.058, 2],
+  ARBUSD: [0.9240, 0.062, 4],
+  OPUSD: [1.8600, 0.062, 4],
+  NEARUSD: [5.320, 0.058, 3],
+  APTUSD: [8.940, 0.060, 3],
+  SUIUSD: [1.4200, 0.068, 4],
+  TONUSD: [6.180, 0.052, 3],
+  TRXUSD: [0.12400, 0.038, 5],
+  XLMUSD: [0.11200, 0.048, 5],
+  FILUSD: [4.320, 0.058, 3],
+  ICPUSD: [9.740, 0.060, 3],
+  INJUSD: [24.600, 0.065, 3],
+  ETCUSD: [26.400, 0.050, 3],
+  BNBUSD: [592.00, 0.038, 2],
+  SHIBUSD: [0.00002420, 0.070, 8],
+  PEPEUSD: [0.00001180, 0.085, 8],
+
+  // ETFs — broad market
+  SPY: [521.40, 0.011, 2],
+  QQQ: [443.60, 0.014, 2],
+  DIA: [389.20, 0.010, 2],
+  IWM: [204.80, 0.015, 2],
+  VTI: [258.30, 0.011, 2],
+  VOO: [478.90, 0.011, 2],
+
+  // ETFs — international
+  EEM: [42.60, 0.013, 2],
+  EFA: [79.40, 0.011, 2],
+  FXI: [26.80, 0.019, 2],
+
+  // ETFs — sector
+  XLF: [41.20, 0.012, 2],
+  XLK: [208.40, 0.016, 2],
+  XLE: [92.60, 0.017, 2],
+  SMH: [242.10, 0.024, 2],
+  ARKK: [47.80, 0.028, 2],
+
+  // ETFs — commodity and fixed income
+  GLD: [219.40, 0.011, 2],
+  SLV: [26.10, 0.018, 2],
+  USO: [78.20, 0.020, 2],
+  TLT: [92.40, 0.009, 2],
+  HYG: [77.60, 0.005, 2],
+
+  // ETFs — digital asset
+  IBIT: [36.80, 0.035, 2],
+  FBTC: [56.40, 0.035, 2],
+  ETHA: [22.90, 0.040, 2],
 };
 
 const hash = (s: string) => {

@@ -211,7 +211,11 @@ INSERT INTO currencies (code, name, kind, decimals) VALUES
   ('SOL','Solana','crypto',9), ('XRP','XRP','crypto',6),
   ('ADA','Cardano','crypto',6), ('DOGE','Dogecoin','crypto',8),
   ('LTC','Litecoin','crypto',8), ('BNB','BNB','crypto',18),
-  ('DOT','Polkadot','crypto',10), ('AVAX','Avalanche','crypto',18);
+  ('DOT','Polkadot','crypto',10), ('AVAX','Avalanche','crypto',18),
+  -- Deliberately has neither a trading pair nor an FX rate: an asset a client can hold
+  -- but the platform cannot price. Holdings totals must exclude it and say so rather than
+  -- guess, and a conversion involving it must be refused — see rateToUsd and totalUsd.
+  ('XMR','Monero','crypto',12);
 
 -- Units of `code` per 1 USD. Seed values only: a real deployment refreshes these from an
 -- FX provider, and crypto rates come from the price feed instead (see fxToUsd in server.ts).
@@ -254,13 +258,8 @@ CREATE TABLE instruments (
   tick_size    numeric(20,8) NOT NULL,
   lot_size     numeric(20,8) NOT NULL DEFAULT 1
 );
-INSERT INTO instruments (symbol, display_name, tick_size, lot_size) VALUES
-  ('EURUSD','Euro / US Dollar',      0.00001, 100000),
-  ('GBPUSD','Pound / US Dollar',     0.00001, 100000),
-  ('USDJPY','US Dollar / Yen',       0.001,   100000),
-  ('XAUUSD','Gold / US Dollar',      0.01,    100),
-  ('BTCUSD','Bitcoin / US Dollar',   0.01,    1),
-  ('ETHUSD','Ethereum / US Dollar',  0.01,    1);
+-- Instruments are seeded from db/instruments.sql, which db:init applies on every deploy
+-- so that new pairs reach databases that already exist. See that file.
 
 CREATE TABLE orders (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

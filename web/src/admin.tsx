@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { alertBox, card } from './App.tsx';
-import { useApi } from './api.ts';
+import { useEffect, useState } from 'react';
+import { alertBox, btn, card, field } from './App.tsx';
+import { api, useApi } from './api.ts';
 
 type Overview = {
   clients: { total: number; new_7d: number; dormant: number };
@@ -107,6 +107,8 @@ export function AdminView() {
         </div>
       </div>
 
+      <AddFunds />
+
       <div className={`${card} space-y-2`}>
         <h2 className="text-sm font-semibold">Everything happening, everywhere</h2>
         <ol className="divide-y divide-pebble dark:divide-white/10">
@@ -156,6 +158,117 @@ export function AdminView() {
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Credit any client from the dashboard, without opening their record first.
+ *
+ * The same two audited routes the client workspace uses: fiat goes to the currency
+ * account, crypto to the wallet. Accounts open empty by design, so this is how a client
+ * comes to have anything at all — which is why it is admin-only and lands on their
+ * timeline, not a quiet balance edit.
+ */
+function AddFunds() {
+  const clients = useApi<{ id: string; name: string; email: string }[]>('/clients?limit=200');
+  const currencies = useApi<{ code: string; name: string; kind: 'fiat' | 'crypto' }[]>('/currencies');
+  const [clientId, setClientId] = useState('');
+  const [code, setCode] = useState('USD');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const chosen = currencies.data?.find((c) => c.code === code);
+  const fiat = currencies.data?.filter((c) => c.kind === 'fiat') ?? [];
+  const crypto = currencies.data?.filter((c) => c.kind === 'crypto') ?? [];
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setDone(null);
+    if (!clientId) return setError('choose a client');
+    setBusy(true);
+    try {
+      // Crypto goes to the wallet, fiat to the currency account. Same button, right route.
+      const path = chosen?.kind === 'crypto'
+        ? `/clients/${clientId}/wallet-credit`
+        : `/clients/${clientId}/credit`;
+      const body = chosen?.kind === 'crypto'
+        ? { asset: code, amount: Number(amount) }
+        : { currency: code, amount: Number(amount), note: note || undefined };
+      await api(path, { method: 'POST', body: JSON.stringify(body) });
+      const who = clients.data?.find((c) => c.id === clientId)?.name ?? 'client';
+      setDone(`Credited ${amount} ${code} to ${who}`);
+      setAmount('');
+      setNote('');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className={`${card} space-y-3`}>
+      <div>
+        <h2 className="text-sm font-semibold">Add funds to a client</h2>
+        <p className="mt-1 text-xs text-slate-ink">
+          Accounts open with nothing in them. Crypto lands in the client's wallet, currencies
+          in their cash account. Audited, and written to their timeline.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-ink">
+          Client
+          <select className={`${field} mt-1 block w-64`} value={clientId}
+            onChange={(e) => setClientId(e.target.value)}>
+            <option value="">Choose a client…</option>
+            {clients.data?.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} — {c.email}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-xs text-slate-ink">
+          Currency
+          <select className={`${field} mt-1 block w-52`} value={code}
+            onChange={(e) => setCode(e.target.value)}>
+            <optgroup label="Crypto">
+              {crypto.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+            </optgroup>
+            <optgroup label="Currencies">
+              {fiat.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+            </optgroup>
+          </select>
+        </label>
+
+        <label className="text-xs text-slate-ink">
+          Amount
+          <input className={`${field} mt-1 block w-36`} type="number" step="any" min="0" required
+            placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+
+        {chosen?.kind !== 'crypto' && (
+          <label className="text-xs text-slate-ink">
+            Reason
+            <input className={`${field} mt-1 block w-56`} placeholder="Appears on the timeline"
+              value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+        )}
+
+        <button className={btn} disabled={busy}>{busy ? 'Crediting…' : 'Add funds'}</button>
+      </div>
+
+      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
+      {done && (
+        <p role="status" className="font-mono text-xs text-slate-ink">
+          {done} · <a className="hover:underline" href={`#/clients/${clientId}`}>open the client</a>
+        </p>
+      )}
+    </form>
   );
 }
 

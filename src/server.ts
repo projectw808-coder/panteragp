@@ -767,7 +767,12 @@ async function checkVolume(clientId: string) {
 
 // ---------------------------------------------------------------- trading
 
-const DEMO_STARTING_BALANCE = 100_000;
+/**
+ * A new account opens empty. Funding is something the desk does deliberately, through the
+ * audited credit route, so a client's holdings always trace back to a decision somebody
+ * made rather than to a number the system invented on their first login.
+ */
+const DEMO_STARTING_BALANCE = 0;
 
 /** The caller's demo account, created on first use. Live accounts are never served. */
 async function demoAccount(clientId: string) {

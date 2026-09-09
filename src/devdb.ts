@@ -44,6 +44,9 @@ const client = pg.getPgClient();
 await client.connect();
 const { rows: [existing] } = await client.query<{ present: string | null }>(
   "SELECT to_regclass('public.clients')::text AS present");
+// Reference data, applied every start so a new trading pair appears without a reset.
+const instruments = () => client.query(readFileSync(join(root, 'db', 'instruments.sql'), 'utf8'));
+
 if (!existing?.present) {
   await client.query(readFileSync(join(root, 'db', 'schema.sql'), 'utf8'));
   await client.query("SELECT set_config('app.actor', 'seed', false)");
@@ -52,6 +55,7 @@ if (!existing?.present) {
     [await hashPassword('devpassword')],
   );
 }
+await instruments();
 await client.end();
 
 // Postgres is a child process, so leaving it running would hold port 5432 after this exits.

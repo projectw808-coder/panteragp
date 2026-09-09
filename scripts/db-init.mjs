@@ -41,6 +41,13 @@ try {
     console.log('now create the first staff account:');
     console.log('  node --experimental-strip-types src/seed.ts <email> <password> admin');
   }
+
+  // Instruments are reference data, so they run every time rather than only on a fresh
+  // database: adding a trading pair has to reach deployments that already exist. The file
+  // is ON CONFLICT DO NOTHING throughout, so repeating it changes nothing.
+  await client.query(readFileSync(join(root, 'db', 'instruments.sql'), 'utf8'));
+  const { rows: [{ count }] } = await client.query('SELECT count(*)::int AS count FROM instruments');
+  console.log(`instruments available: ${count}`);
 } finally {
   await client.end();
 }

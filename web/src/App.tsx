@@ -98,7 +98,7 @@ function Login({ mode, onDone, onMode, onBack }: {
       <form onSubmit={submit} className="w-80 space-y-3 rounded-xl bg-onyx p-6 [box-shadow:var(--shadow-inset-dark)]">
         <button type="button" onClick={onBack} className="font-mono text-xs text-mist hover:text-vellum">← back</button>
         <div>
-          <span className="font-display text-2xl text-vellum">PanteraAI</span>
+          <span className="font-display text-2xl text-vellum">Pantera GP</span>
           <span className="text-ember"> ///</span>
         </div>
 
@@ -176,7 +176,7 @@ function Shell({ dark, setDark, onLogout }: {
           while the app keeps the same visual DNA as the marketing hero. */}
       <aside className="flex w-56 shrink-0 flex-col bg-obsidian dark:bg-onyx">
         <div className="px-5 py-5">
-          <span className="font-display text-lg text-vellum">PanteraAI</span>
+          <span className="font-display text-lg text-vellum">Pantera GP</span>
           <span className="text-ember"> ///</span>
           <p className="mt-1 font-mono text-[11px] uppercase tracking-wide text-mist">
             {crm ? 'Client desk' : 'Terminal'}
@@ -233,7 +233,7 @@ function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) =
   );
 }
 
-// ── PanteraAI primitives ────────────────────────────────────────────────────────
+// ── Pantera GP primitives ────────────────────────────────────────────────────────
 // Defined once and consumed by every screen, so the system holds instead of drifting.
 // Rules enforced here: 8px radius on controls, 12px on surfaces, never 0px; no drop
 // shadows anywhere; ember orange only for primary actions, focus and needs-action.

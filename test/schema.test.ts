@@ -13,6 +13,9 @@ let clientId: string;
 before(async () => {
   db = await PGlite.create();
   await db.exec(readFileSync(join(import.meta.dirname, '..', 'db', 'schema.sql'), 'utf8'));
+  // Instruments live in their own file so new pairs can reach existing databases; the
+  // orders below reference EURUSD, so the reference data has to be loaded here too.
+  await db.exec(readFileSync(join(import.meta.dirname, '..', 'db', 'instruments.sql'), 'utf8'));
   await db.query("SELECT set_config('app.actor', 'test-actor', false)");
   staffId = (await db.query<{ id: string }>(
     `INSERT INTO staff (email, name, role, password_hash)

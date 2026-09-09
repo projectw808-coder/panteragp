@@ -196,7 +196,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section id="top" className="stage relative flex min-h-screen flex-col overflow-hidden">
         <nav className="anim-fade sticky top-0 z-30 flex items-center gap-4 border-b border-white/10 bg-[color:var(--stage)]/85 px-8 py-4 backdrop-blur">
           <button onClick={() => go('top')} className="flex items-center gap-2">
-            <span className="display text-lg text-vellum">PanteraAI</span>
+            <span className="display text-lg text-vellum">Pantera GP</span>
             <span className="font-mono text-xs text-ember">///</span>
           </button>
           <div className="ml-8 hidden items-center gap-7 lg:flex">
@@ -435,7 +435,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div>
               <div className="flex items-center gap-2">
-                <span className="display text-lg text-vellum">PanteraAI</span>
+                <span className="display text-lg text-vellum">Pantera GP</span>
                 <span className="font-mono text-xs text-ember">///</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
@@ -470,7 +470,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-xs text-mist">
             <span>Simulated trading. No real funds move, and no real funds can be deposited.</span>
-            <span className="ml-auto">© {new Date().getFullYear()} PanteraAI</span>
+            <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
           </div>
         </div>
       </section>
