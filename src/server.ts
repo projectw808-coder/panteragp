@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { can, hashPassword, signToken, verifyPassword, verifyToken, type Perm, type Principal, type Role } from './auth.ts';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
-import { createReadStream, createWriteStream } from 'node:fs';
+import fastifyStatic from '@fastify/static';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
@@ -28,6 +29,11 @@ pg.types.setTypeParser(20, Number);
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PG_POOL_MAX ?? 10),
+  // Managed Postgres reached over the public internet needs TLS; the same database over a
+  // provider's private network does not, and neither does the local dev one. Off unless
+  // asked for, so nothing silently downgrades. Railway: prefer its internal host and
+  // leave this unset.
+  ...(process.env.DATABASE_SSL === 'require' ? { ssl: { rejectUnauthorized: true } } : {}),
 });
 
 /** Every write runs in here: one transaction, actor stamped for the audit triggers. */
@@ -59,7 +65,19 @@ export function logActivity(c: pg.PoolClient, a: {
   );
 }
 
-const app = Fastify({ logger: true });
+/**
+ * The browser always calls the API under /api — in development Vite proxies that away, and
+ * in production this strips it, so one origin serves both the app and the API and the
+ * front end needs no build-time switch. rewriteUrl runs before routing, which an onRequest
+ * hook does not, and it also catches the WebSocket upgrade at /api/feed.
+ */
+const app = Fastify({
+  logger: true,
+  rewriteUrl: (req) => {
+    const url = req.url ?? '/';
+    return url === '/api' ? '/' : url.startsWith('/api/') ? url.slice(4) : url;
+  },
+});
 
 // Without this, an error on an idle client (db restart, dropped connection) is an
 // unhandled 'error' event and takes the process down.
@@ -2325,6 +2343,41 @@ app.get('/audit', { preHandler: auth('audit:read') }, async (req) => {
     [q.tbl ?? null, q.row_id ?? null, q.limit]);
   return rows;
 });
+
+/**
+ * For the platform's health check. Touches the database, because a process that is up but
+ * cannot reach Postgres is not healthy — it would serve 500s to every request. Says
+ * nothing about versions or internals to an anonymous caller.
+ */
+app.get('/health', async (_req, reply) => {
+  try {
+    await pool.query('SELECT 1');
+    return { ok: true };
+  } catch {
+    return reply.code(503).send({ ok: false });
+  }
+});
+
+// --------------------------------------------------------------- the web app
+//
+// In development Vite serves the front end and proxies /api here. In production there is
+// no Vite, so this serves web/dist itself: one origin, one service, no CORS, and the
+// WebSocket feed on the same host. Registered last so it never shadows an API route.
+
+const WEB_DIST = join(import.meta.dirname, '..', 'web', 'dist');
+if (existsSync(join(WEB_DIST, 'index.html'))) {
+  await app.register(fastifyStatic, { root: WEB_DIST });
+  // Hash routing means every deep link is still '/', but a stray path should land on the
+  // app rather than a 404 page. API 404s are unaffected: they were routed before this.
+  app.setNotFoundHandler((req, reply) => (
+    req.method === 'GET' && !req.url.startsWith('/api')
+      ? reply.sendFile('index.html')
+      : reply.code(404).send({ error: 'not found' })
+  ));
+  app.log.info('serving the built web app from web/dist');
+} else {
+  app.log.info('no web/dist — API only, run the Vite dev server for the front end');
+}
 
 if (process.argv[1]?.endsWith('server.ts')) {
   app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

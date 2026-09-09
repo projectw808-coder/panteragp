@@ -349,6 +349,46 @@ live list. At the time of writing:
 | `web/src/App.tsx` | Hash routing, five flat routes. | When routes nest: react-router. |
 | `web/src/chart.tsx` | Resizing a chart re-fits and so resets zoom. | When someone complains. |
 
+## Deploying to Railway
+
+One service runs the whole thing: the API serves the built front end from `web/dist`, so
+there is a single origin, no CORS, and the WebSocket feed shares the host. The browser
+always calls `/api/...` — Vite proxies that away in development, and `rewriteUrl` in
+`src/server.ts` strips it in production.
+
+1. **New project → Deploy from GitHub repo**, pointing at this repository. `railway.json`
+   supplies the build and start commands; `engines.node` pins Node 24, which the API needs
+   for `--experimental-strip-types`.
+2. **Add the Postgres plugin** to the same project. Railway injects `DATABASE_URL`.
+   Use the **internal** host it provides — traffic stays on the private network, so no TLS
+   is needed. Only if you connect over the public host, set `DATABASE_SSL=require`.
+3. **Set `JWT_SECRET`** to at least 32 random characters. The API refuses to sign or verify
+   without it, so this is not optional:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+4. **Attach a volume** mounted at `/data`, and set `UPLOAD_DIR=/data/uploads`. Without it,
+   KYC documents are written to the container filesystem and are **gone on the next
+   deploy** — see the warning below.
+5. **Deploy.** The start command runs `db:init` first, which creates the schema on an empty
+   database and does nothing on one that already has it.
+6. **Create the first staff account** once, from the Railway shell. There is no default
+   admin in production on purpose:
+   `node --experimental-strip-types src/seed.ts you@example.com 'a-long-password' admin`
+7. **Point the domain at it.** Railway gives the service a `*.up.railway.app` hostname; add
+   your domain in Railway → Settings → Networking, then at GoDaddy (DNS → Manage DNS):
+
+   | Type | Name | Value |
+   |---|---|---|
+   | CNAME | `www` | the `*.up.railway.app` host Railway shows you |
+   | A or forwarding | `@` | GoDaddy cannot CNAME the apex — use its forwarding to `www`, or Railway's apex A record if it offers one for your domain |
+
+   Railway issues the TLS certificate once DNS resolves. Propagation is usually minutes.
+
+**Two things that will bite if ignored.** Uploaded KYC documents live on local disk, so
+without the volume in step 4 every deploy loses them — this is the `storage_key` note in
+the pre-production list, and object storage is the real answer. And `db:init` is not a
+migration tool: it creates the schema once and cannot carry an existing database forward
+to a changed one, so the first schema change after go-live needs real migrations.
+
 ## Before this touches production
 1. Run `db:reset` against a Postgres you host and back up (`src/devdb.ts` runs a real
    server, but it is an unmanaged local cluster wiped on boot — dev only).
