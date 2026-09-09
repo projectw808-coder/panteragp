@@ -742,6 +742,20 @@ await step('the record is editable, and email stays unique', async () => {
   assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { email: 'not-an-email' } }), 400);
 });
 
+await step('a nullable field set by mistake can be set back to nothing', async () => {
+  // Both of these are nullable in the schema, and the UI offers a blank option for each,
+  // so refusing null would leave a wrong value on the record for good.
+  const me = (await get('/staff', { token: A }))[0];
+  for (const [field, value] of [['risk_profile', 'high'], ['owner_staff_id', me.id]]) {
+    const set = await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { [field]: value } });
+    assert.equal(set[field], value, `${field} did not take`);
+    const cleared = await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { [field]: null } });
+    assert.equal(cleared[field], null, `${field} could be set but not cleared`);
+  }
+  // Null is not a way past the allowed values.
+  assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { risk_profile: 'catastrophic' } }), 400);
+});
+
 await step('a KYC override needs kyc:review and is recorded as an override', async () => {
   await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'expired' } });
   assert.equal((await get(`/clients/${client.id}`, { token: A })).kyc_status, 'expired');
