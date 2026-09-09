@@ -3,6 +3,7 @@ import { btn, card, field, input } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { FlagList, KycPanel } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
+import { ResetPassword } from './settings.tsx';
 
 type Holdings = {
   accounts: { id: string; currency: string; balance: number; mode: string; leverage: number }[];
@@ -239,7 +240,29 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
           {tasks.data?.length === 0 && <p className="text-sm text-slate-ink">None.</p>}
         </div>
       </div>
-      {admin && <CreditForm clientId={id} onDone={onChanged} />}
+      <div className="space-y-4">
+        {admin && <CreditForm clientId={id} onDone={onChanged} />}
+        {admin && <ClientPassword id={id} name={c.name} />}
+      </div>
+    </div>
+  );
+}
+
+/** Locked-out clients ring support, so an admin can set a password for them here. */
+function ClientPassword({ id, name }: { id: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`${card} space-y-2`}>
+      <h2 className="text-sm font-medium">Sign-in</h2>
+      {open
+        ? <ResetPassword path={`/clients/${id}/password`} who={name} onDone={() => setOpen(false)} />
+        : <>
+            <button className={btn} onClick={() => setOpen(true)}>Reset password</button>
+            <p className="text-xs text-slate-ink">
+              Sets a new password on the client's account. Written to their timeline, and
+              they are notified.
+            </p>
+          </>}
     </div>
   );
 }

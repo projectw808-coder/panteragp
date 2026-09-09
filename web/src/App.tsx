@@ -8,6 +8,7 @@ import { ComplianceView, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList, TaskList } from './views.tsx';
+import { SettingsView } from './settings.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -115,6 +116,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/reports', 'Reports', crm],
     ['#/charts', 'Charts', true],
     ['#/trade', 'Trade', trading],
+    ['#/settings', 'Settings', true],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
@@ -149,6 +151,8 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <Denied />)
           : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-ink">Trading is for account holders.</p>)
+          // Settings is for everyone, so it has to be matched before the trader fallback.
+          : hash === '/settings' ? <SettingsView me={me} dark={dark} setDark={setDark} />
           : !crm ? <TradeView />
           : clientId ? <ClientWorkspace id={clientId} me={me} />
           : hash === '/tasks' ? <TaskList />

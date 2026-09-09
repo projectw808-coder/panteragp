@@ -48,7 +48,7 @@ export async function verifyToken(token: string): Promise<Principal> {
 
 export type Perm =
   | 'crm:read' | 'crm:write' | 'trade:read' | 'trade:own'
-  | 'kyc:review' | 'audit:read' | 'funds:credit' | 'admin';
+  | 'kyc:review' | 'audit:read' | 'funds:credit' | 'password:reset' | 'admin';
 
 const PERMS: Record<Role, Perm[]> = {
   trader:     ['trade:own'],
@@ -57,8 +57,11 @@ const PERMS: Record<Role, Perm[]> = {
   compliance: ['crm:read', 'trade:read', 'kyc:review', 'audit:read'],
   // funds:credit puts money on a client account out of nothing. Deliberately admin-only:
   // it is not part of ordinary CRM write access.
+  // password:reset is the same shape of power: setting someone's password hands over
+  // their account, so it is not something ordinary CRM write access should carry.
+  // Anyone can always change their OWN password — that needs no permission at all.
   admin:      ['crm:read', 'crm:write', 'trade:read', 'trade:own', 'kyc:review', 'audit:read',
-               'funds:credit', 'admin'],
+               'funds:credit', 'password:reset', 'admin'],
 };
 
 export const can = (role: Role, perm: Perm): boolean => PERMS[role]?.includes(perm) ?? false;

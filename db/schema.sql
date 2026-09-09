@@ -66,7 +66,7 @@ CREATE TABLE activity_log (
   id        bigserial PRIMARY KEY,
   client_id uuid NOT NULL REFERENCES clients(id),
   at        timestamptz NOT NULL DEFAULT now(),
-  kind      text NOT NULL,        -- order.placed | order.filled | deposit | withdrawal | login | note | ticket | kyc | stage
+  kind      text NOT NULL,        -- order.placed | order.filled | deposit | withdrawal | login | note | ticket | kyc | stage | security
   actor     text,                 -- staff uuid, client uuid, or 'system'
   summary   text NOT NULL,
   ref_table text,                 -- source row, for drill-through
@@ -435,7 +435,7 @@ CREATE INDEX ON portfolio_transactions (portfolio_id, at DESC);
 CREATE TABLE notifications (
   id         bigserial PRIMARY KEY,
   client_id  uuid NOT NULL REFERENCES clients(id),
-  kind       text NOT NULL,        -- order.filled | deposit | withdrawal | kyc | interest | credit | message
+  kind       text NOT NULL,        -- order.filled | deposit | withdrawal | kyc | interest | credit | message | security
   title      text NOT NULL,
   body       text,
   ref_table  text,

@@ -265,6 +265,92 @@ app.patch('/staff/:id', { preHandler: auth('admin') }, async (req: any, reply) =
   });
 });
 
+// ------------------------------------------------------------------ passwords
+//
+// Two separate powers, deliberately not the same route:
+//   - changing your own password, which anyone may do but only by proving the current one;
+//   - setting somebody else's, which hands over their account and so is admin-only.
+// The audit trigger strips password_hash from both sides of its diff, so these changes are
+// recorded as having happened without the hash ever reaching the log.
+
+/** Long enough to be worth having; the ceiling stops a megabyte reaching scrypt. */
+const newPassword = z.string().min(8).max(200);
+
+/** Anyone, staff or client, changing their own — current password required. */
+app.post('/me/password', { preHandler: auth() }, async (req: any, reply) => {
+  const body = z.object({
+    current_password: z.string().min(1).max(200),
+    new_password: newPassword,
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { current_password, new_password } = body.data;
+
+  const table = req.principal.kind === 'staff' ? 'staff' : 'clients';
+  const { rows: [row] } = await pool.query<{ password_hash: string | null }>(
+    `SELECT password_hash FROM ${table} WHERE id = $1`, [req.principal.sub]);
+  if (!row) return reply.code(401).send({ error: 'unauthenticated' });
+  if (!(await verifyPassword(current_password, row.password_hash))) {
+    return reply.code(403).send({ error: 'current password is wrong' });
+  }
+  if (await verifyPassword(new_password, row.password_hash)) {
+    return reply.code(400).send({ error: 'the new password is the same as the current one' });
+  }
+
+  const hash = await hashPassword(new_password);
+  await tx(req.principal.sub, async (c) => {
+    await c.query(`UPDATE ${table} SET password_hash = $2 WHERE id = $1`, [req.principal.sub, hash]);
+    if (req.principal.kind === 'client') {
+      await logActivity(c, {
+        client_id: req.principal.sub, kind: 'security', actor: req.principal.sub,
+        summary: 'Client changed their own password',
+      });
+    }
+  });
+  // ponytail: existing tokens stay valid until they expire. Revoking them needs a token
+  // version column and a check per request — worth it when sessions are longer than 8h.
+  return { ok: true };
+});
+
+/** An admin setting a client's password. The client is told, because they must be. */
+app.post('/clients/:id/password', { preHandler: auth('password:reset') }, async (req: any, reply) => {
+  const body = z.object({ new_password: newPassword }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const hash = await hashPassword(body.data.new_password);
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      'UPDATE clients SET password_hash = $2 WHERE id = $1 RETURNING id', [req.params.id, hash]);
+    if (!rows[0]) return reply.code(404).send({ error: 'no such client' });
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'security', actor: req.principal.sub,
+      summary: 'Password reset by staff',
+    });
+    // Silent credential changes are how account takeovers stay unnoticed.
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'security', title: 'Your password was reset',
+      body: 'A member of staff set a new password on your account. If you were not expecting this, contact support.',
+    });
+    return { ok: true };
+  });
+});
+
+/** An admin setting a colleague's password. Not their own — that route needs the current one. */
+app.post('/staff/:id/password', { preHandler: auth('password:reset') }, async (req: any, reply) => {
+  const body = z.object({ new_password: newPassword }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (req.params.id === req.principal.sub) {
+    return reply.code(409).send({ error: 'change your own password from Settings, with your current one' });
+  }
+
+  const hash = await hashPassword(body.data.new_password);
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      'UPDATE staff SET password_hash = $2 WHERE id = $1 RETURNING id', [req.params.id, hash]);
+    if (!rows[0]) return reply.code(404).send({ error: 'no such staff member' });
+    return { ok: true };
+  });
+});
+
 /** Traders reach their own record; staff need crm:read. */
 const clientScope = async (req: any, reply: any) => {
   if (!(await authenticate(req, reply))) return;

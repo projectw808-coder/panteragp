@@ -658,6 +658,97 @@ await step('staff see the queue with the client attached', async () => {
   assert.ok(kinds.includes('ticket'), 'ticket activity missing from the timeline');
 });
 
+console.log('\nPasswords');
+await step('you can change your own, but only by proving the current one', async () => {
+  // A fresh client, so the rest of the suite keeps the credentials it started with.
+  const email = `pw+${Date.now()}@example.com`;
+  const subject = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Password Pat', email, password: 'devpassword' } });
+  const token = (await login(email, 'devpassword', 'client')).token;
+
+  assert.equal(await status('/me/password', { token, method: 'POST', body: {
+    current_password: 'not-the-password', new_password: 'a-brand-new-one' } }), 403,
+    'the current password must actually be checked');
+  assert.equal(await status('/me/password', { token, method: 'POST', body: {
+    current_password: 'devpassword', new_password: 'short' } }), 400, 'too short must be refused');
+  assert.equal(await status('/me/password', { token, method: 'POST', body: {
+    current_password: 'devpassword', new_password: 'devpassword' } }), 400,
+    'setting the same password again is not a change');
+
+  assert.equal(await status('/me/password', { token, method: 'POST', body: {
+    current_password: 'devpassword', new_password: 'a-brand-new-one' } }), 200);
+  assert.ok((await login(email, 'a-brand-new-one', 'client')).token, 'the new password should work');
+  assert.equal((await login(email, 'devpassword', 'client')).error ? 1 : 0, 1, 'the old one must not');
+
+  // The client's own change lands on their timeline, so an account takeover is visible.
+  const kinds = (await get(`/clients/${subject.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('security'), 'a password change belongs on the timeline');
+  return subject;
+});
+
+await step('only an admin may set somebody else\'s, and the client is told', async () => {
+  const email = `pwreset+${Date.now()}@example.com`;
+  const subject = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Reset Rita', email, password: 'devpassword' } });
+
+  // Ordinary CRM write access is not enough: this hands over the account. Real accounts,
+  // not forged role claims — authenticate() reads the role from the row, so a forged
+  // claim on an admin's id would still be an admin and the check would pass for nothing.
+  for (const role of ['sales', 'support', 'compliance']) {
+    const colleague = await get('/staff', { token: A, method: 'POST', body: {
+      name: `Reset ${role}`, email: `reset-${role}+${Date.now()}@example.com`, role,
+      password: 'a-long-enough-password' } });
+    const token = (await login(colleague.email, 'a-long-enough-password', 'staff')).token;
+    assert.equal(await status(`/clients/${subject.id}/password`, { token, method: 'POST', body: {
+      new_password: 'taken-over-by-staff' } }), 403, `${role} must not reset a client password`);
+  }
+  assert.equal(await status(`/clients/${subject.id}/password`, { method: 'POST', body: {
+    new_password: 'no-token-at-all' } }), 401);
+  assert.equal(await status('/clients/00000000-0000-0000-0000-000000000000/password', {
+    token: A, method: 'POST', body: { new_password: 'nobody-home' } }), 404);
+
+  assert.equal(await status(`/clients/${subject.id}/password`, { token: A, method: 'POST', body: {
+    new_password: 'set-by-the-admin' } }), 200);
+  const theirs = (await login(email, 'set-by-the-admin', 'client')).token;
+  assert.ok(theirs, 'the password the admin set should work');
+
+  // Being told is the point: a silent credential change is how a takeover goes unnoticed.
+  const inbox = await get('/notifications', { token: theirs });
+  assert.ok(inbox.some((n) => n.kind === 'security'), 'the client must be notified');
+  const kinds = (await get(`/clients/${subject.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('security'), 'the reset belongs on the timeline');
+});
+
+await step('a staff password is admin-only, and never your own by this route', async () => {
+  const email = `colleague+${Date.now()}@example.com`;
+  const colleague = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Reset Colleague', email, role: 'support', password: 'a-long-enough-one' } });
+  const me = (await get('/staff', { token: A })).find((s) => s.role === 'admin');
+
+  const sales = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Reset Sales', email: `reset-staff-sales+${Date.now()}@example.com`, role: 'sales',
+    password: 'a-long-enough-password' } });
+  const salesToken = (await login(sales.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/staff/${colleague.id}/password`, { token: salesToken, method: 'POST',
+    body: { new_password: 'promoted-myself' } }), 403, 'sales must not reset a colleague');
+  // Resetting your own without the current one would turn a stolen session into a takeover.
+  assert.equal(await status(`/staff/${me.id}/password`, { token: A, method: 'POST', body: {
+    new_password: 'skipping-the-current-one' } }), 409);
+
+  assert.equal(await status(`/staff/${colleague.id}/password`, { token: A, method: 'POST', body: {
+    new_password: 'set-by-the-admin' } }), 200);
+  assert.ok((await login(email, 'set-by-the-admin', 'staff')).token, 'the new staff password should work');
+});
+
+await step('the password hash never reaches the audit log', async () => {
+  const rows = await get('/audit?limit=200', { token: A });
+  for (const r of rows) {
+    for (const side of [r.before, r.after]) {
+      assert.ok(!side || !('password_hash' in side), 'a password hash leaked into the audit log');
+    }
+  }
+});
+
 console.log('\nAdmin CRM');
 await step('one call returns everything about a client to staff', async () => {
   const h = await get(`/clients/${client.id}/holdings`, { token: A });
