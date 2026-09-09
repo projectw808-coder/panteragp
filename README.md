@@ -36,6 +36,8 @@ Live feed: `WS /feed` — the client authenticates in its first message, then re
 for its own account (staff with `trade:read` see them too).
 Currencies and wallets: `GET /currencies` · `GET /accounts` · `GET|POST /wallets`
 Converter: `GET /convert/quote` · `POST /convert` · `GET /conversions`
+Tickets: `GET|POST /tickets` · `GET /tickets/:id` · `POST /tickets/:id/messages`
+`PATCH /tickets/:id` (staff triage)
 Notifications: `GET /notifications` · `GET /notifications/unread-count`
 `POST /notifications/:id/read` · `POST /notifications/read-all` · `POST /clients/:id/notify` (staff)
 Accrual: `POST /admin/accrue` (idempotent; also runs hourly)
@@ -203,6 +205,27 @@ from the charts too.
 
 `POST /clients/:id/notify` lets staff message a client directly, which is the CRM and the
 client-facing side sharing one inbox.
+
+
+## Support tickets
+
+A client raises a ticket with a subject, a category and a first message; staff triage it
+from a queue ordered by priority. Every message and status change lands on the client's CRM
+timeline, so support sits in the same record as their trades and their KYC.
+
+**Status says whose turn it is.** `open` is waiting on us and `pending` on the client, so a
+staff reply moves a ticket to `pending` and a client reply moves it back to `open`. A reply
+to a `resolved` ticket reopens it and clears the resolution rather than stranding the
+client with a closed conversation.
+
+**Internal notes are a privacy boundary, not a display hint.** Staff can attach a note to a
+ticket that the client must never see. Every client-facing read filters on
+`internal = false` — the thread, and the message *count* in the list, which would otherwise
+disclose that a note exists at all. A client passing `internal: true` has it stored as
+false; the flag is staff-only. There are acceptance checks for each of those, because this
+is exactly the kind of constraint an innocent refactor breaks.
+
+Staff replies notify the client through the notification system; internal notes do not.
 
 
 ## Compliance

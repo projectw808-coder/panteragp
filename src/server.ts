@@ -1144,6 +1144,199 @@ app.post('/clients/:id/notify', { preHandler: auth('crm:write') }, async (req: a
   return reply.code(201).send(out);
 });
 
+// ---------------------------------------------------------- support tickets
+
+/**
+ * Resolve who is asking and which client's tickets they may see. A client gets its own
+ * and nothing else; staff need crm:read and may name a client. Returns null once a reply
+ * has already been sent.
+ */
+async function ticketScope(req: any, reply: any): Promise<{ clientId: string | null; staff: boolean } | null> {
+  if (!(await authenticate(req, reply))) return null;
+  if (req.principal.kind === 'client') return { clientId: req.principal.sub, staff: false };
+  if (!can(req.principal.role, 'crm:read')) {
+    reply.code(403).send({ error: 'forbidden' });
+    return null;
+  }
+  const q = z.object({ client_id: z.string().uuid().optional() }).parse(req.query ?? {});
+  return { clientId: q.client_id ?? null, staff: true };
+}
+
+app.get('/tickets', async (req: any, reply) => {
+  const scope = await ticketScope(req, reply);
+  if (!scope) return;
+  const q = z.object({
+    status: z.enum(['open', 'pending', 'resolved', 'closed', 'live']).optional(),
+  }).parse(req.query ?? {});
+
+  const { rows } = await pool.query(
+    `SELECT t.*, c.name AS client_name, s.name AS assignee_name,
+            (SELECT count(*) FROM ticket_messages m
+              WHERE m.ticket_id = t.id AND (m.internal = false OR $3::bool)) AS messages,
+            (SELECT max(created_at) FROM ticket_messages m WHERE m.ticket_id = t.id) AS last_message_at
+       FROM tickets t
+       JOIN clients c ON c.id = t.client_id
+       LEFT JOIN staff s ON s.id = t.assigned_to
+      WHERE ($1::uuid IS NULL OR t.client_id = $1)
+        AND ($2::text IS NULL
+             OR ($2 = 'live' AND t.status IN ('open','pending'))
+             OR t.status = $2)
+      ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+               t.updated_at DESC
+      LIMIT 200`,
+    [scope.clientId, q.status ?? null, scope.staff]);
+  return rows;
+});
+
+app.get('/tickets/:id', async (req: any, reply) => {
+  const scope = await ticketScope(req, reply);
+  if (!scope) return;
+  const { rows: [ticket] } = await pool.query(
+    `SELECT t.*, c.name AS client_name, s.name AS assignee_name
+       FROM tickets t JOIN clients c ON c.id = t.client_id
+       LEFT JOIN staff s ON s.id = t.assigned_to
+      WHERE t.id = $1 AND ($2::uuid IS NULL OR t.client_id = $2)`,
+    [req.params.id, scope.clientId]);
+  if (!ticket) return reply.code(404).send({ error: 'no such ticket' });
+
+  // The one filter that matters: internal notes are staff-only.
+  const { rows: messages } = await pool.query(
+    `SELECT m.id, m.author_kind, m.body, m.internal, m.created_at,
+            coalesce(s.name, c.name) AS author_name
+       FROM ticket_messages m
+       LEFT JOIN staff s ON s.id = m.author_id AND m.author_kind = 'staff'
+       LEFT JOIN clients c ON c.id = m.author_id AND m.author_kind = 'client'
+      WHERE m.ticket_id = $1 AND (m.internal = false OR $2::bool)
+      ORDER BY m.created_at, m.id`,
+    [req.params.id, scope.staff]);
+  return { ...ticket, messages };
+});
+
+const ticketBody = z.object({
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(5000),
+  category: z.enum(['account', 'funding', 'trading', 'kyc', 'technical', 'other']).default('other'),
+});
+
+app.post('/tickets', { preHandler: trader }, async (req: any, reply) => {
+  const body = ticketBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const ticket = await tx(req.principal.sub, async (c) => {
+    const { rows: [t] } = await c.query(
+      `INSERT INTO tickets (client_id, subject, category) VALUES ($1,$2,$3) RETURNING *`,
+      [req.principal.sub, body.data.subject, body.data.category]);
+    await c.query(
+      `INSERT INTO ticket_messages (ticket_id, client_id, author_kind, author_id, body)
+       VALUES ($1,$2,'client',$2,$3)`, [t.id, req.principal.sub, body.data.body]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'ticket', actor: req.principal.sub,
+      summary: `Opened a support ticket: ${body.data.subject}`,
+      ref_table: 'tickets', ref_id: t.id, data: { category: body.data.category },
+    });
+    return t;
+  });
+  return reply.code(201).send(ticket);
+});
+
+const messageBody = z.object({
+  body: z.string().min(1).max(5000),
+  internal: z.boolean().default(false),
+});
+
+app.post('/tickets/:id/messages', async (req: any, reply) => {
+  const scope = await ticketScope(req, reply);
+  if (!scope) return;
+  const parsed = messageBody.safeParse(req.body);
+  if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+  // Only staff can write an internal note, and only staff with write access can reply.
+  const internal = parsed.data.internal && scope.staff;
+  if (scope.staff && !can(req.principal.role, 'crm:write')) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [t] } = await c.query<{ id: string; client_id: string; subject: string; status: string }>(
+      `SELECT id, client_id, subject, status FROM tickets
+        WHERE id = $1 AND ($2::uuid IS NULL OR client_id = $2) FOR UPDATE`,
+      [req.params.id, scope.clientId]);
+    if (!t) return 'missing' as const;
+
+    await c.query(
+      `INSERT INTO ticket_messages (ticket_id, client_id, author_kind, author_id, body, internal)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [t.id, t.client_id, scope.staff ? 'staff' : 'client', req.principal.sub, parsed.data.body, internal]);
+
+    // A note to ourselves does not change whose turn it is. A real reply does: ours puts
+    // the ball in the client's court, theirs brings the ticket back to us — and reopens
+    // it if it had been resolved.
+    if (!internal) {
+      const status = scope.staff ? 'pending' : 'open';
+      await c.query(
+        `UPDATE tickets SET status = $2, resolved_at = NULL WHERE id = $1`, [t.id, status]);
+    } else {
+      await c.query('UPDATE tickets SET updated_at = now() WHERE id = $1', [t.id]);
+    }
+
+    if (scope.staff && !internal) {
+      await notifyClientOf(c, {
+        client_id: t.client_id, kind: 'ticket',
+        title: `Reply on: ${t.subject}`,
+        body: parsed.data.body.slice(0, 160),
+        ref_table: 'tickets', ref_id: t.id,
+      });
+    }
+    await logActivity(c, {
+      client_id: t.client_id, kind: 'ticket', actor: req.principal.sub,
+      summary: internal ? `Internal note on: ${t.subject}`
+        : scope.staff ? `Replied on: ${t.subject}` : `Client replied on: ${t.subject}`,
+      ref_table: 'tickets', ref_id: t.id, data: { internal },
+    });
+    return t;
+  });
+  if (out === 'missing') return reply.code(404).send({ error: 'no such ticket' });
+  return reply.code(201).send({ ok: true });
+});
+
+app.patch('/tickets/:id', { preHandler: auth('crm:write') }, async (req: any, reply) => {
+  const body = z.object({
+    status: z.enum(['open', 'pending', 'resolved', 'closed']).optional(),
+    priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+    assigned_to: z.string().uuid().nullable().optional(),
+    category: z.enum(['account', 'funding', 'trading', 'kyc', 'technical', 'other']).optional(),
+  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const entries = Object.entries(body.data);
+  const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      `UPDATE tickets SET ${set},
+              resolved_at = CASE WHEN $${entries.length + 2} = 'resolved' THEN now()
+                                 WHEN $${entries.length + 2} IS NOT NULL THEN NULL
+                                 ELSE resolved_at END
+        WHERE id = $1 RETURNING *`,
+      [req.params.id, ...entries.map(([, v]) => v), body.data.status ?? null]);
+    if (!rows[0]) return null;
+    if (body.data.status === 'resolved' || body.data.status === 'closed') {
+      await notifyClientOf(c, {
+        client_id: rows[0].client_id, kind: 'ticket',
+        title: `Ticket ${body.data.status}: ${rows[0].subject}`,
+        body: 'Reply on the ticket if you need anything further.',
+        ref_table: 'tickets', ref_id: rows[0].id,
+      });
+    }
+    await logActivity(c, {
+      client_id: rows[0].client_id, kind: 'ticket', actor: req.principal.sub,
+      summary: `Ticket updated: ${rows[0].subject}`,
+      ref_table: 'tickets', ref_id: rows[0].id, data: body.data,
+    });
+    return rows[0];
+  });
+  if (!out) return reply.code(404).send({ error: 'no such ticket' });
+  return out;
+});
+
 // ----------------------------------------------- currencies, credits, wallets
 
 type Currency = { code: string; name: string; kind: 'fiat' | 'crypto'; decimals: number };

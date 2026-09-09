@@ -563,6 +563,90 @@ await step('an inbox belongs to one client, and staff have none', async () => {
   assert.equal(await status(`/clients/${client.id}/notify`, { token: T, method: 'POST', body: { title: 'hi' } }), 403);
 });
 
+console.log('\nSupport tickets');
+let ticket;
+
+await step('a client raises a ticket; staff cannot raise one for them', async () => {
+  ticket = await get('/tickets', { token: T, method: 'POST', body: {
+    subject: 'Withdrawal has not arrived', category: 'funding',
+    body: 'Requested three days ago and still pending.' } });
+  assert.equal(ticket.status, 'open', 'a new ticket is waiting on us');
+  assert.equal(ticket.priority, 'normal');
+  assert.equal(await status('/tickets', { token: T, method: 'POST', body: { subject: 'x', body: 'y', category: 'nonsense' } }), 400);
+  assert.equal(await status('/tickets', { token: T, method: 'POST', body: { subject: 'x', body: '' } }), 400);
+  assert.equal(await status('/tickets', { token: A, method: 'POST', body: { subject: 'x', body: 'y' } }), 403);
+});
+
+await step('replying passes the ticket back and forth', async () => {
+  await get(`/tickets/${ticket.id}/messages`, { token: A, method: 'POST', body: { body: 'Looking into it now.' } });
+  assert.equal((await get(`/tickets/${ticket.id}`, { token: A })).status, 'pending', 'our reply waits on the client');
+  await get(`/tickets/${ticket.id}/messages`, { token: T, method: 'POST', body: { body: 'Any update?' } });
+  assert.equal((await get(`/tickets/${ticket.id}`, { token: A })).status, 'open', 'their reply comes back to us');
+});
+
+await step('an internal note is never visible to the client', async () => {
+  const secret = 'INTERNAL: on the AML watchlist, do not expedite.';
+  await get(`/tickets/${ticket.id}/messages`, { token: A, method: 'POST', body: { body: secret, internal: true } });
+
+  const asStaff = await get(`/tickets/${ticket.id}`, { token: A });
+  const asClient = await get(`/tickets/${ticket.id}`, { token: T });
+  assert.ok(asStaff.messages.some((m) => m.body === secret), 'staff must see their own note');
+  assert.ok(!asClient.messages.some((m) => m.body.includes('INTERNAL') || m.body.includes('watchlist')),
+    'an internal note leaked to the client');
+  assert.equal(asClient.messages.filter((m) => m.internal).length, 0);
+  assert.equal(asClient.messages.length, asStaff.messages.length - 1);
+
+  // The count in the list view is filtered too, or it would disclose that a note exists.
+  const listedForClient = (await get('/tickets', { token: T })).find((t) => t.id === ticket.id);
+  const listedForStaff = (await get('/tickets', { token: A })).find((t) => t.id === ticket.id);
+  assert.equal(Number(listedForClient.messages), Number(listedForStaff.messages) - 1);
+
+  // And a note does not change whose turn it is.
+  assert.equal((await get(`/tickets/${ticket.id}`, { token: A })).status, 'open');
+});
+
+await step('a client cannot smuggle in an internal note', async () => {
+  await get(`/tickets/${ticket.id}/messages`, { token: T, method: 'POST', body: { body: 'sneaky', internal: true } });
+  const stored = (await get(`/tickets/${ticket.id}`, { token: A })).messages.find((m) => m.body === 'sneaky');
+  assert.equal(stored.internal, false, 'internal is a staff-only flag');
+  assert.equal(stored.author_kind, 'client');
+});
+
+await step('resolving notifies, and a client reply reopens it', async () => {
+  await get(`/tickets/${ticket.id}`, { token: A, method: 'PATCH', body: { status: 'resolved', priority: 'high' } });
+  const resolved = await get(`/tickets/${ticket.id}`, { token: A });
+  assert.equal(resolved.status, 'resolved');
+  assert.ok(resolved.resolved_at, 'resolved_at should be stamped');
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.kind === 'ticket' && /resolved/i.test(n.title)));
+
+  await get(`/tickets/${ticket.id}/messages`, { token: T, method: 'POST', body: { body: 'Still not arrived.' } });
+  const reopened = await get(`/tickets/${ticket.id}`, { token: A });
+  assert.equal(reopened.status, 'open', 'a reply to a resolved ticket reopens it');
+  assert.equal(reopened.resolved_at, null, 'and clears the resolution');
+});
+
+await step('a ticket belongs to one client', async () => {
+  const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Ticket', email: `tk+${Date.now()}@example.com`, password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/tickets/${ticket.id}`, { token: N }), 404);
+  assert.equal(await status(`/tickets/${ticket.id}/messages`, { token: N, method: 'POST', body: { body: 'hi' } }), 404);
+  assert.equal((await get('/tickets', { token: N })).length, 0);
+  assert.equal(await status(`/tickets/${ticket.id}`, { token: T, method: 'PATCH', body: { status: 'closed' } }), 403,
+    'only staff triage a ticket');
+});
+
+await step('staff see the queue with the client attached', async () => {
+  const queue = await get('/tickets?status=live', { token: A });
+  const mine = queue.find((t) => t.id === ticket.id);
+  assert.ok(mine, 'an open ticket should be in the live queue');
+  assert.equal(mine.client_name, 'Acceptance Ada');
+  assert.equal(mine.priority, 'high');
+  const kinds = (await get(`/clients/${client.id}/timeline`, { token: A })).map((a) => a.kind);
+  assert.ok(kinds.includes('ticket'), 'ticket activity missing from the timeline');
+});
+
+
+
 
 
 

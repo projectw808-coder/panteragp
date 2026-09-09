@@ -446,6 +446,47 @@ CREATE TABLE notifications (
 -- The two reads that matter: a client's latest, and their unread count.
 CREATE INDEX ON notifications (client_id, created_at DESC);
 CREATE INDEX ON notifications (client_id) WHERE read_at IS NULL;
+-- ------------------------------------------------------------ support tickets
+
+CREATE TABLE tickets (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  subject     text NOT NULL,
+  category    text NOT NULL DEFAULT 'other'
+              CHECK (category IN ('account','funding','trading','kyc','technical','other')),
+  -- open: waiting on us. pending: waiting on the client. Both are live; resolved and
+  -- closed are not, and a client replying to either brings the ticket back to open.
+  status      text NOT NULL DEFAULT 'open'
+              CHECK (status IN ('open','pending','resolved','closed')),
+  priority    text NOT NULL DEFAULT 'normal'
+              CHECK (priority IN ('low','normal','high','urgent')),
+  assigned_to uuid REFERENCES staff(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz
+);
+CREATE INDEX ON tickets (client_id, created_at DESC);
+CREATE INDEX ON tickets (status, priority);
+CREATE INDEX ON tickets (assigned_to) WHERE status IN ('open','pending');
+
+CREATE TABLE ticket_messages (
+  id          bigserial PRIMARY KEY,
+  ticket_id   uuid NOT NULL REFERENCES tickets(id),
+  client_id   uuid NOT NULL REFERENCES clients(id),   -- denormalised for the CRM timeline
+  author_kind text NOT NULL CHECK (author_kind IN ('client','staff','system')),
+  author_id   uuid,                                   -- null when the system wrote it
+  body        text NOT NULL,
+  /*
+   * An internal note is staff talking among themselves on the ticket. It must never be
+   * returned to the client: every client-facing read filters on `internal = false`, and
+   * an acceptance check asserts a note written here cannot be fetched with a client
+   * token. Treat this column as a privacy boundary, not a display hint.
+   */
+  internal    bool NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ON ticket_messages (ticket_id, created_at);
+
 
 
 
@@ -497,7 +538,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['staff','clients','client_tags','tasks','kyc_documents','flags',
                            'trading_accounts','orders','fills','positions','cash_transactions',
                            'wallets','wallet_transactions','conversions',
-                           'portfolios','portfolio_transactions','notifications'] LOOP
+                           'portfolios','portfolio_transactions','notifications',
+                           'tickets','ticket_messages'] LOOP
     EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
   END LOOP;
@@ -505,7 +547,7 @@ BEGIN
     EXECUTE format('CREATE TRIGGER %I_immutable BEFORE UPDATE OR DELETE ON %I
                     FOR EACH ROW EXECUTE FUNCTION append_only()', t, t);
   END LOOP;
-  FOREACH t IN ARRAY ARRAY['staff','clients','tasks','orders','portfolios'] LOOP
+  FOREACH t IN ARRAY ARRAY['staff','clients','tasks','orders','portfolios','tickets'] LOOP
     EXECUTE format('CREATE TRIGGER %I_touch BEFORE UPDATE ON %I
                     FOR EACH ROW EXECUTE FUNCTION touch()', t, t);
   END LOOP;

@@ -3,6 +3,7 @@ import { api, token, useApi } from './api.ts';
 import { AdminView } from './admin.tsx';
 import { ChartsView } from './chart.tsx';
 import { NotificationBell } from './notifications.tsx';
+import { SupportQueue } from './tickets.tsx';
 import { ComplianceView, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
 import { ClientDetail, ClientList, TaskList } from './views.tsx';
@@ -108,6 +109,7 @@ function Shell({ dark, setDark, onLogout }: {
           {crm && <a href="#/clients" className={hash.startsWith('/clients') ? navOn : navOff}>Clients</a>}
           {crm && <a href="#/tasks" className={hash === '/tasks' ? navOn : navOff}>My tasks</a>}
           {compliance && <a href="#/compliance" className={hash === '/compliance' ? navOn : navOff}>Compliance</a>}
+          {crm && <a href="#/support" className={hash === '/support' ? navOn : navOff}>Support</a>}
           {crm && <a href="#/reports" className={hash === '/reports' ? navOn : navOff}>Reports</a>}
           <a href="#/charts" className={charts ? navOn : navOff}>Charts</a>
           {trading && <a href="#/trade" className={hash === '/trade' ? navOn : navOff}>Trade</a>}
@@ -127,6 +129,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
+          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <Denied />)
           : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-500">Trading is for account holders.</p>)
           : !crm ? <TradeView />
           : clientId ? <ClientDetail id={clientId} me={me} />
