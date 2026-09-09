@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node scripts/start.mjs",
     "dev": "node --experimental-strip-types --watch src/server.ts",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
-    "db:reset": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "dev:db": "node --experimental-strip-types src/devdb.ts",
-    "test:e2e": "node test/acceptance.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:e2e": "node --env-file-if-exists=.env test/acceptance.mjs",
+    "db:reset": "psql \"$DATABASE_URL\" -f db/schema.sql"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.1",

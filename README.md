@@ -5,20 +5,38 @@ all carry `client_id`, so reading a client's timeline never joins through tradin
 
 ## Run it
 
-Two terminals, no Postgres install needed — `dev:db` is an in-process Postgres (PGlite)
-on port 5432, seeded with `admin@local.test` / `devpassword`.
+    npm start
 
-    npm install && (cd web && npm install)
-    npm run dev:db
-    DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres \
-      JWT_SECRET=dev-secret-that-is-long-enough-32ch PG_POOL_MAX=1 npm run dev
-    cd web && npm run dev        # http://localhost:5173
+That is the whole thing. It installs anything missing, writes a `.env` with a generated
+`JWT_SECRET` on first run, starts the database, the API and the web app, waits until each
+one actually answers, and seeds a demo client if the database is empty. Ctrl-C stops all
+three. No Postgres install is needed — the dev database is an in-process Postgres (PGlite)
+on port 5432.
 
-Against a real Postgres: `npm run db:reset`, then `src/seed.ts <email> <password> [role]`
-to create the first staff account, and drop `PG_POOL_MAX`.
+Then open **http://localhost:5173**:
 
-    npm test         # unit tests + schema tests against a real Postgres engine (no server needed)
-    JWT_SECRET=... npm run test:e2e   # 79 acceptance checks (needs the stack up, same secret)
+| | | |
+|---|---|---|
+| Staff | `admin@local.test` | `devpassword` |
+| Client | `demo.client@local.test` | `devpassword` — pick **Trader** |
+
+Checks:
+
+    npm test         # unit and schema tests, no server needed
+    npm run test:e2e # 79 acceptance checks against the running stack
+
+`test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
+verifying with — without that the auth checks would pass for the wrong reason.
+
+Running the pieces by hand, if you want them in separate terminals:
+
+    npm run dev:db                      # database on 5432
+    npm run dev                         # API on 3000 (needs DATABASE_URL, JWT_SECRET)
+    cd web && npm run dev               # web on 5173
+
+Set `DEV_DB_DIR` to keep the data between restarts; without it the database starts clean
+each time. Against a real Postgres: `npm run db:reset`, then
+`src/seed.ts <email> <password> [role]` for the first staff account, and drop `PG_POOL_MAX`.
 
 ## Enforced by the database, not the app
 - `audit_log` is written by an AFTER trigger on all 11 mutable tables, with `password_hash`
