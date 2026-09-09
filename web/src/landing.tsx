@@ -116,27 +116,6 @@ const MARKETS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'XA
 const CAPABILITIES = ['MARKET', 'LIMIT', 'STOP', 'STOP-LIMIT', 'TRAILING STOP', 'TAKE PROFIT',
   'RISK SIZING', 'MULTI-CURRENCY', 'PORTFOLIOS', 'AUDIT LOG', 'KYC REVIEW', 'SETTLEMENT'];
 
-/** An accordion row. Height is animated via grid-template-rows, which needs no measuring. */
-function Faq({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-b border-black/10">
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="flex w-full items-center gap-6 py-6 text-left transition-colors hover:text-ember">
-        <span className="display flex-1 text-[19px] sm:text-[22px]">{q}</span>
-        <span className={`font-mono text-xl text-ember transition-transform duration-300 ${open ? 'rotate-45' : ''}`}
-          aria-hidden>+</span>
-      </button>
-      <div className="grid transition-[grid-template-rows] duration-400 ease-out"
-        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}>
-        <div className="overflow-hidden">
-          <p className="soft max-w-3xl pb-7 text-base leading-relaxed">{a}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Two strips drifting opposite ways, 60s, as on the reference. Duplicated for a seamless loop. */
 function Marquee({ items, reverse = false, onDark = false }: {
   items: string[]; reverse?: boolean; onDark?: boolean;
@@ -200,7 +179,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <span className="font-mono text-xs text-ember">///</span>
           </button>
           <div className="ml-8 hidden items-center gap-7 lg:flex">
-            {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security'],['faq','FAQ']].map(([id,label]) => (
+            {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
               <button key={id} onClick={() => go(id)}
                 className="font-mono text-xs tracking-wide text-mist transition-colors hover:text-vellum">
                 {label}
@@ -447,23 +426,6 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </div>
       </section>
 
-      {/* ------------------------------------------------------------------- faq */}
-      <section id="faq" className="mx-auto max-w-[900px] scroll-mt-20 px-8 py-24">
-        <Reveal>
-          <Eyebrow>Questions</Eyebrow>
-          <MaskedHeading className="display mt-6 text-[34px] sm:text-[44px]" lines={['Before you ask.']} />
-        </Reveal>
-        <div className="mt-10 border-t border-black/10">
-          {[
-            ['Is this real money?', 'No. Every balance, wallet and fill is simulated, and there is no live funding path anywhere in the code. You cannot deposit real funds, and nothing you do here moves any.'],
-            ['What can I trade?', 'Foreign exchange, metals and crypto pairs, with market, limit, stop, stop-limit and trailing-stop orders, plus attached take-profit and stop-loss.'],
-            ['Who can see my data?', 'Staff roles see what their permission allows and nothing more. Every access and change is recorded, and an internal note on a support ticket is never shown to the client it concerns.'],
-            ['Can my password be reset?', 'You can change your own from Settings using your current password. An administrator can also set a new one — you are notified, and it lands on your timeline when they do.'],
-            ['What happens to documents I upload?', 'KYC documents are stored against your client record and visible to reviewing staff. They are held on the platform and not shared with third parties.'],
-          ].map(([q, a]) => <Faq key={q} q={q} a={a} />)}
-        </div>
-      </section>
-
       {/* ------------------------------------------------------------- closing */}
       <section className="stage relative overflow-hidden">
         <div className="border-b border-white/10">
@@ -503,7 +465,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             </div>
             {[
               ['Platform', [['Capabilities', 'platform'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
-              ['Trust', [['Security & audit', 'security'], ['Questions', 'faq']]],
+              ['Trust', [['Security & audit', 'security']]],
             ].map(([heading, links]) => (
               <div key={heading as string}>
                 <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
@@ -528,7 +490,6 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-xs text-mist">
-            <span>Simulated trading. No real funds move, and no real funds can be deposited.</span>
             <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
           </div>
         </div>

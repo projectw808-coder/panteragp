@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, card, input, mono, tableCard, thead } from './App.tsx';
-import { api, useApi, type ClientRow, type Stage, type Task } from './api.ts';
+import { api, useApi, type Stage, type Task } from './api.ts';
+import { ClientRow } from './client-row.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 const qs = (o: Record<string, string | number | undefined>) => {
@@ -15,8 +16,11 @@ export function ClientList() {
   const [q, setQ] = useState('');
   const [stage, setStage] = useState('');
   const [adding, setAdding] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  // Downloading a document needs kyc:review, so the row only offers it to those who have it.
+  const { data: me } = useApi<{ role: string }>("/me");
   const stages = useApi<Stage[]>('/pipeline-stages');
-  const clients = useApi<ClientRow[]>(`/clients${qs({ q, stage_id: stage })}`);
+  const clients = useApi<Parameters<typeof ClientRow>[0]["c"][]>(`/clients${qs({ q, stage_id: stage })}`);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -43,17 +47,11 @@ export function ClientList() {
           </thead>
           <tbody>
             {clients.data?.map((c) => (
-              <tr key={c.id} className="border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
-                <td className="px-4 py-2">
-                  <a className="font-medium hover:underline" href={`#/clients/${c.id}`}>{c.name}</a>
-                </td>
-                {/* Contact details and timestamps read as data, so they take the mono face. */}
-                <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{c.email}</td>
-                <td className="px-4 py-2">{c.stage}</td>
-                <td className="px-4 py-2"><Badge value={c.kyc_status} /></td>
-                <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? '—'}</td>
-                <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{when(c.created_at)}</td>
-              </tr>
+              <ClientRow key={c.id} c={c} open={openId === c.id}
+                onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+                onChanged={clients.reload}
+                badge={(v) => <Badge value={v} />}
+                canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'} />
             ))}
           </tbody>
         </table>
