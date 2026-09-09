@@ -166,13 +166,17 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/clients', 'Clients', crm],
     ['#/tasks', 'Tasks', crm],
     ['#/compliance', 'Compliance', !!compliance],
-    ['#/support', 'Support', true],
+    // Support is the same route to two different things. For staff it is a queue they
+    // work, so it sits among the work; for a client it is "get hold of us", which belongs
+    // at the bottom with the rest of the account.
+    ['#/support', 'Support', crm],
     ['#/reports', 'Reports', crm],
     ['#/charts', 'Charts', true],
     ['#/trade', 'Trade', trading],
     ['#/portfolios', 'Portfolios', trading],
     ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', true],
+    ['#/support', 'Support', trading],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
