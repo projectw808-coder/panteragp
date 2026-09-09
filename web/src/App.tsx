@@ -9,6 +9,7 @@ import { TradeView } from './trade.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList, TaskList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
+import { Landing } from './landing.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -35,28 +36,54 @@ function useDarkMode() {
 export function App() {
   const [authed, setAuthed] = useState(!!token.get());
   const [dark, setDark] = useDarkMode();
-  return authed
-    ? <Shell dark={dark} setDark={setDark} onLogout={() => { token.clear(); setAuthed(false); }} />
-    : <Login onDone={() => setAuthed(true)} />;
+  // What a visitor with no session sees: the public page first, the forms on request.
+  const [gate, setGate] = useState<'landing' | 'signin' | 'register'>('landing');
+
+  if (authed) {
+    return <Shell dark={dark} setDark={setDark} onLogout={() => { token.clear(); setAuthed(false); setGate('landing'); }} />;
+  }
+  if (gate === 'landing') {
+    return <Landing onSignIn={() => setGate('signin')} onRegister={() => setGate('register')} />;
+  }
+  return (
+    <Login mode={gate} onDone={() => setAuthed(true)}
+      onMode={(m) => setGate(m)} onBack={() => setGate('landing')} />
+  );
 }
 
-function Login({ onDone }: { onDone: () => void }) {
+function Login({ mode, onDone, onMode, onBack }: {
+  mode: 'signin' | 'register';
+  onDone: () => void;
+  onMode: (m: 'signin' | 'register') => void;
+  onBack: () => void;
+}) {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [as, setAs] = useState<'staff' | 'client'>('staff');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const registering = mode === 'register';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ token: string }>('/auth/login', {
-        method: 'POST', body: JSON.stringify({ email, password, as }),
-      });
-      token.set(r.token);
-      location.hash = as === 'client' ? '/charts' : '/clients';
+      if (registering) {
+        // Registration signs you straight in — the password was just proven.
+        const r = await api<{ token: string }>('/auth/register', {
+          method: 'POST', body: JSON.stringify({ name, email, password }),
+        });
+        token.set(r.token);
+        location.hash = '/charts';
+      } else {
+        const r = await api<{ token: string }>('/auth/login', {
+          method: 'POST', body: JSON.stringify({ email, password, as }),
+        });
+        token.set(r.token);
+        location.hash = as === 'client' ? '/charts' : '/clients';
+      }
       onDone();
     } catch (err) {
       setError((err as Error).message);
@@ -69,27 +96,50 @@ function Login({ onDone }: { onDone: () => void }) {
     // Sign-in is the one full-bleed dark surface in the app: it is chrome, not data.
     <div className="grid h-full place-items-center bg-obsidian">
       <form onSubmit={submit} className="w-80 space-y-3 rounded-xl bg-onyx p-6 [box-shadow:var(--shadow-inset-dark)]">
+        <button type="button" onClick={onBack} className="font-mono text-xs text-mist hover:text-vellum">← back</button>
         <div>
-          <span className="font-display text-2xl text-vellum">PanteraGP</span>
+          <span className="font-display text-2xl text-vellum">PanteraAI</span>
           <span className="text-ember"> ///</span>
         </div>
-        <div className="flex gap-1 text-sm">
-          {(['staff', 'client'] as const).map((k) => (
-            <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
-              className={`flex-1 rounded-md px-2 py-1 font-mono text-xs ${as === k
-                ? 'bg-ember text-graphite'
-                : 'bg-vellum/10 text-mist hover:text-vellum'}`}>
-              {k === 'staff' ? 'Staff' : 'Trader'}
-            </button>
-          ))}
-        </div>
+
+        {/* Staff and traders sign in to different places; an account you create is a trader. */}
+        {!registering && (
+          <div className="flex gap-1 text-sm">
+            {(['staff', 'client'] as const).map((k) => (
+              <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
+                className={`flex-1 rounded-md px-2 py-1 font-mono text-xs ${as === k
+                  ? 'bg-ember text-graphite'
+                  : 'bg-vellum/10 text-mist hover:text-vellum'}`}>
+                {k === 'staff' ? 'Staff' : 'Trader'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {registering && (
+          <input className={input} placeholder="Full name" required maxLength={200}
+            autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+        )}
         <input className={input} type="email" placeholder="Email" required autoComplete="username"
           value={email} onChange={(e) => setEmail(e.target.value)} />
         <input className={input} type="password" placeholder="Password" required minLength={8}
-          autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          autoComplete={registering ? 'new-password' : 'current-password'}
+          value={password} onChange={(e) => setPassword(e.target.value)} />
+        {registering && <p className="font-mono text-[11px] text-mist">At least 8 characters.</p>}
+
         {/* Errors read as needs-attention, which is orange here rather than red. */}
         {error && <p role="alert" className="font-mono text-xs text-ember">{error}</p>}
-        <button className={`w-full ${btn}`} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        <button className={`w-full ${btn}`} disabled={busy}>
+          {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
+        </button>
+
+        <p className="pt-1 text-center font-mono text-xs text-mist">
+          {registering ? 'Already have an account? ' : 'No account yet? '}
+          <button type="button" onClick={() => { setError(null); onMode(registering ? 'signin' : 'register'); }}
+            className="text-ember hover:underline">
+            {registering ? 'Sign in' : 'Create account'}
+          </button>
+        </p>
       </form>
     </div>
   );
@@ -126,7 +176,7 @@ function Shell({ dark, setDark, onLogout }: {
           while the app keeps the same visual DNA as the marketing hero. */}
       <aside className="flex w-56 shrink-0 flex-col bg-obsidian dark:bg-onyx">
         <div className="px-5 py-5">
-          <span className="font-display text-lg text-vellum">PanteraGP</span>
+          <span className="font-display text-lg text-vellum">PanteraAI</span>
           <span className="text-ember"> ///</span>
           <p className="mt-1 font-mono text-[11px] uppercase tracking-wide text-mist">
             {crm ? 'Client desk' : 'Terminal'}
@@ -183,7 +233,7 @@ function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) =
   );
 }
 
-// ── PanteraGP primitives ────────────────────────────────────────────────────────
+// ── PanteraAI primitives ────────────────────────────────────────────────────────
 // Defined once and consumed by every screen, so the system holds instead of drifting.
 // Rules enforced here: 8px radius on controls, 12px on surfaces, never 0px; no drop
 // shadows anywhere; ember orange only for primary actions, focus and needs-action.

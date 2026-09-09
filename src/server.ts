@@ -197,6 +197,48 @@ app.post('/clients', { preHandler: auth('crm:write') }, async (req, reply) => {
   });
 });
 
+/**
+ * Public self-registration. Unlike POST /clients this takes no token, so it is deliberately
+ * narrow: it accepts a name, an email and a password and nothing else. Tier, owner, country
+ * and every other CRM field stay at their defaults, because an anonymous caller must not be
+ * able to set them — self-assigning a tier or an account manager is not theirs to do.
+ *
+ * ponytail: no rate limit and no email confirmation, so the address is unverified and
+ * someone can create accounts in a loop. Fine for a demo; before real users, add both —
+ * a limiter in front and a confirmation link before the account can trade.
+ */
+app.post('/auth/register', async (req, reply) => {
+  const body = z.object({
+    name: z.string().min(1).max(200),
+    email: z.string().email().max(320),
+    password: z.string().min(8).max(200),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  const email = b.email.toLowerCase();
+
+  try {
+    return await tx('self-registration', async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO clients (email, name, password_hash) VALUES ($1,$2,$3) RETURNING id, email, name`,
+        [email, b.name, await hashPassword(b.password)]);
+      await logActivity(c, {
+        client_id: rows[0].id, kind: 'note', actor: rows[0].id,
+        summary: 'Account created by the client',
+      });
+      // Signed straight in: making someone register and then immediately log in again is
+      // friction with no security benefit, since they just proved the password.
+      const token = await signToken({ sub: rows[0].id, kind: 'client', role: 'trader' });
+      return reply.code(201).send({ token, client: rows[0] });
+    });
+  } catch (err: any) {
+    // Deliberately the same wording as a validation failure would give: telling an
+    // anonymous caller "that email is registered" turns this into an account checker.
+    if (err?.code === '23505') return reply.code(409).send({ error: 'could not create that account' });
+    throw err;
+  }
+});
+
 app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
   const q = z.object({
     stage_id: z.coerce.number().int().optional(),
