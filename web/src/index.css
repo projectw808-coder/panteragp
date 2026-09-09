@@ -186,7 +186,44 @@
   transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Masked line reveal: the line slides up from behind its own edge rather than fading in
+   place. This is the move that makes a GSAP site feel like one, and it is just a clipped
+   box with a transform inside. */
+.mask { overflow: hidden; display: block; }
+.mask > span {
+  display: block;
+  transform: translateY(105%);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.shown .mask > span, .mask.shown > span { transform: none; }
+
+/* Numbered rows: the rule grows across as you hover, and the arrow slides after it. */
+.row-rule { position: relative; }
+.row-rule::after {
+  content: '';
+  position: absolute;
+  left: 0; bottom: -1px; height: 1px; width: 0;
+  background: var(--color-ember);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.row-rule:hover::after { width: 100%; }
+.row-arrow { transform: translateX(-6px); opacity: 0; transition: transform 0.4s, opacity 0.4s; }
+.row-rule:hover .row-arrow { transform: none; opacity: 1; }
+
+/* A marquee you can stop to read. */
+.anim-drift:hover, .anim-drift-rev:hover { animation-play-state: paused; }
+
+/* Reading progress along the top of the page. */
+.progress {
+  position: fixed; top: 0; left: 0; height: 2px; z-index: 50;
+  background: var(--color-ember);
+  transition: width 0.1s linear;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-rise, .anim-fade, .anim-grow, .anim-drift, .anim-drift-rev { animation: none; }
   .reveal, .reveal.shown { opacity: 1; transform: none; transition: none; }
+  .mask > span { transform: none; transition: none; }
+  .row-rule::after, .row-arrow { transition: none; }
+  .progress { display: none; }
 }

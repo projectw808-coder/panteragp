@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * The public front of the site.
@@ -47,6 +47,64 @@ function Reveal({ children, delay = 0, className = '' }: {
   );
 }
 
+/** Headings whose lines slide up from behind their own edge, one after another. */
+function MaskedHeading({ lines, className = '', delay = 0 }: {
+  lines: string[]; className?: string; delay?: number;
+}) {
+  const ref = useReveal<HTMLHeadingElement>();
+  return (
+    <h2 ref={ref} className={className}>
+      {lines.map((line, i) => (
+        <span key={line} className="mask">
+          <span style={{ transitionDelay: `${delay + i * 110}ms` }}>{line}</span>
+        </span>
+      ))}
+    </h2>
+  );
+}
+
+/**
+ * Count a number up once it is on screen. Eased, so it decelerates into the final value
+ * rather than arriving at a constant rate — a linear counter reads as a machine.
+ */
+function useCountUp(target: number, duration = 1400) {
+  const [value, setValue] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setValue(target); return; }
+    let raf = 0;
+    const run = () => {
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / duration);
+        setValue(Math.round(target * (1 - Math.pow(1 - t, 3))));   // ease-out cubic
+        if (t < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+    const io = new IntersectionObserver(([e]) => { if (e?.isIntersecting) { run(); io.disconnect(); } });
+    io.observe(el);
+    // Same reasoning as useReveal: a hidden tab never fires the observer.
+    const timer = setTimeout(() => { io.disconnect(); run(); }, 2500);
+    return () => { io.disconnect(); clearTimeout(timer); cancelAnimationFrame(raf); };
+  }, [target, duration]);
+  return [value, ref] as const;
+}
+
+function Stat({ value, suffix = '', label }: { value: number; suffix?: string; label: string }) {
+  const [n, ref] = useCountUp(value);
+  return (
+    <div ref={ref} className="px-6 py-8">
+      <div className="display text-[40px] text-ember tabular-nums sm:text-[52px]">
+        {n.toLocaleString()}{suffix}
+      </div>
+      <div className="soft mt-2 font-mono text-[11px] tracking-[0.16em] uppercase">{label}</div>
+    </div>
+  );
+}
+
 /** Small uppercase mono label above a section — the reference's eyebrow. */
 const Eyebrow = ({ children, onDark = false }: { children: React.ReactNode; onDark?: boolean }) => (
   <span className={`font-mono text-[11px] tracking-[0.18em] uppercase ${onDark ? 'text-ember' : 'text-ember'}`}>
@@ -57,6 +115,27 @@ const Eyebrow = ({ children, onDark = false }: { children: React.ReactNode; onDa
 const MARKETS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'XAGUSD', 'AUDUSD', 'USDCAD'];
 const CAPABILITIES = ['MARKET', 'LIMIT', 'STOP', 'STOP-LIMIT', 'TRAILING STOP', 'TAKE PROFIT',
   'RISK SIZING', 'MULTI-CURRENCY', 'PORTFOLIOS', 'AUDIT LOG', 'KYC REVIEW', 'SETTLEMENT'];
+
+/** An accordion row. Height is animated via grid-template-rows, which needs no measuring. */
+function Faq({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-b border-black/10">
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        className="flex w-full items-center gap-6 py-6 text-left transition-colors hover:text-ember">
+        <span className="display flex-1 text-[19px] sm:text-[22px]">{q}</span>
+        <span className={`font-mono text-xl text-ember transition-transform duration-300 ${open ? 'rotate-45' : ''}`}
+          aria-hidden>+</span>
+      </button>
+      <div className="grid transition-[grid-template-rows] duration-400 ease-out"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}>
+        <div className="overflow-hidden">
+          <p className="soft max-w-3xl pb-7 text-base leading-relaxed">{a}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Two strips drifting opposite ways, 60s, as on the reference. Duplicated for a seamless loop. */
 function Marquee({ items, reverse = false, onDark = false }: {
@@ -78,13 +157,56 @@ function Marquee({ items, reverse = false, onDark = false }: {
 }
 
 export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegister: () => void }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const glow = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+
+  /** Nav links scroll the container, not the window — the page scrolls inside a div. */
+  const go = (id: string) => {
+    const el = scroller.current?.querySelector(`#${id}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Reading progress, and a slow parallax on the hero glow. Both read the same scroll
+  // position and are written inside one rAF, so scrolling stays on one frame's work.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const max = el.scrollHeight - el.clientHeight;
+        const pct = max > 0 ? el.scrollTop / max : 0;
+        if (bar.current) bar.current.style.width = `${pct * 100}%`;
+        // The glow drifts at a third of scroll speed, so the hero has depth as it leaves.
+        if (glow.current) glow.current.style.transform = `translateY(${el.scrollTop * 0.32}px)`;
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
+  }, []);
+
   return (
-    <div className="landing h-full overflow-auto">
+    <div ref={scroller} className="landing h-full overflow-auto">
+      <div ref={bar} className="progress" style={{ width: 0 }} aria-hidden />
       {/* ---------------------------------------------------------------- hero */}
-      <section className="stage relative flex min-h-screen flex-col overflow-hidden">
-        <nav className="anim-fade relative z-10 flex items-center gap-4 px-8 py-6">
-          <span className="display text-lg text-vellum">PanteraAI</span>
-          <span className="font-mono text-xs text-ember">///</span>
+      <section id="top" className="stage relative flex min-h-screen flex-col overflow-hidden">
+        <nav className="anim-fade sticky top-0 z-30 flex items-center gap-4 border-b border-white/10 bg-[color:var(--stage)]/85 px-8 py-4 backdrop-blur">
+          <button onClick={() => go('top')} className="flex items-center gap-2">
+            <span className="display text-lg text-vellum">PanteraAI</span>
+            <span className="font-mono text-xs text-ember">///</span>
+          </button>
+          <div className="ml-8 hidden items-center gap-7 lg:flex">
+            {[['platform','Platform'],['audiences','Who it is for'],['how','How it works'],['security','Security'],['faq','FAQ']].map(([id,label]) => (
+              <button key={id} onClick={() => go(id)}
+                className="font-mono text-xs tracking-wide text-mist transition-colors hover:text-vellum">
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="ml-auto flex items-center gap-3">
             <button onClick={onSignIn} className="font-mono text-sm text-mist transition-colors hover:text-vellum">
               Sign in
@@ -116,7 +238,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         {/* The signature: a warm glow rising from the foot of the hero, with bars growing
             out of it. Decorative texture, not a section background. */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-80">
+        <div ref={glow} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-80 will-change-transform">
           <div className="absolute inset-0 bg-[radial-gradient(70%_130%_at_50%_100%,rgba(255,120,23,0.45),transparent_72%)]" />
           <div className="absolute inset-x-0 bottom-0 flex h-full items-end gap-2 px-4">
             {[26, 54, 38, 72, 48, 88, 60, 96, 66, 82, 44, 64, 34, 58, 30, 70, 40].map((h, i) => (
@@ -135,9 +257,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section className="mx-auto max-w-[900px] px-8 py-28 text-center">
         <Reveal>
           <Eyebrow>The problem</Eyebrow>
-          <h2 className="display mx-auto mt-6 max-w-3xl text-[34px] sm:text-[44px]">
-            A trade without its client is half a record.
-          </h2>
+          <MaskedHeading className="display mx-auto mt-6 max-w-3xl text-[34px] sm:text-[44px]"
+            lines={['A trade without its client', 'is half a record.']} />
           <p className="soft mx-auto mt-6 max-w-2xl text-base leading-relaxed">
             Most desks run a trading system and a CRM that barely speak. Positions live in one,
             the person lives in the other, and the answer to “why did we approve that
@@ -146,12 +267,25 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </Reveal>
       </section>
 
-      {/* -------------------------------------------------- numbered capabilities */}
-      <section className="mx-auto max-w-[1100px] px-8 pb-28">
+      {/* ------------------------------------------------------------- stats
+          Every figure here is true of the platform, checkable in the codebase. A
+          marketing number that cannot be verified is the one that gets quoted back. */}
+      <section className="border-y border-black/10">
         <Reveal>
-          <h2 className="display max-w-3xl text-[34px] sm:text-[44px]">
-            One system, built as one thing<span className="text-ember">.</span>
-          </h2>
+          <div className="mx-auto grid max-w-[1100px] grid-cols-2 divide-x divide-black/10 px-4 md:grid-cols-4">
+            <Stat value={5} label="Order types" />
+            <Stat value={167} label="Currencies" />
+            <Stat value={27} label="Audited tables" />
+            <Stat value={0} label="Live money paths" />
+          </div>
+        </Reveal>
+      </section>
+
+      {/* -------------------------------------------------- numbered capabilities */}
+      <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pb-28">
+        <Reveal>
+          <MaskedHeading className="display max-w-3xl text-[34px] sm:text-[44px]"
+            lines={['One system,', 'built as one thing.']} />
         </Reveal>
 
         <div className="mt-14 divide-y divide-black/10 border-y border-black/10">
@@ -164,15 +298,110 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               'Every change to a client or a trade is written by a database trigger to an append-only log — not an updated-at column. Compliance flags, KYC review and withdrawal thresholds sit in the flow of work.'],
           ].map(([n, title, body], i) => (
             <Reveal key={n} delay={i * 90}>
-              <div className="grid gap-5 py-10 transition-colors duration-300 hover:bg-black/[0.03] md:grid-cols-[80px_1fr] md:gap-12">
+              <div className="row-rule grid gap-5 py-10 transition-colors duration-300 hover:bg-black/[0.03] md:grid-cols-[80px_1fr] md:gap-12">
                 <span className="font-mono text-sm text-ember">{n}</span>
                 <div>
-                  <h3 className="display text-[26px] sm:text-[32px]">{title}</h3>
+                  <h3 className="display flex items-center gap-3 text-[26px] sm:text-[32px]">
+                    {title}
+                    <span className="row-arrow font-mono text-lg text-ember" aria-hidden>→</span>
+                  </h3>
                   <p className="soft mt-4 max-w-2xl text-base leading-relaxed">{body}</p>
                 </div>
               </div>
             </Reveal>
           ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ audiences */}
+      <section id="audiences" className="scroll-mt-20 border-t border-black/10 bg-black/[0.02]">
+        <div className="mx-auto max-w-[1100px] px-8 py-24">
+          <Reveal>
+            <Eyebrow>Who it is for</Eyebrow>
+            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
+              lines={['Three jobs, one screen each.']} />
+          </Reveal>
+          <div className="mt-12 grid gap-[10px] md:grid-cols-3">
+            {[
+              ['Traders', 'A terminal with live charts, drawing tools, indicators and every order type, plus their own balances, wallets, portfolios and documents in the same place they trade.'],
+              ['The desk', 'Sales and support open one client record and see holdings, open positions, funding requests, tickets and the whole timeline — without a second system to reconcile against.'],
+              ['Compliance', 'KYC review with document uploads, withdrawal thresholds that flag automatically, and an append-only audit log that answers who changed what, and when.'],
+            ].map(([title, body], i) => (
+              <Reveal key={title} delay={i * 90}>
+                <div className="h-full border border-black/10 bg-[color:var(--canvas)] p-8 transition-colors duration-300 hover:border-ember">
+                  <h3 className="display text-[24px]">{title}</h3>
+                  <p className="soft mt-4 text-base leading-relaxed">{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ----------------------------------------------------------- how it works */}
+      <section id="how" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 py-24">
+        <Reveal>
+          <Eyebrow>How it works</Eyebrow>
+          <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
+            lines={['From sign-up to first fill,', 'in about a minute.']} />
+        </Reveal>
+        <div className="mt-12 grid gap-10 md:grid-cols-3">
+          {[
+            ['Open an account', 'Name, email, password. You land in the terminal signed in, on a paper account, with nothing to configure first.'],
+            ['Fund and size a position', 'Balances arrive in any of 167 currencies, or a simulated crypto wallet. Set a stop and the ticket sizes the position against your risk.'],
+            ['Place the order', 'Market, limit, stop, stop-limit or trailing. Resting orders are filled by a settlement engine that runs whether or not your screen is open.'],
+          ].map(([title, body], i) => (
+            <Reveal key={title} delay={i * 90}>
+              <div className="border-t border-ember pt-6">
+                <span className="font-mono text-xs text-ember">STEP {String(i + 1).padStart(2, '0')}</span>
+                <h3 className="display mt-3 text-[24px]">{title}</h3>
+                <p className="soft mt-3 text-base leading-relaxed">{body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* -------------------------------------------------------------- security */}
+      <section id="security" className="stage scroll-mt-20">
+        <div className="mx-auto max-w-[1100px] px-8 py-24">
+          <Reveal>
+            <Eyebrow onDark>Security &amp; audit</Eyebrow>
+            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
+              lines={['The database keeps', 'the receipts.']} />
+          </Reveal>
+          <div className="mt-12 grid gap-[10px] md:grid-cols-2">
+            {[
+              ['Append-only audit log', 'A trigger on every mutable table writes each insert, update and delete to a log that cannot be edited or deleted — enforced in the database, not in application code that could be bypassed.'],
+              ['Role-based access', 'Sales, support, compliance and admin each see exactly what their role permits. Roles are read from the row on every request, so revoking access takes effect immediately rather than when a token expires.'],
+              ['Passwords never in the clear', 'Hashed with scrypt and a per-account salt. The audit log strips the hash from both sides of every diff, so credentials never reach it.'],
+              ['No live-money path', 'Balances, wallets and fills are simulated end to end. There is no code path that moves real funds — the separation is structural rather than a flag.'],
+            ].map(([title, body], i) => (
+              <Reveal key={title} delay={i * 80}>
+                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
+                  <h3 className="display text-[22px] text-vellum">{title}</h3>
+                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------- faq */}
+      <section id="faq" className="mx-auto max-w-[900px] scroll-mt-20 px-8 py-24">
+        <Reveal>
+          <Eyebrow>Questions</Eyebrow>
+          <MaskedHeading className="display mt-6 text-[34px] sm:text-[44px]" lines={['Before you ask.']} />
+        </Reveal>
+        <div className="mt-10 border-t border-black/10">
+          {[
+            ['Is this real money?', 'No. Every balance, wallet and fill is simulated, and there is no live funding path anywhere in the code. You cannot deposit real funds, and nothing you do here moves any.'],
+            ['What can I trade?', 'Foreign exchange, metals and crypto pairs, with market, limit, stop, stop-limit and trailing-stop orders, plus attached take-profit and stop-loss.'],
+            ['Who can see my data?', 'Staff roles see what their permission allows and nothing more. Every access and change is recorded, and an internal note on a support ticket is never shown to the client it concerns.'],
+            ['Can my password be reset?', 'You can change your own from Settings using your current password. An administrator can also set a new one — you are notified, and it lands on your timeline when they do.'],
+            ['What happens to documents I upload?', 'KYC documents are stored against your client record and visible to reviewing staff. They are held on the platform and not shared with third parties.'],
+          ].map(([q, a]) => <Faq key={q} q={q} a={a} />)}
         </div>
       </section>
 
@@ -200,10 +429,49 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
         </Reveal>
 
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-xs text-mist">
-          <span className="text-vellum">PanteraAI</span>
-          <span>Simulated trading. No real funds move.</span>
-          <span className="ml-auto">© {new Date().getFullYear()}</span>
+        {/* Footer: columns of real destinations only. Nothing here links to a page that
+            does not exist — a dead "Careers" link is worse than no link. */}
+        <div className="border-t border-white/10">
+          <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="display text-lg text-vellum">PanteraAI</span>
+                <span className="font-mono text-xs text-ember">///</span>
+              </div>
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
+                A trading desk and a client system built as one thing, on a simulated book.
+              </p>
+            </div>
+            {[
+              ['Platform', [['Capabilities', 'platform'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
+              ['Trust', [['Security & audit', 'security'], ['Questions', 'faq']]],
+            ].map(([heading, links]) => (
+              <div key={heading as string}>
+                <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
+                <ul className="mt-4 space-y-2">
+                  {(links as [string, string][]).map(([label, id]) => (
+                    <li key={id}>
+                      <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember">
+                        {label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div>
+              <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">Account</h4>
+              <ul className="mt-4 space-y-2">
+                <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember">Open an account</button></li>
+                <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember">Sign in</button></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-xs text-mist">
+            <span>Simulated trading. No real funds move, and no real funds can be deposited.</span>
+            <span className="ml-auto">© {new Date().getFullYear()} PanteraAI</span>
+          </div>
         </div>
       </section>
     </div>
