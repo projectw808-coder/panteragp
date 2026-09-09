@@ -6,3 +6,6 @@ tsconfig.tsbuildinfo
 .pgdata/
 .pgdata-ephemeral/
 .claude/
+# Wherever npm start's output was redirected to.
+.start.log
+.start.err
