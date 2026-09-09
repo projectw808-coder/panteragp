@@ -6,7 +6,8 @@ import { NotificationBell } from './notifications.tsx';
 import { SupportQueue } from './tickets.tsx';
 import { ComplianceView, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
-import { ClientDetail, ClientList, TaskList } from './views.tsx';
+import { ClientWorkspace } from './client-workspace.tsx';
+import { ClientList, TaskList } from './views.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -132,7 +133,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <Denied />)
           : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-500">Trading is for account holders.</p>)
           : !crm ? <TradeView />
-          : clientId ? <ClientDetail id={clientId} me={me} />
+          : clientId ? <ClientWorkspace id={clientId} me={me} />
           : hash === '/tasks' ? <TaskList />
           : <ClientList />}
       </main>

@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import pg from 'pg';
 import { z } from 'zod';
-import { can, hashPassword, signToken, verifyPassword, verifyToken, type Perm, type Principal } from './auth.ts';
+import { can, hashPassword, signToken, verifyPassword, verifyToken, type Perm, type Principal, type Role } from './auth.ts';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -87,6 +87,21 @@ async function authenticate(req: any, reply: any, perm?: Perm): Promise<boolean>
   } catch {
     reply.code(401).send({ error: 'unauthenticated' });
     return false;
+  }
+  // A token outlives the account it names, so the row is the authority, not the claim.
+  // Deactivating a staff member has to bite now rather than whenever their token expires,
+  // or they keep reading every client record and the audit log for hours after being
+  // switched off. This runs *before* the permission check so the role in the database
+  // decides in both directions: a demotion is enforced, and a promotion works without
+  // making the person sign in again.
+  if (req.principal.kind === 'staff') {
+    const { rows: [row] } = await pool.query<{ role: Role }>(
+      'SELECT role FROM staff WHERE id = $1 AND active', [req.principal.sub]);
+    if (!row) {
+      reply.code(401).send({ error: 'unauthenticated' });
+      return false;
+    }
+    req.principal.role = row.role;
   }
   if (perm && !can(req.principal.role, perm)) {
     reply.code(403).send({ error: 'forbidden' });
@@ -190,8 +205,65 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
 app.get('/pipeline-stages', { preHandler: auth('crm:read') }, async () =>
   (await pool.query('SELECT * FROM pipeline_stages ORDER BY sort_order')).rows);
 
-app.get('/staff', { preHandler: auth('crm:read') }, async () =>
-  (await pool.query('SELECT id, name, email, role FROM staff WHERE active ORDER BY name')).rows);
+app.get('/staff', { preHandler: auth('crm:read') }, async (req: any) => {
+  const q = z.object({ include_inactive: z.coerce.boolean().default(false) }).parse(req.query ?? {});
+  return (await pool.query(
+    `SELECT id, name, email, role, active, created_at FROM staff
+      WHERE (active OR $1::bool) ORDER BY active DESC, name`, [q.include_inactive])).rows;
+});
+
+const staffBody = z.object({
+  name: z.string().min(1).max(200),
+  email: z.string().email().max(320),
+  role: z.enum(['sales', 'support', 'compliance', 'admin']),
+  password: z.string().min(12).max(200),
+});
+
+/** Creating a colleague hands out access to client data, so it is admin-only and audited. */
+app.post('/staff', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = staffBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO staff (name, email, role, password_hash) VALUES ($1,$2,$3,$4)
+         RETURNING id, name, email, role, active, created_at`,
+        [b.name, b.email.toLowerCase(), b.role, await hashPassword(b.password)]);
+      return reply.code(201).send(rows[0]);
+    });
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'that email is already a staff account' });
+    throw err;
+  }
+});
+
+/**
+ * Change a colleague's role, or switch them off. Deactivating takes effect on their very
+ * next request — authenticate() reads `active` from the row, not from their token.
+ */
+app.patch('/staff/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = z.object({
+    name: z.string().min(1).max(200).optional(),
+    role: z.enum(['sales', 'support', 'compliance', 'admin']).optional(),
+    active: z.boolean().optional(),
+  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  // Locking yourself out, or demoting the last admin, leaves nobody able to put it right.
+  if (req.params.id === req.principal.sub && (body.data.active === false || body.data.role !== undefined)) {
+    return reply.code(409).send({ error: 'change your own role or status from another admin account' });
+  }
+
+  const entries = Object.entries(body.data);
+  const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      `UPDATE staff SET ${set} WHERE id = $1 RETURNING id, name, email, role, active`,
+      [req.params.id, ...entries.map(([, v]) => v)]);
+    if (!rows[0]) return reply.code(404).send({ error: 'no such staff member' });
+    return rows[0];
+  });
+});
 
 /** Traders reach their own record; staff need crm:read. */
 const clientScope = async (req: any, reply: any) => {
@@ -225,34 +297,57 @@ app.get('/clients/:id/timeline', { preHandler: clientScope }, async (req: any) =
 
 const patchBody = z.object({
   name: z.string().min(1).max(200).optional(),
+  email: z.string().email().max(320).optional(),
   phone: z.string().max(40).optional(),
+  country: z.string().length(2).optional(),
   tier: z.string().max(40).optional(),
   stage_id: z.number().int().min(1).optional(),
   owner_staff_id: z.string().uuid().nullable().optional(),
   risk_profile: z.enum(['low', 'medium', 'high']).optional(),
+  // Overriding KYC skips the document workflow entirely, so it needs kyc:review, not
+  // ordinary CRM write access — see the check below.
+  kyc_status: z.enum(['none', 'pending', 'approved', 'rejected', 'expired']).optional(),
 }).refine((o) => Object.keys(o).length > 0, 'no fields to update');
 
 app.patch('/clients/:id', { preHandler: auth('crm:write') }, async (req: any, reply) => {
   const body = patchBody.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (body.data.kyc_status !== undefined && !can(req.principal.role, 'kyc:review')) {
+    return reply.code(403).send({ error: 'changing KYC status needs kyc:review' });
+  }
+  if (body.data.email) body.data.email = body.data.email.toLowerCase();
   const entries = Object.entries(body.data);
   const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
 
-  return tx(req.principal.sub, async (c) => {
-    const { rows } = await c.query(
-      `UPDATE clients SET ${set} WHERE id = $1 RETURNING *`,
-      [req.params.id, ...entries.map(([, v]) => v)],
-    );
-    if (!rows[0]) return reply.code(404).send({ error: 'not found' });
-    if (body.data.stage_id !== undefined) {
-      await logActivity(c, {
-        client_id: rows[0].id, kind: 'stage', actor: req.principal.sub,
-        summary: 'Pipeline stage changed', data: { stage_id: body.data.stage_id },
-      });
-    }
-    delete rows[0].password_hash;
-    return rows[0];
-  });
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `UPDATE clients SET ${set} WHERE id = $1 RETURNING *`,
+        [req.params.id, ...entries.map(([, v]) => v)],
+      );
+      if (!rows[0]) return reply.code(404).send({ error: 'not found' });
+      if (body.data.stage_id !== undefined) {
+        await logActivity(c, {
+          client_id: rows[0].id, kind: 'stage', actor: req.principal.sub,
+          summary: 'Pipeline stage changed', data: { stage_id: body.data.stage_id },
+        });
+      }
+      // An override is worth its own timeline entry: it is the one path to "approved"
+      // that no reviewed document stands behind.
+      if (body.data.kyc_status !== undefined) {
+        await logActivity(c, {
+          client_id: rows[0].id, kind: 'kyc', actor: req.principal.sub,
+          summary: `KYC status set to ${body.data.kyc_status} by hand`,
+          data: { override: true, kyc_status: body.data.kyc_status },
+        });
+      }
+      delete rows[0].password_hash;
+      return rows[0];
+    });
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'another client already uses that email' });
+    throw err;
+  }
 });
 
 app.post('/clients/:id/notes', { preHandler: auth('crm:write') }, async (req: any, reply) => {
@@ -1142,6 +1237,70 @@ app.post('/clients/:id/notify', { preHandler: auth('crm:write') }, async (req: a
     return row;
   });
   return reply.code(201).send(out);
+});
+
+// ------------------------------------------------------ the client workspace
+
+/**
+ * Everything a staff member needs to see about one client's money, in a single response.
+ *
+ * Read-only by design: this is the "trading data, read-only" the brief asks for. Staff
+ * look, they do not place orders or move balances — the only money a staff member can
+ * move is through the audited credit and cash-decision routes.
+ */
+app.get('/clients/:id/holdings', { preHandler: auth('trade:read') }, async (req: any, reply) => {
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+  const id = req.params.id;
+
+  const q = async <T extends pg.QueryResultRow>(sql: string, params: unknown[] = [id]) =>
+    (await pool.query<T>(sql, params)).rows;
+
+  const [accounts, wallets, portfolios, positions, orders, trades, cash] = await Promise.all([
+    q<{ currency: string; balance: number }>(
+      `SELECT id, currency, balance, mode, leverage FROM trading_accounts
+        WHERE client_id = $1 ORDER BY currency`),
+    q<{ asset: string; balance: number }>(
+      'SELECT id, asset, address, balance FROM wallets WHERE client_id = $1 ORDER BY asset'),
+    q<{ name: string; currency: string; balance: number }>(
+      `SELECT p.id, p.name, p.currency, p.balance, p.status, p.target_amount, t.name AS type_name
+         FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
+        WHERE p.client_id = $1 ORDER BY p.status, p.created_at`),
+    q<{ symbol: string; qty: number; avg_price: number }>(
+      `SELECT p.symbol, p.qty, p.avg_price, p.updated_at
+         FROM positions p JOIN trading_accounts a ON a.id = p.account_id
+        WHERE a.client_id = $1 ORDER BY p.symbol`),
+    q(`SELECT id, symbol, side, type, qty, limit_price, stop_price, status, placed_at
+         FROM orders WHERE client_id = $1 ORDER BY placed_at DESC LIMIT 50`),
+    q(`SELECT f.id, f.qty, f.price, f.fee, f.filled_at, o.symbol, o.side, o.type
+         FROM fills f JOIN orders o ON o.id = f.order_id
+        WHERE o.client_id = $1 ORDER BY f.filled_at DESC LIMIT 50`),
+    q(`SELECT id, kind, amount, status, created_at FROM cash_transactions
+        WHERE client_id = $1 ORDER BY created_at DESC LIMIT 50`),
+  ]);
+
+  // Value everything in USD so the workspace can show one number for the relationship.
+  const priced = await totalUsd([
+    ...accounts.map((a) => ({ code: a.currency, amount: Number(a.balance) })),
+    ...wallets.map((w) => ({ code: w.asset, amount: Number(w.balance) })),
+    ...portfolios.map((p) => ({ code: p.currency, amount: Number(p.balance) })),
+  ]);
+  const openPnl = positions.reduce((sum, p) => sum + unrealized(p, spot(p.symbol)), 0);
+
+  return {
+    accounts, wallets, portfolios, cash,
+    positions: positions.map((p) => {
+      const price = spot(p.symbol);
+      return { ...p, price, unrealized: unrealized(p, price) };
+    }),
+    orders, trades,
+    totals: {
+      holdings_usd: priced.usd,
+      unpriced: priced.unpriced,
+      open_pnl: round8(openPnl),
+      equity_usd: round8(priced.usd + openPnl),
+    },
+  };
 });
 
 // ---------------------------------------------------------- support tickets

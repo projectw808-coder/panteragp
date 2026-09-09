@@ -201,24 +201,3 @@ function NewPortfolio({ types, currencies, onDone }: {
     </form>
   );
 }
-
-/** Read-only view of a client's pots, for the client record. */
-export function ClientPortfolios({ clientId }: { clientId: string }) {
-  const portfolios = useApi<Portfolio[]>(`/portfolios?client_id=${clientId}`);
-  const rows = portfolios.data ?? [];
-  if (!rows.length) return null;
-  return (
-    <div className={`${card} space-y-2`}>
-      <h2 className="text-sm font-semibold">Portfolios</h2>
-      {rows.map((p) => (
-        <div key={p.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-          <span className="font-medium">{p.name}</span>
-          <span className="text-xs text-slate-500">{p.type_name}</span>
-          {p.status === 'closed' && <span className="text-xs text-slate-500">closed</span>}
-          <span className="ml-auto tabular-nums">{money(p.balance, p.currency)}</span>
-          {p.progress !== null && <span className="text-xs text-slate-500">{pct(p.progress)}</span>}
-        </div>
-      ))}
-    </div>
-  );
-}

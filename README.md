@@ -18,7 +18,7 @@ Against a real Postgres: `npm run db:reset`, then `src/seed.ts <email> <password
 to create the first staff account, and drop `PG_POOL_MAX`.
 
     npm test         # unit tests + schema tests against a real Postgres engine (no server needed)
-    npm run test:e2e # 31 acceptance checks across all seven phases (needs the stack up)
+    JWT_SECRET=... npm run test:e2e   # 79 acceptance checks (needs the stack up, same secret)
 
 ## Enforced by the database, not the app
 - `audit_log` is written by an AFTER trigger on all 11 mutable tables, with `password_hash`
@@ -27,7 +27,8 @@ to create the first staff account, and drop `PG_POOL_MAX`.
 - Order type/price coherence, demo-vs-live account mode, KYC and pipeline values: CHECK constraints.
 
 ## API
-CRM: `GET|POST /clients` · `GET|PATCH /clients/:id` · `GET /clients/:id/timeline`
+CRM: `GET|POST /clients` · `GET /clients/:id/holdings` (staff, read-only)
+`GET|POST /staff` · `PATCH /staff/:id` (admin) · `GET|PATCH /clients/:id` · `GET /clients/:id/timeline`
 `POST /clients/:id/notes` · `GET /pipeline-stages` · `GET /staff` · `GET|POST /tasks`
 `PATCH /tasks/:id` · `GET /audit`
 Market data (any authenticated principal): `GET /instruments` · `GET /candles` · `GET /quotes`
@@ -205,6 +206,33 @@ from the charts too.
 
 `POST /clients/:id/notify` lets staff message a client directly, which is the CRM and the
 client-facing side sharing one inbox.
+
+
+## The client workspace
+
+One page per client, for staff: identity and contact details, pipeline stage, owner, risk
+and KYC across the header, then tabs for **assets** (cash in every currency, crypto
+wallets, portfolios), **trading** (positions with live P&L, orders, fills), **funding**
+(deposits and withdrawals, approved or rejected in place), **documents**, **tickets**,
+**activity** and **audit**. `GET /clients/:id/holdings` assembles the money side in one
+call so the page is not a dozen round trips.
+
+**Read-only where it should be.** Sales, support and compliance can all see what a client
+holds and has traded — the brief's "trading data, read-only" — but no staff role can place
+an order or convert a balance. The only money a staff member moves is through the audited
+credit and cash-decision routes, and crediting needs `funds:credit`, which only admin has.
+
+**A KYC override is not the same as a decision.** Setting `kyc_status` by hand skips the
+document workflow entirely, so it needs `kyc:review` rather than ordinary CRM write access,
+and it lands on the timeline marked `override: true` — distinguishable from an approval
+that a reviewed document stands behind.
+
+**Staff accounts.** Admins create colleagues, change roles and deactivate them. The
+database row is the authority on both `active` and `role`, checked on every request rather
+than trusted from the token: switching someone off ends their session immediately instead
+of leaving them with client records and the audit log until their token expires, and a
+promotion applies without making them sign in again. An admin cannot deactivate or demote
+themselves, since that can leave nobody able to put it right.
 
 
 ## Support tickets

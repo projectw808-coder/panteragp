@@ -4,12 +4,25 @@
  *
  *   npm run dev:db
  *   DATABASE_URL=... JWT_SECRET=... PG_POOL_MAX=1 npm run dev
- *   npm run test:e2e
+ *   JWT_SECRET=... npm run test:e2e
  *
  * It asserts rather than prints, so a regression anywhere fails the run.
  */
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
+import { SignJWT } from 'jose';
+
+/*
+ * Several checks forge a token to prove the API rejects it for the right reason. Without
+ * the real secret they would be signed with garbage and rejected for the wrong one, so a
+ * broken auth check would still look like a pass. Refuse to run rather than lie.
+ */
+const SECRET = process.env.JWT_SECRET;
+assert.ok(SECRET, 'set JWT_SECRET to the same value the API is running with');
+const forge = (claims, sub) => new SignJWT(claims)
+  .setProtectedHeader({ alg: 'HS256' }).setSubject(sub)
+  .setIssuedAt().setExpirationTime('1h')
+  .sign(new TextEncoder().encode(SECRET));
 
 const B = process.env.API ?? 'http://localhost:3000';
 const j = (r) => r.text().then((t) => { try { return JSON.parse(t); } catch { return t; } });
@@ -645,6 +658,100 @@ await step('staff see the queue with the client attached', async () => {
   assert.ok(kinds.includes('ticket'), 'ticket activity missing from the timeline');
 });
 
+console.log('\nAdmin CRM');
+await step('one call returns everything about a client to staff', async () => {
+  const h = await get(`/clients/${client.id}/holdings`, { token: A });
+  for (const key of ['accounts', 'wallets', 'portfolios', 'positions', 'orders', 'trades', 'cash', 'totals']) {
+    assert.ok(key in h, `holdings is missing ${key}`);
+  }
+  assert.ok(h.accounts.some((a) => a.currency === 'GBP'), 'the credits earlier should show here');
+  assert.ok(h.trades.length > 0, 'the fills earlier should show here');
+  assert.equal(typeof h.totals.equity_usd, 'number');
+  // Equity is holdings plus open P&L, and must agree rather than being computed twice.
+  assert.ok(Math.abs(h.totals.equity_usd - (h.totals.holdings_usd + h.totals.open_pnl)) < 1e-6);
+});
+
+await step('every staff role may read it; none may trade or credit through it', async () => {
+  for (const role of ['sales', 'support', 'compliance']) {
+    const colleague = await get('/staff', { token: A, method: 'POST', body: {
+      name: `Test ${role}`, email: `${role}+${Date.now()}@example.com`, role, password: 'a-long-enough-password' } });
+    assert.equal(colleague.role, role);
+    const token = (await login(colleague.email, 'a-long-enough-password', 'staff')).token;
+    assert.equal(await status(`/clients/${client.id}/holdings`, { token }), 200, `${role} should read holdings`);
+    assert.equal(await status('/orders', { token, method: 'POST', body: { symbol: 'EURUSD', side: 'buy', type: 'market', qty: 1 } }), 403,
+      `${role} must not place orders`);
+    assert.equal(await status(`/clients/${client.id}/credit`, { token, method: 'POST', body: { currency: 'GBP', amount: 1 } }), 403,
+      `${role} must not credit funds`);
+    if (role === 'sales') {
+      assert.equal(await status(`/clients/${client.id}`, { token, method: 'PATCH', body: { kyc_status: 'approved' } }), 403,
+        'sales writes to the CRM but must not wave KYC through');
+    }
+  }
+  assert.equal(await status(`/clients/${client.id}/holdings`, { token: T }), 403, 'this is the staff view, not the client one');
+  assert.equal(await status(`/clients/${client.id}/holdings`), 401);
+  assert.equal(await status('/clients/00000000-0000-0000-0000-000000000000/holdings', { token: A }), 404);
+});
+
+await step('deactivating a staff member ends their session immediately', async () => {
+  const leaver = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'On their way out', email: `leaver+${Date.now()}@example.com`, role: 'support', password: 'a-long-enough-password' } });
+  const token = (await login(leaver.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status('/clients', { token }), 200, 'they should work while employed');
+
+  await get(`/staff/${leaver.id}`, { token: A, method: 'PATCH', body: { active: false } });
+  assert.equal(await status('/clients', { token }), 401,
+    'the same token must stop working the moment they are switched off, not when it expires');
+  assert.equal(await status(`/clients/${client.id}/holdings`, { token }), 401);
+  assert.equal((await login(leaver.email, 'a-long-enough-password', 'staff')).token, undefined,
+    'and they cannot log back in');
+});
+
+await step('a role change applies at once, without a new token', async () => {
+  const mover = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Promoted', email: `mover+${Date.now()}@example.com`, role: 'support', password: 'a-long-enough-password' } });
+  const token = (await login(mover.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status('/audit', { token }), 403, 'support cannot read the audit log');
+  await get(`/staff/${mover.id}`, { token: A, method: 'PATCH', body: { role: 'compliance' } });
+  assert.equal(await status('/audit', { token }), 200, 'the same token now carries the new role');
+});
+
+await step('an admin cannot lock themselves out', async () => {
+  const me = await get('/me', { token: A });
+  assert.equal(await status(`/staff/${me.sub}`, { token: A, method: 'PATCH', body: { active: false } }), 409);
+  assert.equal(await status(`/staff/${me.sub}`, { token: A, method: 'PATCH', body: { role: 'sales' } }), 409);
+});
+
+await step('a token for a staff member who is gone stops working at once', async () => {
+  // staff.active used to be checked only at login, so deactivating someone left them with
+  // full CRM and audit access until their token expired.
+  const ghost = await forge({ kind: 'staff', role: 'admin' }, '00000000-0000-0000-0000-000000000000');
+  for (const path of ['/clients', '/audit', '/admin/overview', '/kyc/pending']) {
+    assert.equal(await status(path, { token: ghost }), 401, `${path} accepted a token with no staff row`);
+  }
+});
+
+await step('the record is editable, and email stays unique', async () => {
+  const updated = await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: {
+    phone: '+353 1 234 5678', country: 'IE', tier: 'premium' } });
+  assert.equal(updated.phone, '+353 1 234 5678');
+  assert.equal(updated.country, 'IE');
+  assert.equal(updated.tier, 'premium');
+
+  const other = await get('/clients', { token: A, method: 'POST', body: { name: 'Taken', email: `taken+${Date.now()}@example.com`, password: 'devpassword' } });
+  assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { email: other.email } }), 409);
+  assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { email: 'not-an-email' } }), 400);
+});
+
+await step('a KYC override needs kyc:review and is recorded as an override', async () => {
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'expired' } });
+  assert.equal((await get(`/clients/${client.id}`, { token: A })).kyc_status, 'expired');
+  const entry = (await get(`/clients/${client.id}/timeline`, { token: A }))
+    .find((a) => a.kind === 'kyc' && a.data?.override === true);
+  assert.ok(entry, 'an override must be distinguishable on the timeline from a reviewed decision');
+});
+
+
+
 
 
 
@@ -685,12 +792,7 @@ await step('the firm-wide feed is staff-only', async () => {
 
 console.log('\nCross-cutting');
 await step('a token for a deleted subject is unauthorised, not a crash', async () => {
-  const { SignJWT } = await import('jose');
-  const forged = await new SignJWT({ kind: 'client', role: 'trader' })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject('00000000-0000-0000-0000-000000000000')
-    .setIssuedAt().setExpirationTime('1h')
-    .sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const forged = await forge({ kind: 'client', role: 'trader' }, '00000000-0000-0000-0000-000000000000');
   for (const path of ['/account', '/positions', '/orders', '/trades']) {
     assert.equal(await status(path, { token: forged }), 401, `${path} leaked a 500`);
   }
