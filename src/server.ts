@@ -303,7 +303,7 @@ const patchBody = z.object({
   tier: z.string().max(40).optional(),
   stage_id: z.number().int().min(1).optional(),
   owner_staff_id: z.string().uuid().nullable().optional(),
-  risk_profile: z.enum(['low', 'medium', 'high']).optional(),
+  risk_profile: z.enum(['low', 'medium', 'high']).nullable().optional(),
   // Overriding KYC skips the document workflow entirely, so it needs kyc:review, not
   // ordinary CRM write access — see the check below.
   kyc_status: z.enum(['none', 'pending', 'approved', 'rejected', 'expired']).optional(),

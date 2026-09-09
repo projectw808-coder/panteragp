@@ -145,8 +145,8 @@ function Header({ client: c, totals, onSaved, compliance }: {
         </Labelled>
         <Labelled label="Risk">
           <select className={`${field} w-28`} value={c.risk_profile ?? ''}
-            onChange={(e) => patch({ risk_profile: e.target.value })}>
-            <option value="" disabled>not set</option>
+            onChange={(e) => patch({ risk_profile: e.target.value || null })}>
+            <option value="">not set</option>
             {['low', 'medium', 'high'].map((r) => <option key={r}>{r}</option>)}
           </select>
         </Labelled>
