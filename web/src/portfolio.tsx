@@ -32,7 +32,7 @@ export function PortfoliosPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-500">Your portfolios</h3>
+        <h3 className="text-xs font-medium text-slate-ink">Your portfolios</h3>
         <button className={btn} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New portfolio'}
         </button>
@@ -45,13 +45,13 @@ export function PortfoliosPanel() {
 
       {open.map((p) => <Pot key={p.id} p={p} onDone={portfolios.reload} />)}
       {!open.length && !adding && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-ink">
           No portfolios yet. Open one to set money aside for a particular purpose.
         </p>
       )}
 
       {!!closed.length && (
-        <details className="text-sm text-slate-500">
+        <details className="text-sm text-slate-ink">
           <summary className="cursor-pointer">{closed.length} closed</summary>
           <ul className="mt-1 space-y-1">
             {closed.map((p) => <li key={p.id}>{p.name} — {p.type_name}</li>)}
@@ -90,19 +90,19 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
   }
 
   return (
-    <div className="rounded border border-slate-200 p-3 dark:border-slate-700">
+    <div className="rounded-md border border-pebble p-3 dark:border-white/10">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium">{p.name}</span>
-        <span className="text-xs text-slate-500">{p.type_name}</span>
+        <span className="text-xs text-slate-ink">{p.type_name}</span>
         <span className="ml-auto tabular-nums">{money(p.balance, p.currency)}</span>
       </div>
 
       {p.progress !== null && (
         <div className="mt-2">
-          <div className="h-1.5 w-full rounded bg-slate-100 dark:bg-slate-800">
-            <div className="h-1.5 rounded bg-slate-900 dark:bg-slate-300" style={{ width: pct(p.progress) }} />
+          <div className="h-1.5 w-full rounded-md bg-bone dark:bg-white/10">
+            <div className="h-1.5 rounded-md bg-onyx dark:bg-mist" style={{ width: pct(p.progress) }} />
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-ink">
             {pct(p.progress)} of {money(p.target_amount!, p.currency)}
             {p.target_date && ` by ${day(p.target_date)}`}
           </p>
@@ -110,7 +110,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
       )}
 
       {p.projected !== null && (
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-ink">
           {/* Interest is genuinely credited daily at this rate, so the projection is a
               forecast of the accrual rather than a decorative illustration. */}
           Earning {pct(p.indicative_rate ?? 0)} a year, credited daily —
@@ -118,18 +118,18 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
         </p>
       )}
       {p.projected === null && p.indicative_rate !== null && (
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-ink">
           Earning {pct(p.indicative_rate)} a year, credited daily.
         </p>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => { setAction(action === 'contribute' ? null : 'contribute'); setError(null); }}
-          className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">pay in</button>
+          className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">pay in</button>
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); }}
-          className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">take out</button>
+          className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">take out</button>
         {Number(p.balance) === 0 && (
-          <button onClick={close} className="ml-auto text-slate-500 hover:text-red-600">close</button>
+          <button onClick={close} className="ml-auto text-slate-ink hover:text-ember">close</button>
         )}
       </div>
 
@@ -142,7 +142,7 @@ function Pot({ p, onDone }: { p: Portfolio; onDone: () => void }) {
           </button>
         </form>
       )}
-      {error && <p role="alert" className="mt-1 text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
     </div>
   );
 }
@@ -182,7 +182,7 @@ function NewPortfolio({ types, currencies, onDone }: {
       <select className={input} value={type} onChange={(e) => setType(e.target.value)}>
         {types.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
       </select>
-      {chosen && <p className="text-xs text-slate-500">{chosen.description}</p>}
+      {chosen && <p className="text-xs text-slate-ink">{chosen.description}</p>}
       <div className="flex flex-wrap gap-2">
         <input name="name" required maxLength={80} placeholder="Name it, e.g. Retirement 2055"
           className={`${field} flex-1`} />
@@ -191,12 +191,12 @@ function NewPortfolio({ types, currencies, onDone }: {
         </select>
       </div>
       <div className="flex flex-wrap gap-2">
-        <label className="text-xs text-slate-500">Target amount (optional)
+        <label className="text-xs text-slate-ink">Target amount (optional)
           <input name="target_amount" type="number" step="any" min="0" className={field} /></label>
-        <label className="text-xs text-slate-500">Target date (optional)
+        <label className="text-xs text-slate-ink">Target date (optional)
           <input name="target_date" type="date" className={field} /></label>
       </div>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
       <button className={btn} disabled={busy}>{busy ? 'Opening…' : 'Open portfolio'}</button>
     </form>
   );

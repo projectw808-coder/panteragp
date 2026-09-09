@@ -20,17 +20,17 @@ type Audit = { id: number; at: string; actor: string; tbl: string; action: strin
 const when = (iso: string) => new Date(iso).toLocaleString();
 const usd = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
-const pnlColour = (n: number) => (n >= 0 ? 'text-green-600' : 'text-red-600');
+const pnlColour = (n: number) => (n >= 0 ? 'text-up' : 'text-down');
 
 const TABS = ['overview', 'assets', 'trading', 'funding', 'documents', 'tickets', 'activity', 'audit'] as const;
 type Tab = (typeof TABS)[number];
 
 const KYC: Record<string, string> = {
-  approved: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  rejected: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  expired: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  none: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  approved: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
+  pending: 'bg-ember text-graphite',
+  rejected: 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist',
+  expired: 'bg-ember text-graphite',
+  none: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 
 /** One client, everything about them, for staff. */
@@ -47,8 +47,8 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
   const admin = me?.role === 'admin';
   const compliance = me?.role === 'compliance' || admin;
 
-  if (client.error) return <p role="alert" className="text-sm text-red-600">{client.error}</p>;
-  if (!client.data) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (client.error) return <p role="alert" className="text-sm text-ember">{client.error}</p>;
+  if (!client.data) return <p className="text-sm text-slate-ink">Loading…</p>;
   const c = client.data;
   const t = holdings.data?.totals;
 
@@ -59,9 +59,9 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
       <div className="flex flex-wrap gap-1 text-xs">
         {TABS.map((name) => (
           <button key={name} onClick={() => setTab(name)} aria-pressed={tab === name}
-            className={`rounded px-3 py-1 capitalize ${tab === name
-              ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
-              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+            className={`rounded-md px-3 py-1 capitalize ${tab === name
+              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {name}
             {name === 'tickets' && tickets.data?.some((x) => x.status === 'open') ? ' •' : ''}
             {name === 'overview' && flags.data?.length ? ' •' : ''}
@@ -108,16 +108,18 @@ function Header({ client: c, totals, onSaved, compliance }: {
     <div className={`${card} space-y-3`}>
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-64">
-          <h1 className="text-lg font-semibold">{c.name}</h1>
-          <p className="text-sm text-slate-500">{c.email}</p>
-          <p className="text-sm text-slate-500">{c.phone ?? 'no phone'} · {c.country ?? '—'} · {c.tier}</p>
-          <p className="mt-1 flex items-center gap-2 text-xs">
-            <span className={`rounded px-2 py-0.5 ${KYC[c.kyc_status] ?? ''}`}>KYC {c.kyc_status}</span>
-            <span className="text-slate-500">risk {c.risk_profile ?? 'not set'}</span>
+          {/* The serif starts at 28px; below that the system uses the sans. */}
+          <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
+          <p className="mt-2 font-mono text-xs text-slate-ink">{c.email}</p>
+          <p className="font-mono text-xs text-slate-ink">{c.phone ?? 'no phone'} · {c.country ?? '—'} · {c.tier}</p>
+          <p className="mt-2 flex items-center gap-2 text-xs">
+            <span className={`rounded-full px-2 py-0.5 ${KYC[c.kyc_status] ?? ''}`}>KYC {c.kyc_status}</span>
+            <span className="text-slate-ink">risk {c.risk_profile ?? 'not set'}</span>
           </p>
         </div>
 
-        <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+        {/* The dark sidebar takes 224px, so four stat columns need a wide viewport. */}
+        <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 text-sm xl:grid-cols-4">
           <Stat label="Holdings" value={totals ? usd(totals.holdings_usd) : '—'} />
           <Stat label="Open P&L" value={totals ? usd(totals.open_pnl) : '—'}
             className={totals ? pnlColour(totals.open_pnl) : ''} />
@@ -125,7 +127,7 @@ function Header({ client: c, totals, onSaved, compliance }: {
           <Stat label="Since" value={new Date(c.created_at).toLocaleDateString()} />
         </dl>
 
-        <button className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+        <button className="text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum"
           onClick={() => setEditing((v) => !v)}>{editing ? 'done' : 'edit'}</button>
       </div>
 
@@ -161,7 +163,7 @@ function Header({ client: c, totals, onSaved, compliance }: {
       </div>
 
       {editing && (
-        <form className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800"
+        <form className="flex flex-wrap items-end gap-2 border-t border-pebble pt-3 dark:border-white/10"
           onSubmit={async (e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
@@ -176,31 +178,32 @@ function Header({ client: c, totals, onSaved, compliance }: {
           <button className={btn}>Save</button>
         </form>
       )}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
     </div>
   );
 }
 
 const Stat = ({ label, value, className = '' }: { label: string; value: string; className?: string }) => (
   <div>
-    <dt className="text-xs text-slate-500">{label}</dt>
-    <dd className={`font-medium tabular-nums ${className}`}>{value}</dd>
+    <dt className="text-xs text-slate-ink">{label}</dt>
+    {/* Money reads as a system readout, so it takes the mono face — section 4.1. */}
+    <dd className={`font-mono font-medium tabular-nums ${className}`}>{value}</dd>
   </div>
 );
 const Labelled = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <label className="text-xs text-slate-500">{label}{children}</label>
+  <label className="text-xs text-slate-ink">{label}{children}</label>
 );
 
 // ----------------------------------------------------------------- panels
 
 const Empty = ({ children }: { children: React.ReactNode }) =>
-  <p className="p-4 text-sm text-slate-500">{children}</p>;
+  <p className="p-4 text-sm text-slate-ink">{children}</p>;
 
 function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
   return (
     <div className={`${card} overflow-x-auto p-0`}>
       <table className="w-full text-sm">
-        <thead className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-700">
+        <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
           <tr>{head.map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
         </thead>
         <tbody>{children}</tbody>
@@ -209,7 +212,7 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
   );
 }
 const Tr = ({ children }: { children: React.ReactNode }) =>
-  <tr className="border-b border-slate-100 last:border-0 dark:border-slate-800">{children}</tr>;
+  <tr className="border-b border-pebble last:border-0 dark:border-white/10">{children}</tr>;
 const Td = ({ children, className = '' }: { children: React.ReactNode; className?: string }) =>
   <td className={`px-3 py-1.5 ${className}`}>{children}</td>;
 
@@ -222,7 +225,7 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
       <div className="space-y-4">
         {!!flags.data?.length && <FlagList rows={flags.data} review={false} onDone={flags.reload} />}
         {!!totals?.unpriced.length && (
-          <p className="text-xs text-amber-600">
+          <p className="text-xs text-ember">
             Holdings exclude {totals.unpriced.join(', ')} — no price source for those assets.
           </p>
         )}
@@ -230,10 +233,10 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
           <h2 className="text-sm font-semibold">Open tasks</h2>
           {tasks.data?.map((t) => (
             <p key={t.id} className="text-sm">
-              {t.title} <span className="text-xs text-slate-500">· {t.assignee_name}</span>
+              {t.title} <span className="text-xs text-slate-ink">· {t.assignee_name}</span>
             </p>
           ))}
-          {tasks.data?.length === 0 && <p className="text-sm text-slate-500">None.</p>}
+          {tasks.data?.length === 0 && <p className="text-sm text-slate-ink">None.</p>}
         </div>
       </div>
       {admin && <CreditForm clientId={id} onDone={onChanged} />}
@@ -260,7 +263,7 @@ function Assets({ h }: { h: Holdings | null }) {
             <Tr key={w.id}>
               <Td className="font-medium">{w.asset}</Td>
               <Td className="tabular-nums">{num(w.balance)}</Td>
-              <Td className="font-mono text-xs text-slate-500">{w.address}</Td>
+              <Td className="font-mono text-xs text-slate-ink">{w.address}</Td>
             </Tr>
           ))}
         </Table>
@@ -270,7 +273,7 @@ function Assets({ h }: { h: Holdings | null }) {
           {h.portfolios.map((p) => (
             <Tr key={p.id}>
               <Td className="font-medium">{p.name}</Td>
-              <Td className="text-slate-500">{p.type_name}</Td>
+              <Td className="text-slate-ink">{p.type_name}</Td>
               <Td className="tabular-nums">{num(p.balance)} {p.currency}</Td>
               <Td className="tabular-nums">{p.target_amount ? num(p.target_amount) : '—'}</Td>
               <Td>{p.status}</Td>
@@ -286,12 +289,12 @@ function Trading({ h }: { h: Holdings | null }) {
   if (!h) return <Empty>Loading…</Empty>;
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-medium text-slate-500">Open positions</h3>
+      <h3 className="text-xs font-medium text-slate-ink">Open positions</h3>
       <Table head={['Symbol', 'Qty', 'Entry', 'Price', 'Open P&L']}>
         {h.positions.map((p) => (
           <Tr key={p.symbol}>
             <Td className="font-medium">{p.symbol}</Td>
-            <Td className={`tabular-nums ${p.qty > 0 ? 'text-green-600' : 'text-red-600'}`}>{num(p.qty)}</Td>
+            <Td className={`tabular-nums ${p.qty > 0 ? '' : 'text-slate-ink'}`}>{num(p.qty)}</Td>
             <Td className="tabular-nums">{p.avg_price}</Td>
             <Td className="tabular-nums">{p.price}</Td>
             <Td className={`tabular-nums ${pnlColour(p.unrealized)}`}>{num(p.unrealized)}</Td>
@@ -300,13 +303,13 @@ function Trading({ h }: { h: Holdings | null }) {
       </Table>
       {h.positions.length === 0 && <Empty>No open positions.</Empty>}
 
-      <h3 className="text-xs font-medium text-slate-500">Orders</h3>
+      <h3 className="text-xs font-medium text-slate-ink">Orders</h3>
       <Table head={['Placed', 'Symbol', 'Side', 'Type', 'Qty', 'Trigger', 'Status']}>
         {h.orders.map((o) => (
           <Tr key={o.id}>
-            <Td className="text-slate-500">{when(o.placed_at)}</Td>
+            <Td className="text-slate-ink">{when(o.placed_at)}</Td>
             <Td className="font-medium">{o.symbol}</Td>
-            <Td className={o.side === 'buy' ? 'text-green-600' : 'text-red-600'}>{o.side}</Td>
+            <Td className={'font-mono text-xs uppercase text-slate-ink'}>{o.side}</Td>
             <Td>{o.type.replace('_', '-')}</Td>
             <Td className="tabular-nums">{num(o.qty)}</Td>
             <Td className="tabular-nums">{o.limit_price ?? o.stop_price ?? '—'}</Td>
@@ -316,13 +319,13 @@ function Trading({ h }: { h: Holdings | null }) {
       </Table>
       {h.orders.length === 0 && <Empty>No orders yet.</Empty>}
 
-      <h3 className="text-xs font-medium text-slate-500">Trade history</h3>
+      <h3 className="text-xs font-medium text-slate-ink">Trade history</h3>
       <Table head={['Filled', 'Symbol', 'Side', 'Qty', 'Price']}>
         {h.trades.map((t) => (
           <Tr key={t.id}>
-            <Td className="text-slate-500">{when(t.filled_at)}</Td>
+            <Td className="text-slate-ink">{when(t.filled_at)}</Td>
             <Td className="font-medium">{t.symbol}</Td>
-            <Td className={t.side === 'buy' ? 'text-green-600' : 'text-red-600'}>{t.side}</Td>
+            <Td className={'font-mono text-xs uppercase text-slate-ink'}>{t.side}</Td>
             <Td className="tabular-nums">{num(t.qty)}</Td>
             <Td className="tabular-nums">{t.price}</Td>
           </Tr>
@@ -351,19 +354,20 @@ function Funding({ id, h, compliance, onChanged }: {
     <Table head={['Requested', 'Type', 'Amount', 'Status', '']}>
       {h.cash.map((t) => (
         <Tr key={t.id}>
-          <Td className="text-slate-500">{when(t.created_at)}</Td>
+          <Td className="text-slate-ink">{when(t.created_at)}</Td>
           <Td>{t.kind}</Td>
           <Td className="tabular-nums">{num(t.amount)}</Td>
-          <Td className={t.status === 'pending' ? 'text-amber-600' : t.status === 'rejected' ? 'text-red-600' : 'text-green-600'}>
+          {/* Only "pending" is waiting on someone; rejected and settled are just facts. */}
+          <Td className={t.status === 'pending' ? 'text-ember' : 'text-slate-ink'}>
             {t.status}
           </Td>
           <Td>
             {t.status === 'pending' && compliance && (
               <span className="flex gap-2 text-xs">
                 <button disabled={busy === t.id} onClick={() => decide(t.id, 'approved')}
-                  className="text-slate-500 hover:text-green-600">approve</button>
+                  className="text-slate-ink hover:text-slate-ink">approve</button>
                 <button disabled={busy === t.id} onClick={() => decide(t.id, 'rejected')}
-                  className="text-slate-500 hover:text-red-600">reject</button>
+                  className="text-slate-ink hover:text-ember">reject</button>
               </span>
             )}
           </Td>
@@ -380,10 +384,10 @@ function Tickets({ rows }: { rows: Ticket[] }) {
       {rows.map((t) => (
         <Tr key={t.id}>
           <Td className="font-medium"><a className="hover:underline" href="#/support">{t.subject}</a></Td>
-          <Td className="text-slate-500">{t.category}</Td>
+          <Td className="text-slate-ink">{t.category}</Td>
           <Td>{t.priority}</Td><Td>{t.status}</Td>
           <Td className="tabular-nums">{t.messages}</Td>
-          <Td className="text-slate-500">{when(t.updated_at)}</Td>
+          <Td className="text-slate-ink">{when(t.updated_at)}</Td>
         </Tr>
       ))}
     </Table>
@@ -417,9 +421,9 @@ function ActivityTab({ id }: { id: string }) {
       </form>
       <ol className="space-y-2">
         {timeline.data?.map((a) => (
-          <li key={a.id} className="border-l-2 border-slate-200 pl-3 dark:border-slate-700">
+          <li key={a.id} className="border-l-2 border-pebble pl-3 dark:border-white/10">
             <p className="text-sm">{a.summary}</p>
-            <p className="text-xs text-slate-500">{a.kind} · {when(a.at)}</p>
+            <p className="text-xs text-slate-ink">{a.kind} · {when(a.at)}</p>
           </li>
         ))}
       </ol>
@@ -439,10 +443,10 @@ function AuditTab({ id }: { id: string }) {
           : [];
         return (
           <Tr key={a.id}>
-            <Td className="text-slate-500">{when(a.at)}</Td>
+            <Td className="text-slate-ink">{when(a.at)}</Td>
             <Td className="font-mono text-xs">{String(a.actor).slice(0, 8)}</Td>
             <Td>{a.action}</Td>
-            <Td className="text-slate-500">
+            <Td className="text-slate-ink">
               {changed.length
                 ? changed.map((k) => `${k}: ${JSON.stringify(a.before[k])} → ${JSON.stringify(a.after[k])}`).join(', ')
                 : a.action.toLowerCase()}

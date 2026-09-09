@@ -18,17 +18,17 @@ const CATEGORIES = ['account', 'funding', 'trading', 'kyc', 'technical', 'other'
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 const STATUS: Record<string, string> = {
-  open: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  resolved: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  closed: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+  open: 'bg-ember text-graphite',
+  pending: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
+  resolved: 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist',
+  closed: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 const PRIORITY: Record<string, string> = {
-  urgent: 'text-red-600 font-medium', high: 'text-amber-600', normal: '', low: 'text-slate-400',
+  urgent: 'text-ember font-medium', high: 'text-ember', normal: '', low: 'text-mist',
 };
 
 const Badge = ({ status }: { status: string }) =>
-  <span className={`rounded px-2 py-0.5 text-xs ${STATUS[status] ?? ''}`}>{status}</span>;
+  <span className={`rounded-md px-2 py-0.5 text-xs ${STATUS[status] ?? ''}`}>{status}</span>;
 
 // ------------------------------------------------------------------ client
 
@@ -45,7 +45,7 @@ export function SupportPanel() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-500">Support</h3>
+        <h3 className="text-xs font-medium text-slate-ink">Support</h3>
         <button className={btn} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New ticket'}
         </button>
@@ -55,19 +55,19 @@ export function SupportPanel() {
 
       {tickets.data?.map((t) => (
         <button key={t.id} onClick={() => setOpenId(t.id)}
-          className="block w-full rounded border border-slate-200 p-3 text-left hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-500">
+          className="block w-full rounded-md border border-pebble p-3 text-left hover:border-ember dark:border-white/10 dark:hover:border-ember">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="font-medium">{t.subject}</span>
             <Badge status={t.status} />
-            <span className="ml-auto text-xs text-slate-500">
+            <span className="ml-auto text-xs text-slate-ink">
               {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
             </span>
           </div>
-          <p className="text-xs text-slate-500">{t.category}</p>
+          <p className="text-xs text-slate-ink">{t.category}</p>
         </button>
       ))}
       {tickets.data?.length === 0 && !adding && (
-        <p className="text-sm text-slate-500">No tickets. Raise one if something needs looking at.</p>
+        <p className="text-sm text-slate-ink">No tickets. Raise one if something needs looking at.</p>
       )}
     </div>
   );
@@ -100,7 +100,7 @@ function NewTicket({ onDone }: { onDone: () => void }) {
       </div>
       <textarea name="body" required maxLength={5000} rows={4} placeholder="Tell us what happened…"
         className={input} />
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
       <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Raise ticket'}</button>
     </form>
   );
@@ -128,9 +128,9 @@ export function SupportQueue({ role }: { role?: string }) {
       <div className="flex gap-1 text-xs">
         {['live', 'open', 'pending', 'resolved', 'closed'].map((s) => (
           <button key={s} onClick={() => setStatus(s)} aria-pressed={status === s}
-            className={`rounded px-3 py-1 ${status === s
-              ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
-              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+            className={`rounded-md px-3 py-1 ${status === s
+              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {s}
           </button>
         ))}
@@ -138,26 +138,26 @@ export function SupportQueue({ role }: { role?: string }) {
 
       <div className={`${card} p-0`}>
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-700">
+          <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
             <tr>{['Subject', 'Client', 'Category', 'Priority', 'Status', 'Assigned', 'Updated'].map((h) =>
               <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {tickets.data?.map((t) => (
               <tr key={t.id} onClick={() => setOpenId(t.id)}
-                className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
+                className="cursor-pointer border-b border-pebble last:border-0 hover:bg-bone dark:border-white/10 dark:hover:bg-white/10">
                 <td className="px-3 py-2 font-medium">{t.subject}</td>
                 <td className="px-3 py-2">{t.client_name}</td>
-                <td className="px-3 py-2 text-slate-500">{t.category}</td>
+                <td className="px-3 py-2 text-slate-ink">{t.category}</td>
                 <td className={`px-3 py-2 ${PRIORITY[t.priority] ?? ''}`}>{t.priority}</td>
                 <td className="px-3 py-2"><Badge status={t.status} /></td>
-                <td className="px-3 py-2 text-slate-500">{t.assignee_name ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-500">{when(t.updated_at)}</td>
+                <td className="px-3 py-2 text-slate-ink">{t.assignee_name ?? '—'}</td>
+                <td className="px-3 py-2 text-slate-ink">{when(t.updated_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {tickets.data?.length === 0 && <p className="p-4 text-sm text-slate-500">Nothing here.</p>}
+        {tickets.data?.length === 0 && <p className="p-4 text-sm text-slate-ink">Nothing here.</p>}
       </div>
     </div>
   );
@@ -195,19 +195,19 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
     thread.reload();
   };
 
-  if (!t) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!t) return <p className="text-sm text-slate-ink">Loading…</p>;
 
   return (
     <div className="space-y-3">
-      <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">
+      <button onClick={onBack} className="text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum">
         ← back
       </button>
 
       <div className="flex flex-wrap items-baseline gap-2">
         <h3 className="font-medium">{t.subject}</h3>
         <Badge status={t.status} />
-        <span className="text-xs text-slate-500">{t.category}</span>
-        {staff && <span className="text-xs text-slate-500">· {t.client_name}</span>}
+        <span className="text-xs text-slate-ink">{t.category}</span>
+        {staff && <span className="text-xs text-slate-ink">· {t.client_name}</span>}
       </div>
 
       {staff && canReply && (
@@ -229,13 +229,13 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
       <ol className="space-y-2">
         {t.messages.map((m) => (
           <li key={m.id}
-            className={`rounded p-2 text-sm ${m.internal
-              ? 'border border-dashed border-amber-400 bg-amber-50 dark:bg-amber-900/20'
+            className={`rounded-md p-2 text-sm ${m.internal
+              ? 'border border-dashed border-ember bg-bone dark:bg-white/10'
               : m.author_kind === 'staff'
-                ? 'bg-slate-100 dark:bg-slate-800'
-                : 'bg-white dark:bg-slate-900'}`}>
-            <p className="text-xs text-slate-500">
-              {m.internal && <span className="font-medium text-amber-700 dark:text-amber-400">internal note · </span>}
+                ? 'bg-bone dark:bg-white/10'
+                : 'bg-vellum dark:bg-onyx'}`}>
+            <p className="text-xs text-slate-ink">
+              {m.internal && <span className="font-medium text-ember dark:text-ember">internal note · </span>}
               {m.author_name ?? m.author_kind} · {when(m.created_at)}
             </p>
             <p className="whitespace-pre-wrap">{m.body}</p>
@@ -251,7 +251,7 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
           <div className="flex items-center gap-3">
             <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Send'}</button>
             {staff && (
-              <label className="flex items-center gap-1 text-xs text-slate-500">
+              <label className="flex items-center gap-1 text-xs text-slate-ink">
                 <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
                 internal note (hidden from the client)
               </label>
@@ -259,8 +259,8 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
           </div>
         </form>
       )}
-      {t.status === 'closed' && <p className="text-sm text-slate-500">This ticket is closed.</p>}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {t.status === 'closed' && <p className="text-sm text-slate-ink">This ticket is closed.</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
     </div>
   );
 }

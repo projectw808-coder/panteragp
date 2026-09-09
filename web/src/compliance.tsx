@@ -20,12 +20,12 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 const pretty = (s: string) => s.replace(/_/g, ' ');
 
 const SEVERITY: Record<string, string> = {
-  high: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  medium: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  high: 'bg-ember text-graphite',
+  medium: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
+  low: 'bg-bone text-obsidian dark:bg-white/10 dark:text-mist',
 };
 const STATUS: Record<string, string> = {
-  approved: 'text-green-600', rejected: 'text-red-600', pending: 'text-amber-600',
+  approved: 'text-slate-ink', rejected: 'text-ember', pending: 'text-ember',
 };
 
 /** Documents are behind auth, so fetch as a blob and hand the viewer an object URL. */
@@ -50,9 +50,9 @@ export function ComplianceView({ role }: { role?: string }) {
       <div className="flex gap-1 text-xs">
         {(['kyc', 'flags'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
-            className={`rounded px-3 py-1 ${tab === t
-              ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
-              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+            className={`rounded-md px-3 py-1 ${tab === t
+              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {t === 'kyc' ? `KYC queue (${queue.data?.length ?? 0})` : `Open flags (${flags.data?.length ?? 0})`}
           </button>
         ))}
@@ -60,14 +60,14 @@ export function ComplianceView({ role }: { role?: string }) {
 
       {tab === 'kyc' ? (
         <div className={`${card} space-y-3`}>
-          {queue.data?.length === 0 && <p className="text-sm text-slate-500">Nothing waiting for review.</p>}
+          {queue.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing waiting for review.</p>}
           {queue.data?.map((d) => (
-            <div key={d.id} className="flex flex-wrap items-center gap-3 border-b border-slate-100 pb-3 last:border-0 dark:border-slate-800">
+            <div key={d.id} className="flex flex-wrap items-center gap-3 border-b border-pebble pb-3 last:border-0 dark:border-white/10">
               <div className="min-w-48">
                 <a className="text-sm font-medium hover:underline" href={`#/clients/${d.client_id}`}>{d.client_name}</a>
-                <p className="text-xs text-slate-500">{pretty(d.kind)} · {when(d.uploaded_at)}</p>
+                <p className="text-xs text-slate-ink">{pretty(d.kind)} · {when(d.uploaded_at)}</p>
               </div>
-              <button onClick={() => openDocument(d.id)} className="text-xs text-slate-500 underline hover:text-slate-900 dark:hover:text-slate-100">
+              <button onClick={() => openDocument(d.id)} className="text-xs text-slate-ink underline hover:text-obsidian dark:hover:text-vellum">
                 view document
               </button>
               {review && <Decide id={d.id} onDone={() => { queue.reload(); flags.reload(); }} />}
@@ -95,10 +95,12 @@ function Decide({ id, onDone }: { id: number; onDone: () => void }) {
     <div className="ml-auto flex items-center gap-2">
       <input className={`${field} w-48 py-1`} placeholder="Note (optional)"
         value={note} onChange={(e) => setNote(e.target.value)} />
+      {/* Approving is the primary action here, so it takes the ember fill; rejecting is
+          the secondary one and takes the neutral. Neither is red or green. */}
       <button disabled={busy} onClick={() => send('approved')}
-        className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50">approve</button>
+        className="rounded-md bg-ember px-3 py-1 font-mono text-xs font-medium text-graphite disabled:opacity-50">approve</button>
       <button disabled={busy} onClick={() => send('rejected')}
-        className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50">reject</button>
+        className="rounded-md border border-pebble bg-bone px-3 py-1 font-mono text-xs font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-vellum">reject</button>
     </div>
   );
 }
@@ -112,23 +114,23 @@ export function FlagList({ rows, review, onDone, showClient = false }: {
     await api(`/flags/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
     onDone();
   };
-  if (!rows.length) return <div className={`${card} text-sm text-slate-500`}>No open flags.</div>;
+  if (!rows.length) return <div className={`${card} text-sm text-slate-ink`}>No open flags.</div>;
   return (
     <div className={`${card} space-y-3`}>
       {rows.map((f) => (
-        <div key={f.id} className="flex flex-wrap items-center gap-3 border-b border-slate-100 pb-3 last:border-0 dark:border-slate-800">
-          <span className={`rounded px-2 py-0.5 text-xs font-medium ${SEVERITY[f.severity]}`}>{f.severity}</span>
+        <div key={f.id} className="flex flex-wrap items-center gap-3 border-b border-pebble pb-3 last:border-0 dark:border-white/10">
+          <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${SEVERITY[f.severity]}`}>{f.severity}</span>
           <div>
             <p className="text-sm font-medium">{pretty(f.rule)}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-ink">
               {showClient && <a className="hover:underline" href={`#/clients/${f.client_id}`}>{f.client_name} · </a>}
               {when(f.raised_at)} · {Object.entries(f.details).map(([k, v]) => `${pretty(k)} ${v}`).join(', ')}
             </p>
           </div>
           {review && (
             <div className="ml-auto flex gap-2 text-xs">
-              <button onClick={() => decide(f.id, 'cleared')} className="text-slate-500 hover:text-green-600">clear</button>
-              <button onClick={() => decide(f.id, 'escalated')} className="text-slate-500 hover:text-red-600">escalate</button>
+              <button onClick={() => decide(f.id, 'cleared')} className="text-slate-ink hover:text-slate-ink">clear</button>
+              <button onClick={() => decide(f.id, 'escalated')} className="text-slate-ink hover:text-ember">escalate</button>
             </div>
           )}
         </div>
@@ -166,25 +168,25 @@ export function ReportsView() {
       <div className="flex flex-wrap gap-2">
         {REPORTS.map((r) => (
           <button key={r.name} onClick={() => setOpen(r.name)} aria-pressed={open === r.name}
-            className={`rounded px-3 py-1 text-xs ${open === r.name
-              ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
-              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+            className={`rounded-md px-3 py-1 text-xs ${open === r.name
+              ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {r.title}
           </button>
         ))}
         <button className={`${btn} ml-auto`} onClick={() => download(open)}>Export CSV</button>
         <button className={btn} onClick={() => window.print()}>Print / PDF</button>
       </div>
-      <p className="text-sm text-slate-500">{REPORTS.find((r) => r.name === open)?.blurb}</p>
+      <p className="text-sm text-slate-ink">{REPORTS.find((r) => r.name === open)?.blurb}</p>
 
       <div className={`${card} overflow-x-auto p-0`}>
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-700">
+          <thead className="border-b border-pebble text-left text-slate-ink dark:border-white/10">
             <tr>{cols.map((c) => <th key={c} className="px-3 py-2 font-medium">{pretty(c)}</th>)}</tr>
           </thead>
           <tbody>
             {rows.data?.map((r, i) => (
-              <tr key={i} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+              <tr key={i} className="border-b border-pebble last:border-0 dark:border-white/10">
                 {cols.map((c) => (
                   <td key={c} className={`px-3 py-1.5 ${typeof r[c] === 'number' ? 'tabular-nums' : ''}`}>
                     {r[c] === null ? '—' : String(r[c])}
@@ -194,7 +196,7 @@ export function ReportsView() {
             ))}
           </tbody>
         </table>
-        {rows.data?.length === 0 && <p className="p-4 text-sm text-slate-500">No rows.</p>}
+        {rows.data?.length === 0 && <p className="p-4 text-sm text-slate-ink">No rows.</p>}
       </div>
     </div>
   );
@@ -234,21 +236,21 @@ export function KycPanel({ clientId, canUpload }: { clientId: string; canUpload:
         <div key={d.id} className="flex items-center gap-2 text-sm">
           <span className="flex-1">{pretty(d.kind)}</span>
           <span className={STATUS[d.status] ?? ''}>{d.status}</span>
-          {d.note && <span className="text-xs text-slate-500" title={d.note}>note</span>}
+          {d.note && <span className="text-xs text-slate-ink" title={d.note}>note</span>}
         </div>
       ))}
-      {docs.data?.length === 0 && <p className="text-sm text-slate-500">Nothing uploaded yet.</p>}
+      {docs.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing uploaded yet.</p>}
 
       {canUpload && (
-        <div className="space-y-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+        <div className="space-y-2 border-t border-pebble pt-2 dark:border-white/10">
           <select className={input} value={kind} onChange={(e) => setKind(e.target.value)}>
             {['id_front', 'id_back', 'proof_of_address', 'selfie'].map((k) =>
               <option key={k} value={k}>{pretty(k)}</option>)}
           </select>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf"
-            className="block w-full text-xs text-slate-500" />
-          <p className="text-xs text-slate-500">JPEG, PNG or PDF, up to 10 MB.</p>
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+            className="block w-full text-xs text-slate-ink" />
+          <p className="text-xs text-slate-ink">JPEG, PNG or PDF, up to 10 MB.</p>
+          {error && <p role="alert" className="text-sm text-ember">{error}</p>}
           <button onClick={upload} disabled={busy} className={`${btn} w-full`}>
             {busy ? 'Uploading…' : 'Upload'}
           </button>
@@ -292,19 +294,19 @@ export function FundingPanel() {
           value={amount} onChange={(e) => setAmount(e.target.value)} />
         <button className={btn}>Request</button>
       </form>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-ink">
         A withdrawal leaves your balance immediately and is returned if it is rejected.
         A deposit is credited once it has been approved.
       </p>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
       {raised.length > 0 && (
-        <p className="text-sm text-amber-700 dark:text-amber-400">
+        <p className="text-sm text-ember dark:text-ember">
           Submitted for review — compliance was notified ({raised.map(pretty).join(', ')}).
         </p>
       )}
 
       <table className="w-full text-sm">
-        <thead><tr className="text-left text-slate-500">
+        <thead><tr className="text-left text-slate-ink">
           <th className="px-3 py-1.5 font-medium">Requested</th>
           <th className="px-3 py-1.5 font-medium">Type</th>
           <th className="px-3 py-1.5 font-medium">Amount</th>
@@ -312,8 +314,8 @@ export function FundingPanel() {
         </tr></thead>
         <tbody>
           {history.data?.map((t) => (
-            <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
-              <td className="px-3 py-1.5 text-slate-500">{when(t.created_at)}</td>
+            <tr key={t.id} className="border-t border-pebble dark:border-white/10">
+              <td className="px-3 py-1.5 text-slate-ink">{when(t.created_at)}</td>
               <td className="px-3 py-1.5">{t.kind}</td>
               <td className="px-3 py-1.5 tabular-nums">{t.amount}</td>
               <td className={`px-3 py-1.5 ${STATUS[t.status] ?? ''}`}>{t.status}</td>
@@ -321,7 +323,7 @@ export function FundingPanel() {
           ))}
         </tbody>
       </table>
-      {history.data?.length === 0 && <p className="text-sm text-slate-500">No funding requests yet.</p>}
+      {history.data?.length === 0 && <p className="text-sm text-slate-ink">No funding requests yet.</p>}
     </div>
   );
 }

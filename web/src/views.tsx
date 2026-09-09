@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { btn, card, input } from './App.tsx';
+import { btn, card, input, mono, tableCard, thead } from './App.tsx';
 import { api, useApi, type ClientRow, type Stage, type Task } from './api.ts';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -34,29 +34,30 @@ export function ClientList() {
 
       {adding && <NewClient onDone={() => { setAdding(false); clients.reload(); }} />}
 
-      {clients.error && <p role="alert" className="text-sm text-red-600">{clients.error}</p>}
-      <div className={`${card} p-0 overflow-x-auto`}>
+      {clients.error && <p role="alert" className="text-sm text-ember">{clients.error}</p>}
+      <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-700">
+          <thead className={thead}>
             <tr>{['Name', 'Email', 'Stage', 'KYC', 'Owner', 'Created'].map((h) =>
-              <th key={h} className="px-4 py-2 font-medium">{h}</th>)}</tr>
+              <th key={h} className="px-4 py-2">{h}</th>)}</tr>
           </thead>
           <tbody>
             {clients.data?.map((c) => (
-              <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
+              <tr key={c.id} className="border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
                 <td className="px-4 py-2">
                   <a className="font-medium hover:underline" href={`#/clients/${c.id}`}>{c.name}</a>
                 </td>
-                <td className="px-4 py-2 text-slate-500">{c.email}</td>
+                {/* Contact details and timestamps read as data, so they take the mono face. */}
+                <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{c.email}</td>
                 <td className="px-4 py-2">{c.stage}</td>
                 <td className="px-4 py-2"><Badge value={c.kyc_status} /></td>
-                <td className="px-4 py-2 text-slate-500">{c.owner_name ?? '—'}</td>
-                <td className="px-4 py-2 text-slate-500">{when(c.created_at)}</td>
+                <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? '—'}</td>
+                <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{when(c.created_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {clients.data?.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">No clients match.</p>}
+        {clients.data?.length === 0 && <p className="px-4 py-6 text-sm text-slate-ink">No clients match.</p>}
       </div>
     </div>
   );
@@ -86,16 +87,16 @@ function NewClient({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className={`${card} flex flex-wrap items-end gap-3`}>
-      <label className="text-xs text-slate-500">Name
+      <label className="text-xs text-slate-ink">Name
         <input name="name" required maxLength={200} className={input} /></label>
-      <label className="text-xs text-slate-500">Email
+      <label className="text-xs text-slate-ink">Email
         <input name="email" type="email" required className={input} /></label>
-      <label className="text-xs text-slate-500">Phone
+      <label className="text-xs text-slate-ink">Phone
         <input name="phone" maxLength={40} className={input} /></label>
-      <label className="text-xs text-slate-500">Country
+      <label className="text-xs text-slate-ink">Country
         <input name="country" maxLength={2} minLength={2} placeholder="GB" className={input} /></label>
       <button className={btn} disabled={busy}>Create</button>
-      {error && <p role="alert" className="w-full text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="w-full text-sm text-ember">{error}</p>}
     </form>
   );
 }
@@ -108,20 +109,20 @@ export function TaskList() {
     <div className={`${card} mx-auto max-w-3xl space-y-2`}>
       <h1 className="text-sm font-semibold">My open tasks</h1>
       {tasks.data?.map((t) => (
-        <div key={t.id} className="flex items-center gap-3 border-b border-slate-100 py-2 last:border-0 dark:border-slate-800">
+        <div key={t.id} className="flex items-center gap-3 border-b border-pebble py-2 last:border-0 dark:border-white/10">
           <input type="checkbox" onChange={async () => {
             await api(`/tasks/${t.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
             tasks.reload();
           }} />
           <div className="text-sm">
             {t.title}
-            <a className="block text-xs text-slate-500 hover:underline" href={`#/clients/${t.client_id}`}>
+            <a className="block text-xs text-slate-ink hover:underline" href={`#/clients/${t.client_id}`}>
               {t.client_name}{t.due_at ? ` · due ${when(t.due_at)}` : ''}
             </a>
           </div>
         </div>
       ))}
-      {tasks.data?.length === 0 && <p className="text-sm text-slate-500">Nothing open.</p>}
+      {tasks.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing open.</p>}
     </div>
   );
 }
@@ -129,11 +130,11 @@ export function TaskList() {
 // ----------------------------------------------------------------- bits
 
 const BADGE: Record<string, string> = {
-  approved: 'bg-green-100 text-green-800',
-  pending: 'bg-amber-100 text-amber-800',
-  rejected: 'bg-red-100 text-red-800',
-  expired: 'bg-red-100 text-red-800',
+  approved: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
+  pending: 'bg-ember text-graphite',
+  rejected: 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist',
+  expired: 'bg-ember text-graphite',
 };
 const Badge = ({ value }: { value: string }) => (
-  <span className={`rounded px-2 py-0.5 text-xs ${BADGE[value] ?? 'bg-slate-100 text-slate-600'}`}>{value}</span>
+  <span className={`rounded-full px-2 py-0.5 text-xs ${BADGE[value] ?? 'bg-bone text-slate-ink'}`}>{value}</span>
 );

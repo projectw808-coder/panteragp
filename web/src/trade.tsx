@@ -21,7 +21,7 @@ type Trade = { id: number; symbol: string; side: string; type: string; qty: numb
 const TYPES = ['market', 'limit', 'stop', 'stop_limit', 'trailing_stop'] as const;
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${money(n)}`;
-const pnl = (n: number) => (n >= 0 ? 'text-green-600' : 'text-red-600');
+const pnl = (n: number) => (n >= 0 ? 'text-up' : 'text-down');
 
 export function TradeView() {
   const me = useApi<{ sub: string }>('/me').data;
@@ -51,7 +51,7 @@ export function TradeView() {
   return (
     <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
       <div className={`${card} flex flex-wrap items-center gap-6 py-3 text-sm`}>
-        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+        <span className="rounded-md bg-bone px-2 py-0.5 text-xs font-semibold text-ember">
           PAPER / DEMO
         </span>
         <Stat label="Trading balance" value={a ? `${money(a.balance)} ${a.currency}` : '—'} />
@@ -70,9 +70,9 @@ export function TradeView() {
           <div className="flex gap-1 text-xs">
             {(['positions', 'orders', 'history', 'funding', 'holdings', 'portfolios', 'support'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
-                className={`rounded px-3 py-1 capitalize ${tab === t
-                  ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                className={`rounded-md px-3 py-1 capitalize ${tab === t
+                  ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian'
+                  : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
                 {t === 'orders' ? 'open orders' : t}
               </button>
             ))}
@@ -98,7 +98,7 @@ export function TradeView() {
 
 const Stat = ({ label, value, className = '' }: { label: string; value: string; className?: string }) => (
   <span>
-    <span className="text-xs text-slate-500">{label} </span>
+    <span className="text-xs text-slate-ink">{label} </span>
     <span className={`tabular-nums font-medium ${className}`}>{value}</span>
   </span>
 );
@@ -155,7 +155,7 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
     <form onSubmit={submit} className={`${card} space-y-3 self-start`}>
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-semibold">New order</h2>
-        <span className="tabular-nums text-sm text-slate-500">{last ?? '—'}</span>
+        <span className="tabular-nums text-sm text-slate-ink">{last ?? '—'}</span>
       </div>
 
       <select className={input} value={symbol} onChange={(e) => setSymbol(e.target.value)}>
@@ -165,9 +165,11 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
       <div className="flex gap-1">
         {(['buy', 'sell'] as const).map((s) => (
           <button key={s} type="button" onClick={() => setSide(s)} aria-pressed={side === s}
-            className={`flex-1 rounded px-2 py-2 text-sm font-medium uppercase ${side === s
-              ? s === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+            // Ember marks the selected side — an allowed "selected state" use. The
+            // direction itself is carried by the word, not by green/red.
+            className={`flex-1 rounded-md px-2 py-2 font-mono text-sm font-medium uppercase ${side === s
+              ? 'bg-ember text-graphite'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {s}
           </button>
         ))}
@@ -212,14 +214,14 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
         </Labelled>
       </div>
 
-      <div className="rounded bg-slate-50 p-2 text-xs dark:bg-slate-800">
+      <div className="rounded-md bg-bone p-2 text-xs dark:bg-white/10">
         <div className="flex items-center gap-2">
-          <span className="text-slate-500">Risk</span>
+          <span className="text-slate-ink">Risk</span>
           <input className={`${field} w-16 py-1`} type="number" step="0.1" min="0" max="100"
             value={riskPct} onChange={(e) => setRiskPct(e.target.value)} />
-          <span className="text-slate-500">% of balance</span>
+          <span className="text-slate-ink">% of balance</span>
         </div>
-        <p className="mt-1 text-slate-500">
+        <p className="mt-1 text-slate-ink">
           {suggested > 0
             ? <>Size for this stop: <button type="button" className="font-medium underline"
                 onClick={() => setQty(String(suggested))}>{suggested}</button> (capped at {leverage}× margin)</>
@@ -227,7 +229,7 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
         </p>
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
       <button className={`${btn} w-full`} disabled={busy}>
         {busy ? 'Placing…' : `${side.toUpperCase()} ${symbol}`}
       </button>
@@ -236,17 +238,17 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
 }
 
 const Labelled = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <label className="block text-xs text-slate-500">{label}{children}</label>
+  <label className="block text-xs text-slate-ink">{label}{children}</label>
 );
 
 // ------------------------------------------------------------------ panels
 
 const Th = ({ children }: { children?: React.ReactNode }) =>
-  <th className="px-3 py-1.5 text-left font-medium text-slate-500">{children}</th>;
+  <th className="px-3 py-1.5 text-left font-medium text-slate-ink">{children}</th>;
 const Td = ({ children, className = '' }: { children: React.ReactNode; className?: string }) =>
   <td className={`px-3 py-1.5 ${className}`}>{children}</td>;
 const Empty = ({ children }: { children: React.ReactNode }) =>
-  <p className="p-4 text-sm text-slate-500">{children}</p>;
+  <p className="p-4 text-sm text-slate-ink">{children}</p>;
 
 function Positions({ rows, prices }: { rows: Pos[]; prices: Record<string, number> }) {
   if (!rows.length) return <Empty>No open positions.</Empty>;
@@ -259,9 +261,9 @@ function Positions({ rows, prices }: { rows: Pos[]; prices: Record<string, numbe
           const price = prices[p.symbol] ?? p.price;
           const open = (price - p.avg_price) * p.qty;
           return (
-            <tr key={p.symbol} className="border-t border-slate-100 dark:border-slate-800">
+            <tr key={p.symbol} className="border-t border-pebble dark:border-white/10">
               <Td className="font-medium">{p.symbol}</Td>
-              <Td className={`tabular-nums ${p.qty > 0 ? 'text-green-600' : 'text-red-600'}`}>{p.qty}</Td>
+              <Td className={`tabular-nums ${p.qty > 0 ? '' : 'text-slate-ink'}`}>{p.qty}</Td>
               <Td className="tabular-nums">{p.avg_price}</Td>
               <Td className="tabular-nums">{price}</Td>
               <Td className={`tabular-nums ${pnl(open)}`}>{signed(open)}</Td>
@@ -280,17 +282,17 @@ function Orders({ rows, onCancel }: { rows: Order[]; onCancel: (id: string) => v
       <thead><tr><Th>Symbol</Th><Th>Side</Th><Th>Type</Th><Th>Qty</Th><Th>Trigger</Th><Th></Th></tr></thead>
       <tbody>
         {rows.map((o) => (
-          <tr key={o.id} className="border-t border-slate-100 dark:border-slate-800">
+          <tr key={o.id} className="border-t border-pebble dark:border-white/10">
             <Td className="font-medium">{o.symbol}</Td>
-            <Td className={o.side === 'buy' ? 'text-green-600' : 'text-red-600'}>{o.side}</Td>
+            <Td className={'font-mono text-xs uppercase text-slate-ink'}>{o.side}</Td>
             <Td>
               {o.type.replace('_', '-')}
-              {o.parent_order_id && <span className="ml-1 text-xs text-slate-500">exit</span>}
+              {o.parent_order_id && <span className="ml-1 text-xs text-slate-ink">exit</span>}
             </Td>
             <Td className="tabular-nums">{o.qty}</Td>
             <Td className="tabular-nums">{o.limit_price ?? o.stop_price ?? '—'}</Td>
             <Td><button onClick={() => onCancel(o.id)}
-              className="text-xs text-slate-500 hover:text-red-600">cancel</button></Td>
+              className="text-xs text-slate-ink hover:text-ember">cancel</button></Td>
           </tr>
         ))}
       </tbody>
@@ -305,10 +307,10 @@ function History({ rows }: { rows: Trade[] }) {
       <thead><tr><Th>Filled</Th><Th>Symbol</Th><Th>Side</Th><Th>Qty</Th><Th>Price</Th></tr></thead>
       <tbody>
         {rows.map((t) => (
-          <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
-            <Td className="text-slate-500">{new Date(t.filled_at).toLocaleString()}</Td>
+          <tr key={t.id} className="border-t border-pebble dark:border-white/10">
+            <Td className="text-slate-ink">{new Date(t.filled_at).toLocaleString()}</Td>
             <Td className="font-medium">{t.symbol}</Td>
-            <Td className={t.side === 'buy' ? 'text-green-600' : 'text-red-600'}>{t.side}</Td>
+            <Td className={'font-mono text-xs uppercase text-slate-ink'}>{t.side}</Td>
             <Td className="tabular-nums">{t.qty}</Td>
             <Td className="tabular-nums">{t.price}</Td>
           </tr>

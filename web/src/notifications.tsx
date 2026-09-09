@@ -76,21 +76,21 @@ export function NotificationBell() {
     <div ref={box} className="relative">
       <button onClick={() => { setOpen((v) => !v); if (!open) load(); }}
         aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
-        className="relative text-sm text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">
+        className="relative text-sm text-slate-ink hover:text-obsidian dark:hover:text-vellum">
         ☍
         {unread > 0 && (
-          <span className="absolute -top-1.5 -right-2 rounded-full bg-red-600 px-1 text-[10px] font-medium text-white">
+          <span className="absolute -top-1.5 -right-2 rounded-full bg-ember px-1 text-[10px] font-medium text-graphite">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx">
+          <div className="flex items-center justify-between border-b border-pebble px-3 py-2 dark:border-white/10">
             <span className="text-xs font-semibold">Notifications</span>
             {unread > 0 && (
-              <button onClick={markAll} className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">
+              <button onClick={markAll} className="text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum">
                 mark all read
               </button>
             )}
@@ -98,18 +98,18 @@ export function NotificationBell() {
           <ul className="max-h-96 overflow-auto">
             {items.map((n) => (
               <li key={n.id}
-                className={`border-b border-slate-100 px-3 py-2 last:border-0 dark:border-slate-800 ${
-                  n.read_at ? '' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                className={`border-b border-pebble px-3 py-2 last:border-0 dark:border-white/10 ${
+                  n.read_at ? '' : 'bg-bone dark:bg-white/5'}`}>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-slate-400">{ICON[n.kind] ?? '•'}</span>
+                  <span className="text-mist">{ICON[n.kind] ?? '•'}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{n.title}</p>
-                    {n.body && <p className="text-xs text-slate-500">{n.body}</p>}
-                    <p className="text-xs text-slate-400">{when(n.created_at)}</p>
+                    {n.body && <p className="text-xs text-slate-ink">{n.body}</p>}
+                    <p className="text-xs text-mist">{when(n.created_at)}</p>
                   </div>
                   {!n.read_at && (
                     <button onClick={() => markRead(n.id)}
-                      className="text-xs text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+                      className="text-xs text-mist hover:text-obsidian dark:hover:text-vellum">
                       read
                     </button>
                   )}
@@ -117,7 +117,7 @@ export function NotificationBell() {
               </li>
             ))}
           </ul>
-          {!items.length && <p className="px-3 py-4 text-sm text-slate-500">Nothing yet.</p>}
+          {!items.length && <p className="px-3 py-4 text-sm text-slate-ink">Nothing yet.</p>}
         </div>
       )}
     </div>

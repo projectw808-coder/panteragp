@@ -32,8 +32,9 @@ const n2 = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2
 const when = (iso: string) => new Date(iso).toLocaleString();
 const pretty = (s: string) => s.replace(/_/g, ' ');
 
+// Only "high" is asking for someone's attention now, so only "high" gets the accent.
 const SEVERITY: Record<string, string> = {
-  high: 'text-red-600', medium: 'text-amber-600', low: 'text-slate-500',
+  high: 'text-ember', medium: 'text-obsidian dark:text-vellum', low: 'text-slate-ink',
 };
 
 export function AdminView() {
@@ -48,7 +49,7 @@ export function AdminView() {
     return () => clearInterval(id);
   }, [overview.reload, activity.reload]);
 
-  if (overview.error) return <p role="alert" className="text-sm text-red-600">{overview.error}</p>;
+  if (overview.error) return <p role="alert" className="text-sm text-ember">{overview.error}</p>;
   const o = overview.data;
   const c = config.data;
   const maxStage = Math.max(1, ...(o?.pipeline ?? []).map((p) => Number(p.clients)));
@@ -76,8 +77,8 @@ export function AdminView() {
           <h2 className="text-sm font-semibold">Pipeline</h2>
           {o?.pipeline.map((p) => (
             <div key={p.stage} className="flex items-center gap-3 text-sm">
-              <span className="w-28 shrink-0 text-slate-500">{p.stage}</span>
-              <span className="h-2 rounded bg-slate-900 dark:bg-slate-300"
+              <span className="w-28 shrink-0 text-slate-ink">{p.stage}</span>
+              <span className="h-2 rounded-md bg-onyx dark:bg-mist"
                 style={{ width: `${(Number(p.clients) / maxStage) * 100}%`, minWidth: Number(p.clients) ? 8 : 0 }} />
               <span className="tabular-nums">{p.clients}</span>
             </div>
@@ -86,7 +87,7 @@ export function AdminView() {
 
         <div className={`${card} space-y-3`}>
           <h2 className="text-sm font-semibold">Trading &amp; funds</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-ink">
             Client balances are net of withdrawals already debited but not yet paid out.
           </p>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -97,51 +98,51 @@ export function AdminView() {
             <Row label="Open positions" value={o ? n0(o.trading.open_positions) : '—'} />
             <Row label="Client exposure" value={o ? n0(o.trading.exposure) : '—'} />
             <Row label="Open P&L" value={o ? n2(o.trading.open_pnl) : '—'}
-              className={o && o.trading.open_pnl < 0 ? 'text-red-600' : 'text-green-600'} />
+              className={o && o.trading.open_pnl < 0 ? 'text-down' : 'text-up'} />
             <Row label="Client balances" value={o ? n0(o.cash.balances) : '—'} />
             <Row label="Net flows 30d" value={o ? n0(o.cash.net_30d) : '—'} />
             <Row label="Withdrawals to pay" value={o ? `${n0(o.cash.pending_withdrawals)} (${n0(o.cash.pending_amount)})` : '—'}
-              className={o && o.cash.pending_withdrawals > 0 ? 'text-amber-600' : ''} />
+              className={o && o.cash.pending_withdrawals > 0 ? 'text-ember' : ''} />
           </dl>
         </div>
       </div>
 
       <div className={`${card} space-y-2`}>
         <h2 className="text-sm font-semibold">Everything happening, everywhere</h2>
-        <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+        <ol className="divide-y divide-pebble dark:divide-white/10">
           {activity.data?.map((a) => (
             <li key={a.id} className="flex flex-wrap items-baseline gap-2 py-1.5 text-sm">
-              <span className={`w-28 shrink-0 text-xs ${a.kind === 'flag' ? 'text-red-600' : 'text-slate-500'}`}>
+              <span className={`w-28 shrink-0 text-xs ${a.kind === 'flag' ? 'text-ember' : 'text-slate-ink'}`}>
                 {pretty(a.kind)}
               </span>
               <a className="font-medium hover:underline" href={`#/clients/${a.client_id}`}>{a.client_name}</a>
-              <span className="text-slate-600 dark:text-slate-300">{a.summary}</span>
-              <span className="ml-auto text-xs text-slate-500">{when(a.at)}</span>
+              <span className="text-slate-ink dark:text-mist">{a.summary}</span>
+              <span className="ml-auto text-xs text-slate-ink">{when(a.at)}</span>
             </li>
           ))}
         </ol>
-        {activity.data?.length === 0 && <p className="text-sm text-slate-500">Nothing yet.</p>}
+        {activity.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing yet.</p>}
       </div>
 
       <div className={`${card} space-y-3`}>
         <h2 className="text-sm font-semibold">System configuration</h2>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-ink">
           Read-only. These are code constants, not settings — changing a threshold is a
           deploy, which is also what makes it auditable.
         </p>
         <div className="grid gap-4 text-sm sm:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs font-medium text-slate-500">Execution</h3>
+            <h3 className="mb-1 text-xs font-medium text-slate-ink">Execution</h3>
             <dl className="grid grid-cols-2 gap-y-1">
               <Row label="Live trading" value={c ? (c.live_trading_enabled ? 'ENABLED' : 'disabled') : '—'}
-                className={c?.live_trading_enabled ? 'font-semibold text-red-600' : 'text-green-600'} />
+                className={c?.live_trading_enabled ? 'font-semibold text-ember' : 'text-slate-ink'} />
               <Row label="Demo balance" value={c ? n0(c.demo_starting_balance) : '—'} />
               <Row label="Instruments" value={c ? String(c.instruments.length) : '—'} />
               <Row label="Pipeline stages" value={c ? String(c.pipeline_stages.length) : '—'} />
             </dl>
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-medium text-slate-500">Flag thresholds</h3>
+            <h3 className="mb-1 text-xs font-medium text-slate-ink">Flag thresholds</h3>
             <dl className="grid grid-cols-2 gap-y-1">
               {Object.entries(c?.flag_rules ?? {}).map(([k, v]) => (
                 <Row key={k} label={pretty(k)} value={exact(Number(v))} />
@@ -149,7 +150,7 @@ export function AdminView() {
             </dl>
           </div>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-ink">
           Required KYC: {c?.required_kyc_documents.map(pretty).join(', ') ?? '—'} ·
           Accepted uploads: {c?.accepted_uploads.join(', ') ?? '—'}
         </p>
@@ -162,17 +163,18 @@ function Tile({ label, value, sub, href, alert }: {
   label: string; value: string; sub?: string; href: string; alert?: boolean;
 }) {
   return (
-    <a href={href} className={`${card} block transition-colors hover:border-slate-400 dark:hover:border-slate-600`}>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className={`text-2xl font-semibold tabular-nums ${alert ? 'text-amber-600' : ''}`}>{value}</p>
-      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    <a href={href} className={`${card} block transition-colors hover:bg-pebble dark:hover:bg-white/10`}>
+      <p className="text-xs text-slate-ink">{label}</p>
+      {/* Mono numerals at tile size: the stat should read as a terminal readout. */}
+      <p className={`font-mono text-[32px] font-medium leading-none tabular-nums ${alert ? 'text-ember' : ''}`}>{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-ink">{sub}</p>}
     </a>
   );
 }
 
 const Row = ({ label, value, className = '' }: { label: string; value: string; className?: string }) => (
   <>
-    <dt className="text-slate-500">{label}</dt>
-    <dd className={`text-right tabular-nums ${className}`}>{value}</dd>
+    <dt className="text-slate-ink">{label}</dt>
+    <dd className={`text-right font-mono tabular-nums ${className}`}>{value}</dd>
   </>
 );

@@ -10,7 +10,7 @@ import { useFeed } from './feed.ts';
 import { bollinger, ema, macd, rsi, sma } from './indicators.ts';
 
 // Compact select: the shared `input` style is w-full, which would beat a fixed width here.
-const sel = 'rounded border border-slate-300 px-2 py-1 text-xs outline-none dark:border-slate-700 dark:bg-slate-900';
+const sel = 'rounded-md border border-pebble px-2 py-1 text-xs outline-none dark:border-white/10 dark:bg-onyx';
 
 export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 type Instrument = { symbol: string; display_name: string };
@@ -34,9 +34,15 @@ type Drawing =
 
 const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
+// The chart is the one place a chart library needs literal colours rather than classes, so
+// the tokens are repeated here as hex. Keep these in step with src/index.css.
+// Only two chromatic values appear: up/down (the sanctioned money-delta exception) and
+// ember for the single most important overlay. Every other series is neutral grey.
 const theme = (dark: boolean) => dark
-  ? { bg: '#0f172a', text: '#94a3b8', grid: '#1e293b', up: '#22c55e', down: '#ef4444', line: '#38bdf8', draw: '#f59e0b' }
-  : { bg: '#ffffff', text: '#64748b', grid: '#e2e8f0', up: '#16a34a', down: '#dc2626', line: '#0284c7', draw: '#b45309' };
+  ? { bg: '#18181b', text: '#a1a1aa', grid: '#27272a', up: '#15803d', down: '#b91c1c',
+      line: '#ff7817', draw: '#ff7817', accent: '#ff7817', muted: '#71717a', faint: '#3f3f46' }
+  : { bg: '#ffffff', text: '#71717a', grid: '#e5e7eb', up: '#15803d', down: '#b91c1c',
+      line: '#ff7817', draw: '#ff7817', accent: '#ff7817', muted: '#71717a', faint: '#a1a1aa' };
 
 /** Pair indicator output with bar times, dropping the leading nulls the chart can't plot. */
 const series = (bars: Candle[], values: (number | null)[]) =>
@@ -103,21 +109,21 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
     }
     forming.current = { ...data[data.length - 1]! };
 
-    if (on.includes('MA')) ch.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, priceLineVisible: false })
+    if (on.includes('MA')) ch.addSeries(LineSeries, { color: c.accent, lineWidth: 1, priceLineVisible: false })
       .setData(series(data, sma(closes, 20)));
-    if (on.includes('EMA')) ch.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, priceLineVisible: false })
+    if (on.includes('EMA')) ch.addSeries(LineSeries, { color: c.muted, lineWidth: 1, priceLineVisible: false })
       .setData(series(data, ema(closes, 50)));
     if (on.includes('BB')) {
       const bb = bollinger(closes, 20, 2);
       for (const band of [bb.upper, bb.mid, bb.lower]) {
-        ch.addSeries(LineSeries, { color: '#64748b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+        ch.addSeries(LineSeries, { color: c.faint, lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
           .setData(series(data, band));
       }
     }
 
     let pane = 1;
     if (on.includes('RSI')) {
-      const s = ch.addSeries(LineSeries, { color: '#0ea5e9', lineWidth: 1, priceLineVisible: false }, pane);
+      const s = ch.addSeries(LineSeries, { color: c.muted, lineWidth: 1, priceLineVisible: false }, pane);
       s.setData(series(data, rsi(closes, 14)));
       // 30/70 reference lines, the levels traders actually read RSI against
       for (const level of [30, 70]) s.createPriceLine({ price: level, color: c.grid, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' });
@@ -128,9 +134,9 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
       const m = macd(closes);
       ch.addSeries(HistogramSeries, { color: c.text, priceLineVisible: false }, pane)
         .setData(series(data, m.hist).map((p) => ({ ...p, color: p.value >= 0 ? c.up : c.down })));
-      ch.addSeries(LineSeries, { color: '#0ea5e9', lineWidth: 1, priceLineVisible: false }, pane)
+      ch.addSeries(LineSeries, { color: c.muted, lineWidth: 1, priceLineVisible: false }, pane)
         .setData(series(data, m.line));
-      ch.addSeries(LineSeries, { color: '#f97316', lineWidth: 1, priceLineVisible: false }, pane)
+      ch.addSeries(LineSeries, { color: c.faint, lineWidth: 1, priceLineVisible: false }, pane)
         .setData(series(data, m.signal));
       ch.panes()[pane]?.setHeight(90);
     }
@@ -222,7 +228,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
         <span className="mx-1 flex gap-1">
           {[...OVERLAYS, ...PANELS].map((i) => (
             <button key={i} onClick={() => toggle(i)} aria-pressed={on.includes(i)}
-              className={`rounded px-2 py-1 ${on.includes(i) ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+              className={`rounded-md px-2 py-1 ${on.includes(i) ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
               {i}
             </button>
           ))}
@@ -230,15 +236,15 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
         <span className="flex gap-1">
           {(['none', 'trend', 'hline', 'fib'] as Tool[]).map((t) => (
             <button key={t} onClick={() => { setTool(t); pending.current = null; setAwaiting(false); }} aria-pressed={tool === t}
-              className={`rounded px-2 py-1 ${tool === t ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+              className={`rounded-md px-2 py-1 ${tool === t ? 'bg-ember text-graphite' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
               {t === 'none' ? 'cursor' : t}
             </button>
           ))}
           {drawings.length > 0 &&
-            <button className="rounded px-2 py-1 text-slate-500 hover:text-red-600"
+            <button className="rounded-md px-2 py-1 text-slate-ink hover:text-ember"
               onClick={() => { setDrawings([]); pending.current = null; setAwaiting(false); }}>clear</button>}
         </span>
-        {awaiting && <span className="text-amber-600">click the second point…</span>}
+        {awaiting && <span className="text-ember">click the second point…</span>}
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -314,18 +320,18 @@ function Watchlist({ onPick }: { onPick: (s: string) => void }) {
 
   return (
     <div className={`${card} p-0`}>
-      <h2 className="border-b border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Watchlist</h2>
+      <h2 className="border-b border-pebble px-3 py-2 text-xs font-semibold dark:border-white/10">Watchlist</h2>
       <table className="w-full text-xs">
         <tbody>
           {quotes.map((q) => (
             <tr key={q.symbol} onClick={() => onPick(q.symbol)}
-              className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
+              className="cursor-pointer border-b border-pebble last:border-0 hover:bg-bone dark:border-white/10 dark:hover:bg-white/10">
               <td className="px-3 py-1.5 font-medium">{q.symbol}</td>
               <td className={`px-3 py-1.5 text-right tabular-nums transition-colors ${
-                flash[q.symbol] === 'up' ? 'text-green-600' : flash[q.symbol] === 'down' ? 'text-red-600' : ''}`}>
+                flash[q.symbol] === 'up' ? 'text-up' : flash[q.symbol] === 'down' ? 'text-down' : ''}`}>
                 {q.price}
               </td>
-              <td className={`px-3 py-1.5 text-right tabular-nums ${q.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <td className={`px-3 py-1.5 text-right tabular-nums ${q.change >= 0 ? 'text-up' : 'text-down'}`}>
                 {q.change >= 0 ? '+' : ''}{q.change_pct}%
               </td>
             </tr>
@@ -350,7 +356,7 @@ export function ChartsView({ dark }: { dark: boolean }) {
         <div className="flex gap-1 text-xs">
           {[1, 2, 4].map((n) => (
             <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
-              className={`flex-1 rounded px-2 py-1 ${count === n ? 'bg-slate-900 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+              className={`flex-1 rounded-md px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
               {n} chart{n > 1 ? 's' : ''}
             </button>
           ))}

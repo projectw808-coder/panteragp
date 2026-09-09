@@ -18,7 +18,7 @@ const amount = (n: number, decimals: number) =>
   Number(n).toLocaleString(undefined, { minimumFractionDigits: Math.min(decimals, 2), maximumFractionDigits: decimals });
 
 const STATUS: Record<string, string> = {
-  confirmed: 'text-green-600', rejected: 'text-red-600', pending: 'text-amber-600',
+  confirmed: 'text-slate-ink', rejected: 'text-ember', pending: 'text-ember',
 };
 
 /** Every balance the client holds: fiat accounts and crypto wallets, plus a USD total. */
@@ -45,10 +45,10 @@ export function HoldingsPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
-        <span className="text-sm text-slate-500">Total holdings</span>
+        <span className="text-sm text-slate-ink">Total holdings</span>
         <span className="text-xl font-semibold tabular-nums">{a ? usd(a.total_usd) : '—'}</span>
         {!!a?.unpriced.length && (
-          <span className="text-xs text-amber-600">
+          <span className="text-xs text-ember">
             excludes {a.unpriced.join(', ')} — no price source
           </span>
         )}
@@ -58,14 +58,14 @@ export function HoldingsPanel() {
         currencies={currencies.data ?? []} onDone={reload} />
 
       <div>
-        <h3 className="mb-1 text-xs font-medium text-slate-500">Cash</h3>
+        <h3 className="mb-1 text-xs font-medium text-slate-ink">Cash</h3>
         <table className="w-full text-sm">
           <tbody>
             {a?.cash.map((b) => (
-              <tr key={b.currency} className="border-t border-slate-100 dark:border-slate-800">
+              <tr key={b.currency} className="border-t border-pebble dark:border-white/10">
                 <td className="px-3 py-1.5 font-medium">{b.currency}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{amount(b.balance, decimals(b.currency))}</td>
-                <td className="px-3 py-1.5 text-right text-slate-500 tabular-nums">
+                <td className="px-3 py-1.5 text-right text-slate-ink tabular-nums">
                   {b.usd_value === null ? '—' : usd(b.usd_value)}
                 </td>
               </tr>
@@ -75,15 +75,15 @@ export function HoldingsPanel() {
       </div>
 
       <div>
-        <h3 className="mb-1 text-xs font-medium text-slate-500">Crypto wallets</h3>
-        <p className="mb-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+        <h3 className="mb-1 text-xs font-medium text-slate-ink">Crypto wallets</h3>
+        <p className="mb-2 rounded-md bg-bone px-2 py-1 text-xs text-ember dark:bg-white/10 dark:text-ember">
           Simulated wallets. Addresses are labelled <code>DEMO-</code> and belong to no chain —
           never send real funds to one.
         </p>
         {a?.wallets.map((w) => (
           <Wallet key={w.id} wallet={w} decimals={decimals(w.asset)} onDone={reload} />
         ))}
-        {a?.wallets.length === 0 && <p className="px-3 py-2 text-sm text-slate-500">No wallets yet.</p>}
+        {a?.wallets.length === 0 && <p className="px-3 py-2 text-sm text-slate-ink">No wallets yet.</p>}
 
         <div className="mt-2 flex items-center gap-2">
           <select className={`${field} w-32`} value={asset} onChange={(e) => setAsset(e.target.value)}>
@@ -91,23 +91,23 @@ export function HoldingsPanel() {
           </select>
           <button className={btn} onClick={openWallet}>Open wallet</button>
         </div>
-        {error && <p role="alert" className="mt-1 text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
       </div>
 
       {!!history.data?.length && (
         <div>
-          <h3 className="mb-1 text-xs font-medium text-slate-500">Wallet activity</h3>
+          <h3 className="mb-1 text-xs font-medium text-slate-ink">Wallet activity</h3>
           <table className="w-full text-sm">
             <tbody>
               {history.data.map((t) => (
-                <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-1.5 text-slate-500">{when(t.created_at)}</td>
+                <tr key={t.id} className="border-t border-pebble dark:border-white/10">
+                  <td className="px-3 py-1.5 text-slate-ink">{when(t.created_at)}</td>
                   <td className="px-3 py-1.5">{t.kind}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">
                     {amount(t.amount, decimals(t.asset))} {t.asset}
                   </td>
                   <td className={`px-3 py-1.5 ${STATUS[t.status] ?? ''}`}>{t.status}</td>
-                  <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{t.tx_ref ?? ''}</td>
+                  <td className="px-3 py-1.5 font-mono text-xs text-slate-ink">{t.tx_ref ?? ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -161,15 +161,15 @@ function Converter({ held, currencies, onDone }: {
   }
 
   return (
-    <div className="rounded border border-slate-200 p-3 dark:border-slate-700">
-      <h3 className="mb-2 text-xs font-medium text-slate-500">Exchange between your balances</h3>
+    <div className="rounded-md border border-pebble p-3 dark:border-white/10">
+      <h3 className="mb-2 text-xs font-medium text-slate-ink">Exchange between your balances</h3>
       <div className="flex flex-wrap items-end gap-2">
         <input className={`${field} w-28`} type="number" step="any" min="0" placeholder="Amount"
           value={amt} onChange={(e) => { setAmt(e.target.value); setQuote(null); }} />
         <select className={`${field} w-28`} value={source} onChange={(e) => { setFrom(e.target.value); setQuote(null); }}>
           {held.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <span className="pb-2 text-slate-500">to</span>
+        <span className="pb-2 text-slate-ink">to</span>
         <select className={`${field} w-36`} value={to} onChange={(e) => { setTo(e.target.value); setQuote(null); }}>
           {currencies.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
         </select>
@@ -180,13 +180,13 @@ function Converter({ held, currencies, onDone }: {
       {quote && (
         <p className="mt-2 text-sm">
           {quote.amount} {quote.from} → <strong>{quote.received} {quote.to}</strong>
-          <span className="text-slate-500"> at {quote.rate.toPrecision(6)}</span>
+          <span className="text-slate-ink"> at {quote.rate.toPrecision(6)}</span>
           {/* Only worth saying when it rounds to something visible; sub-cent dust shown
               as "$0.00 lost" reads as a bug rather than as nothing. */}
-          {quote.dustUsd >= 0.005 && <span className="text-slate-500"> · {usd(quote.dustUsd)} lost to rounding</span>}
+          {quote.dustUsd >= 0.005 && <span className="text-slate-ink"> · {usd(quote.dustUsd)} lost to rounding</span>}
         </p>
       )}
-      {error && <p role="alert" className="mt-1 text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-1 text-sm text-ember">{error}</p>}
     </div>
   );
 }
@@ -210,16 +210,16 @@ function Wallet({ wallet, decimals, onDone }: { wallet: Wallet; decimals: number
   }
 
   return (
-    <div className="border-t border-slate-100 py-2 dark:border-slate-800">
+    <div className="border-t border-pebble py-2 dark:border-white/10">
       <div className="flex flex-wrap items-baseline gap-3 text-sm">
         <span className="w-14 font-medium">{wallet.asset}</span>
         <span className="tabular-nums">{amount(wallet.balance, decimals)}</span>
-        <span className="text-slate-500">{wallet.usd_value === null ? '' : `≈ ${usd(wallet.usd_value)}`}</span>
-        <button onClick={() => setOpen((v) => !v)} className="ml-auto text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100">
+        <span className="text-slate-ink">{wallet.usd_value === null ? '' : `≈ ${usd(wallet.usd_value)}`}</span>
+        <button onClick={() => setOpen((v) => !v)} className="ml-auto text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum">
           {open ? 'cancel' : 'withdraw'}
         </button>
       </div>
-      <p className="font-mono text-xs break-all text-slate-500">{wallet.address}</p>
+      <p className="font-mono text-xs break-all text-slate-ink">{wallet.address}</p>
       {open && (
         <form onSubmit={withdraw} className="mt-2 flex flex-wrap items-end gap-2">
           <input className={`${field} w-32`} type="number" step="any" min="0" required placeholder="Amount"
@@ -227,10 +227,10 @@ function Wallet({ wallet, decimals, onDone }: { wallet: Wallet; decimals: number
           <input className={`${field} w-64`} required placeholder="Destination address"
             value={to} onChange={(e) => setTo(e.target.value)} />
           <button className={btn}>Request</button>
-          <span className="text-xs text-slate-500">Debited now; returned if rejected.</span>
+          <span className="text-xs text-slate-ink">Debited now; returned if rejected.</span>
         </form>
       )}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
     </div>
   );
 }
@@ -288,10 +288,10 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
         <input className={input} maxLength={500} placeholder="Reason (appears on the timeline)"
           value={note} onChange={(e) => setNote(e.target.value)} />
       )}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {result && <p className="text-sm text-green-600">{result}</p>}
+      {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+      {result && <p className="text-sm text-slate-ink">{result}</p>}
       <button className={`${btn} w-full`} disabled={busy}>{busy ? 'Crediting…' : 'Credit'}</button>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-ink">
         Creates funds out of nothing on a demo account. Audited, and written to the client's
         timeline.
       </p>
