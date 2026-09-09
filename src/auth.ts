@@ -30,6 +30,13 @@ const secret = () => {
   return new TextEncoder().encode(s);
 };
 
+/**
+ * Check the secret at boot rather than at the first sign-in. Without this the server
+ * starts happily, passes its health check, and then fails every login with a 500 — which
+ * looks like a broken app rather than a missing variable.
+ */
+export const assertSecretConfigured = (): void => { secret(); };
+
 export function signToken(p: Principal, ttl = '8h'): Promise<string> {
   return new SignJWT({ kind: p.kind, role: p.role })
     .setProtectedHeader({ alg: 'HS256' })

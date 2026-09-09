@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import pg from 'pg';
 import { z } from 'zod';
-import { can, hashPassword, signToken, verifyPassword, verifyToken, type Perm, type Principal, type Role } from './auth.ts';
+import { assertSecretConfigured, can, hashPassword, signToken, verifyPassword, verifyToken, type Perm, type Principal, type Role } from './auth.ts';
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
@@ -2380,6 +2380,14 @@ if (existsSync(join(WEB_DIST, 'index.html'))) {
 }
 
 if (process.argv[1]?.endsWith('server.ts')) {
+  // Refuse to start misconfigured, rather than serving 500s at the login screen.
+  try {
+    assertSecretConfigured();
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+
   app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
 
   // Settlement must not depend on anyone being connected — see startTicker.
