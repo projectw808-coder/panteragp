@@ -195,6 +195,10 @@ if (await portOpen(5432)) {
 if (await portOpen(3000)) {
   log('api: something is already listening on 3000, reusing it');
 } else {
+  // Deliberately not --watch: the dev database does not survive its client being killed
+  // repeatedly (pglite-socket leaves a zombie handler on the shared query queue, and after
+  // a few every connection breaks), so a watched API wedges the database within minutes.
+  // Restart npm start to pick up an API change, or run against a real Postgres to watch.
   start('api', 'node', ['--experimental-strip-types', 'src/server.ts'], { env });
   await waitFor('the API', () => httpOk('http://localhost:3000/clients'));
   log('api: up on 3000');

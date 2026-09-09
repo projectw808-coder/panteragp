@@ -25,10 +25,25 @@ if (!existing?.present) {
   );
 }
 
-// ponytail: one connection at a time, and it does not notice a client that dies without
-// closing — kill the API on its own and every later connection is reset until this process
-// restarts too. Restart the pair, or set DEV_DB_DIR so a restart keeps the data.
-await new PGLiteSocketServer({ db, port: 5432, host: '127.0.0.1' }).start();
+// The default is one connection, and a client killed without closing (node --watch
+// restarting the API) keeps that slot for good, so every later connection is refused.
+// Room for a few means a restarted API is served while the dead socket is still lingering.
+// Queries are queued inside PGlite regardless, so this is not concurrent execution.
+// ponytail: this buys about three restarts, not an unlimited number. A vanished client
+// leaves a handler attached to the shared query queue, and once a few have built up every
+// connection breaks — which is why the API is not run under --watch. Measured, not
+// theoretical: six rapid restarts fail from the fourth on.
+await new PGLiteSocketServer({ db, port: 5432, host: '127.0.0.1', maxConnections: 8 }).start();
+
+// The same abrupt kill raises ECONNRESET on that socket, and pglite-socket leaves it
+// unhandled, so it reaches the process and takes the database down — losing the data with
+// it. Survive a client vanishing; anything else still stops the process as it should.
+process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'ECONNRESET') return;
+  console.error(err);
+  process.exit(1);
+});
+
 console.log(`dev db on 5432 (${dir ? `persisted in ${dir}` : 'in memory'})`
   + `${existing?.present ? ', existing data kept' : ', schema applied'}`
   + ' — login admin@local.test / devpassword');

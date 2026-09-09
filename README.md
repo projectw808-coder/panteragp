@@ -34,6 +34,11 @@ Running the pieces by hand, if you want them in separate terminals:
     npm run dev                         # API on 3000 (needs DATABASE_URL, JWT_SECRET)
     cd web && npm run dev               # web on 5173
 
+`npm run dev` watches, and the dev database does not survive its client being killed over
+and over: expect about three reloads before every connection breaks, and restart both when
+it does. Watch the API against a real Postgres instead. `npm start` does not watch for the
+same reason — restart it to pick up an API change.
+
 Set `DEV_DB_DIR` to keep the data between restarts; without it the database starts clean
 each time. Against a real Postgres: `npm run db:reset`, then
 `src/seed.ts <email> <password> [role]` for the first staff account, and drop `PG_POOL_MAX`.
