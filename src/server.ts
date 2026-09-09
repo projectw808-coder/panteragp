@@ -2342,7 +2342,7 @@ app.get('/portfolios/:id/transactions', { preHandler: trader }, async (req: any)
 app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
   const q = async <T extends pg.QueryResultRow>(sql: string) => (await pool.query<T>(sql)).rows;
 
-  const [clients, pipeline, kyc, flags, tasks, trading, positions, cash] = await Promise.all([
+  const [clients, pipeline, kyc, flags, tasks, trading, positions, cash, series] = await Promise.all([
     q<{ total: number; new_7d: number; dormant: number }>(`
       SELECT count(*) AS total,
              count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS new_7d,
@@ -2378,6 +2378,23 @@ app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
                        AND created_at >= now() - interval '30 days'), 0)                   AS net_30d,
              (SELECT coalesce(sum(balance), 0) FROM trading_accounts)                      AS balances
         FROM cash_transactions`),
+    // Fourteen days of the numbers the tiles show as a single instant: the same figures,
+    // but with their shape. generate_series supplies the empty days so a quiet Sunday is a
+    // gap in the bars rather than a missing bar that shifts every other one along.
+    // ponytail: correlated subqueries, fine over 14 rows; join and group if this grows.
+    q<{ day: string; volume: number; fills: number; net_flow: number; new_clients: number }>(`
+      SELECT to_char(d, 'YYYY-MM-DD') AS day,
+             (SELECT coalesce(sum(f.qty * f.price), 0) FROM fills f
+               WHERE f.filled_at >= d AND f.filled_at < d + interval '1 day')      AS volume,
+             (SELECT count(*) FROM fills f
+               WHERE f.filled_at >= d AND f.filled_at < d + interval '1 day')      AS fills,
+             (SELECT coalesce(sum(t.amount), 0) FROM cash_transactions t
+               WHERE t.status IN ('approved','settled')
+                 AND t.created_at >= d AND t.created_at < d + interval '1 day')    AS net_flow,
+             (SELECT count(*) FROM clients c
+               WHERE c.created_at >= d AND c.created_at < d + interval '1 day')    AS new_clients
+        FROM generate_series(current_date - interval '13 days', current_date, interval '1 day') d
+       ORDER BY day`),
   ]);
 
   // Client exposure is only knowable with live prices, so it is computed here, not in SQL.
@@ -2397,6 +2414,13 @@ app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
       open_pnl: round8(openPnl),
     },
     cash: cash[0],
+    series: series.map((r) => ({
+      day: r.day,
+      volume: Number(r.volume),
+      fills: Number(r.fills),
+      net_flow: Number(r.net_flow),
+      new_clients: Number(r.new_clients),
+    })),
   };
 });
 

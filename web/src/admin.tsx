@@ -13,7 +13,9 @@ type Overview = {
     open_positions: number; exposure: number; open_pnl: number;
   };
   cash: { pending_withdrawals: number; pending_amount: number; net_30d: number; balances: number };
+  series: Day[];
 };
+type Day = { day: string; volume: number; fills: number; net_flow: number; new_clients: number };
 type Activity = {
   id: number; at: string; kind: string; actor: string | null;
   summary: string; client_id: string; client_name: string;
@@ -72,13 +74,15 @@ export function AdminView() {
           alert={!!o && o.tasks.overdue > 0} />
       </div>
 
+      <Metrics days={o?.series ?? []} />
+
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <div className={`${card} space-y-3`}>
-          <h2 className="text-sm font-semibold">Pipeline</h2>
+          <h2 className="metric-label">Pipeline</h2>
           {o?.pipeline.map((p) => (
             <div key={p.stage} className="flex items-center gap-3 text-sm">
               <span className="w-28 shrink-0 text-slate-ink">{p.stage}</span>
-              <span className="h-2 rounded-md bg-onyx dark:bg-mist"
+              <span className="h-2 rounded-md bg-ember"
                 style={{ width: `${(Number(p.clients) / maxStage) * 100}%`, minWidth: Number(p.clients) ? 8 : 0 }} />
               <span className="tabular-nums">{p.clients}</span>
             </div>
@@ -86,7 +90,7 @@ export function AdminView() {
         </div>
 
         <div className={`${card} space-y-3`}>
-          <h2 className="text-sm font-semibold">Trading &amp; funds</h2>
+          <h2 className="metric-label">Trading &amp; funds</h2>
           <p className="text-xs text-slate-ink">
             Client balances are net of withdrawals already debited but not yet paid out.
           </p>
@@ -110,7 +114,7 @@ export function AdminView() {
       <AddFunds />
 
       <div className={`${card} space-y-2`}>
-        <h2 className="text-sm font-semibold">Everything happening, everywhere</h2>
+        <h2 className="metric-label">Everything happening, everywhere</h2>
         <ol className="divide-y divide-pebble dark:divide-white/10">
           {activity.data?.map((a) => (
             <li key={a.id} className="flex flex-wrap items-baseline gap-2 py-1.5 text-sm">
@@ -127,7 +131,7 @@ export function AdminView() {
       </div>
 
       <div className={`${card} space-y-3`}>
-        <h2 className="text-sm font-semibold">System configuration</h2>
+        <h2 className="metric-label">System configuration</h2>
         <p className="text-xs text-slate-ink">
           Read-only. These are code constants, not settings — changing a threshold is a
           deploy, which is also what makes it auditable.
@@ -213,7 +217,7 @@ function AddFunds() {
   return (
     <form onSubmit={submit} className={`${card} space-y-3`}>
       <div>
-        <h2 className="text-sm font-semibold">Add funds to a client</h2>
+        <h2 className="metric-label">Add funds to a client</h2>
         <p className="mt-1 text-xs text-slate-ink">
           Accounts open with nothing in them. Crypto lands in the client's wallet, currencies
           in their cash account. Audited, and written to their timeline.
@@ -272,15 +276,88 @@ function AddFunds() {
   );
 }
 
+/**
+ * Fourteen days of the figures the tiles show as a single instant.
+ *
+ * Every number here is counted from the tables, not modelled: an empty desk draws
+ * fourteen empty days rather than a plausible-looking line, which is the point — a
+ * dashboard that always looks busy is one nobody checks.
+ */
+function Metrics({ days }: { days: Day[] }) {
+  const total = (k: keyof Day) => days.reduce((n, d) => n + Number(d[k]), 0);
+  return (
+    <div className={`${card} space-y-4`}>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="metric-label">Metrics · last 14 days</h2>
+        <span className="ml-auto font-mono text-[11px] text-slate-ink">
+          {days.length ? `${days[0].day} → ${days[days.length - 1].day}` : ''}
+        </span>
+      </div>
+      <div className="grid gap-6 md:grid-cols-3">
+        <Graph label="Traded volume" days={days} pick={(d) => d.volume}
+          total={n0(total('volume'))} unit="USD" />
+        <Graph label="Net flows" days={days} pick={(d) => d.net_flow}
+          total={n0(total('net_flow'))} unit="USD" signed />
+        <Graph label="New clients" days={days} pick={(d) => d.new_clients}
+          total={n0(total('new_clients'))} unit="accounts" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A bar per day, scaled to the largest bar in its own series.
+ *
+ * Each graph carries its own scale because they are different units — sharing one would
+ * flatten client counts into nothing next to volume. A signed series (money moving both
+ * ways) is drawn from a middle baseline so a withdrawal-heavy day reads as down, not small.
+ */
+function Graph({ label, days, pick, total, unit, signed }: {
+  label: string; days: Day[]; pick: (d: Day) => number; total: string; unit: string; signed?: boolean;
+}) {
+  const values = days.map(pick);
+  const peak = Math.max(1, ...values.map(Math.abs));
+  const W = 220, H = 56, gap = 3;
+  const w = days.length ? (W - gap * (days.length - 1)) / days.length : 0;
+  const base = signed ? H / 2 : H;
+
+  return (
+    <div>
+      <p className="metric-label">{label}</p>
+      <p className="mt-1 font-mono text-xl font-medium tabular-nums">{total}</p>
+      <p className="font-mono text-[10px] text-slate-ink">{unit}</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img"
+        aria-label={`${label}: ${total} ${unit} over ${days.length} days`}>
+        <line x1="0" y1={base} x2={W} y2={base} strokeWidth="1"
+          className="stroke-slate-ink/30" />
+        {values.map((v, i) => {
+          const h = (Math.abs(v) / peak) * (signed ? H / 2 : H);
+          return (
+            <rect key={i} className="bar" x={i * (w + gap)} width={w}
+              y={v < 0 ? base : base - h} height={Math.max(h, v ? 1 : 0)}
+              fill={signed && v < 0 ? 'var(--color-down)' : 'var(--color-ember)'}
+              opacity={i === values.length - 1 ? 1 : 0.55}
+              style={{ animationDelay: `${i * 22}ms` }}>
+              <title>{`${days[i].day}: ${exact(v)}`}</title>
+            </rect>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function Tile({ label, value, sub, href, alert }: {
   label: string; value: string; sub?: string; href: string; alert?: boolean;
 }) {
   return (
-    <a href={href} className={`${card} block border-l-2 transition-colors hover:bg-pebble dark:hover:bg-white/10 ${alert ? 'border-ember' : 'border-transparent'}`}>
-      <p className="text-xs text-slate-ink">{label}</p>
+    <a href={href}
+      className={`${card} tile block transition-colors hover:bg-pebble dark:hover:bg-white/10 ${alert ? 'is-alert' : ''}`}>
+      <span className="tile-corner" aria-hidden />
+      <p className="metric-label">{label}</p>
       {/* Mono numerals at tile size: the stat should read as a terminal readout. */}
-      <p className={`font-mono text-[32px] font-medium leading-none tabular-nums`}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-ink">{sub}</p>}
+      <p className={`mt-2 font-mono text-[34px] font-medium leading-none tabular-nums ${alert ? 'text-ember' : ''}`}>{value}</p>
+      {sub && <p className="mt-2 text-xs text-slate-ink">{sub}</p>}
     </a>
   );
 }

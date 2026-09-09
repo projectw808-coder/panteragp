@@ -51,7 +51,8 @@ export function ClientList() {
                 onToggle={() => setOpenId(openId === c.id ? null : c.id)}
                 onChanged={clients.reload}
                 badge={(v) => <Badge value={v} />}
-                canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'} />
+                canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'}
+                canResetPassword={me?.role === 'admin'} />
             ))}
           </tbody>
         </table>

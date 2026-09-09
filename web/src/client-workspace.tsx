@@ -55,7 +55,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <Header client={c} totals={t} onSaved={refresh} compliance={compliance} />
+      <Header client={c} holdings={holdings.data ?? undefined} onSaved={refresh} compliance={compliance} />
 
       <div className="flex flex-wrap gap-1 text-xs">
         {TABS.map((name) => (
@@ -88,10 +88,54 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
 
 // ------------------------------------------------------------------ header
 
-function Header({ client: c, totals, onSaved, compliance }: {
+/**
+ * Every currency the client actually holds, one chip each, and the USD total on the right.
+ *
+ * Cash accounts, crypto wallets and portfolios are three tables but one balance sheet, so
+ * they are summed per currency — a USD account and a USD portfolio are one USD number, not
+ * two chips that look like a bug. Zero balances are left out: a wallet that exists but is
+ * empty is noise here. The total is the same figure the stats row calls Holdings, so if a
+ * currency has no price source it is named rather than silently dropped.
+ */
+function Balances({ holdings }: { holdings?: Holdings }) {
+  if (!holdings) return null;
+  const by = new Map<string, number>();
+  const add = (code: string, amount: number) => by.set(code, (by.get(code) ?? 0) + Number(amount));
+  for (const a of holdings.accounts) add(a.currency, a.balance);
+  for (const w of holdings.wallets) add(w.asset, w.balance);
+  for (const p of holdings.portfolios) add(p.currency, p.balance);
+  const held = [...by].filter(([, amount]) => amount !== 0).sort((a, b) => a[0].localeCompare(b[0]));
+
+  return (
+    <>
+      <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-pebble pt-3 dark:border-white/10">
+        {held.length === 0 ? (
+          <div className="text-sm text-slate-ink">No balances yet.</div>
+        ) : held.map(([code, amount]) => (
+          <div key={code}>
+            <dt className="font-mono text-[11px] tracking-[0.12em] text-slate-ink uppercase">{code}</dt>
+            <dd className="font-mono text-sm font-medium tabular-nums">{num(amount)}</dd>
+          </div>
+        ))}
+        <div className="ml-auto text-right">
+          <dt className="font-mono text-[11px] tracking-[0.12em] text-slate-ink uppercase">Total</dt>
+          <dd className="font-mono text-base font-medium tabular-nums">{usd(holdings.totals.holdings_usd)}</dd>
+        </div>
+      </dl>
+      {!!holdings.totals.unpriced.length && (
+        <p className="text-xs text-slate-ink">
+          Total excludes {holdings.totals.unpriced.join(', ')} — no price source.
+        </p>
+      )}
+    </>
+  );
+}
+
+function Header({ client: c, holdings, onSaved, compliance }: {
   client: Client & { phone: string | null; country: string | null };
-  totals?: Holdings['totals']; onSaved: () => void; compliance: boolean;
+  holdings?: Holdings; onSaved: () => void; compliance: boolean;
 }) {
+  const totals = holdings?.totals;
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stages = useApi<Stage[]>('/pipeline-stages');
@@ -128,9 +172,11 @@ function Header({ client: c, totals, onSaved, compliance }: {
           <Stat label="Since" value={new Date(c.created_at).toLocaleDateString()} />
         </dl>
 
-        <button className="text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum"
-          onClick={() => setEditing((v) => !v)}>{editing ? 'done' : 'edit'}</button>
+        <button className="rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember hover:bg-ember hover:text-graphite"
+          onClick={() => setEditing((v) => !v)}>{editing ? 'Done' : 'Edit'}</button>
       </div>
+
+      <Balances holdings={holdings} />
 
       <div className="flex flex-wrap items-end gap-2">
         <Labelled label="Stage">

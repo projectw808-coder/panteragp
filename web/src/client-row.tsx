@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, field, mono } from './App.tsx';
 import { api, token, useApi, type ClientRow as Client } from './api.ts';
+import { ResetPassword } from './settings.tsx';
 
 /**
  * A client row that unfolds in place: the essentials and their money without leaving the
@@ -18,13 +19,14 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc }: {
+export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword }: {
   c: Client;
   open: boolean;
   onToggle: () => void;
   onChanged: () => void;
   badge: (value: string) => React.ReactNode;
   canReviewKyc: boolean;
+  canResetPassword: boolean;
 }) {
   // Only fetched once the row is opened: a list of fifty clients should not pull fifty
   // holdings summaries nobody asked to see.
@@ -84,7 +86,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc }:
                   </>
                 )}
                 <a href={`#/clients/${c.id}`}
-                  className="mt-5 inline-block font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
+                  className="mt-5 inline-block rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember hover:bg-ember hover:text-graphite">
                   Open the full record →
                 </a>
               </div>
@@ -92,6 +94,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc }:
               <div className="space-y-6">
                 <QuickCredit clientId={c.id} onDone={() => { holdings.reload(); onChanged(); }} />
                 <Documents clientId={c.id} canDownload={canReviewKyc} />
+                {canResetPassword && <SignIn clientId={c.id} name={c.name} />}
               </div>
             </div>
           </td>
@@ -162,6 +165,33 @@ function Documents({ clientId, canDownload }: { clientId: string; canDownload: b
         <p className="mt-2 text-xs text-slate-ink">
           Opening a document needs KYC review permission.
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Set a new password on the client's account, for the locked-out client on the phone.
+ *
+ * Kept behind a click rather than sitting open: it is the control that hands over
+ * somebody's account, and it should take a deliberate action to reach. The route it calls
+ * needs password:reset, notifies the client, and writes to their timeline.
+ */
+function SignIn({ clientId, name }: { clientId: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Sign-in</h3>
+      {open ? (
+        <ResetPassword path={`/clients/${clientId}/password`} who={name} onDone={() => setOpen(false)} />
+      ) : (
+        <>
+          <button className={`${btn} mt-3`} onClick={() => setOpen(true)}>Change password</button>
+          <p className="mt-2 text-xs text-slate-ink">
+            Sets a new password on their account. They are notified, and it lands on their
+            timeline.
+          </p>
+        </>
       )}
     </div>
   );

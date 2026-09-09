@@ -893,6 +893,17 @@ await step('the overview agrees with the underlying endpoints', async () => {
   assert.equal(Number(o.cash.pending_withdrawals) - pendingBefore, minePending,
     'the dashboard should account for exactly the withdrawals this run left pending');
 });
+await step('the 14-day series lines up with the figures beside it', async () => {
+  const o = await get('/admin/overview', { token: A });
+  assert.equal(o.series.length, 14, 'fourteen days, empty ones included');
+  const today = o.series[o.series.length - 1];
+  // The tile and the last bar are the same number counted two ways; if they ever disagree
+  // one of them is lying, and the graph is the one nobody would check.
+  assert.equal(Number(today.volume).toFixed(6), Number(o.trading.volume_today).toFixed(6));
+  assert.equal(Number(today.fills), Number(o.trading.fills_today));
+  assert.equal(Number(o.series[0].day) || o.series[0].day.length, 10, 'days are plain YYYY-MM-DD');
+  assert.ok(o.series.every((d) => Number.isFinite(Number(d.net_flow))));
+});
 await step('config reports live trading as disabled', async () => {
   const config = await get('/admin/config', { token: A });
   assert.equal(config.live_trading_enabled, false);

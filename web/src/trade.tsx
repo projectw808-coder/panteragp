@@ -110,7 +110,7 @@ function Ticket({ instruments, balance, leverage, prices, onPlaced }: {
   instruments: Instrument[]; balance: number; leverage: number;
   prices: Record<string, number>; onPlaced: () => void;
 }) {
-  const [symbol, setSymbol] = useState('EURUSD');
+  const [symbol, setSymbol] = useState('BTCUSD');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [type, setType] = useState<(typeof TYPES)[number]>('market');
   const [qty, setQty] = useState('1000');

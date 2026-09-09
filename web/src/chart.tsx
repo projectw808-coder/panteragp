@@ -350,8 +350,8 @@ function Watchlist({ onPick }: { onPick: (s: string) => void }) {
 
 export function ChartsView({ dark }: { dark: boolean }) {
   const instruments = useApi<Instrument[]>('/instruments');
-  const [count, setCount] = useState(1);
-  const [symbols, setSymbols] = useState(['EURUSD', 'GBPUSD', 'XAUUSD', 'BTCUSD']);
+  const [count, setCount] = useState(4);
+  const [symbols, setSymbols] = useState(['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD']);
   const setAt = (i: number, s: string) => setSymbols((v) => v.map((x, j) => (j === i ? s : x)));
 
   return (

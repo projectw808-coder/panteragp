@@ -309,3 +309,52 @@
   .row-rule::after, .row-arrow { transition: none; }
   .progress { display: none; }
 }
+
+/* ------------------------------------------------------ dashboard surfaces
+   The same accent language as the nav rail, applied to the numbers: an ember
+   hairline that draws itself, corner ticks, and mono uppercase labels. The
+   figures themselves stay on the neutral ink — orange is for the frame and the
+   one thing asking for attention, never for the whole panel. */
+.tile {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.tile::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  height: 2px; width: 0;
+  background: var(--color-ember);
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tile:hover::after, .tile.is-alert::after { width: 100%; }
+.tile.is-alert { border-color: color-mix(in srgb, var(--color-ember) 45%, transparent); }
+
+/* The corner tick: two hairlines meeting, so the panel reads as a bracketed
+   readout rather than a rounded box. */
+.tile-corner {
+  position: absolute;
+  right: 10px; top: 10px;
+  width: 8px; height: 8px;
+  border-right: 1px solid color-mix(in srgb, var(--color-ember) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-ember) 60%, transparent);
+}
+
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-slate-ink);
+}
+
+/* Bars grow from the baseline once, on mount. A dashboard that re-animates on
+   every fifteen-second refresh is a dashboard nobody can read. */
+@keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.bar { transform-origin: bottom; animation: bar-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile::after { transition: none; }
+  .bar { animation: none; }
+}
