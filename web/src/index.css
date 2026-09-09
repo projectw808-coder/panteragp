@@ -93,6 +93,86 @@
   .font-mono, code, kbd { font-variant-numeric: tabular-nums; }
 }
 
+/* ------------------------------------------------------------- the nav rail
+   The one place in the product UI that leans hard into the terminal idea, because
+   it is chrome rather than data: numbered slots, mono labels, a faint scanline
+   wash, and an accent bar that grows down the active item. The tables and forms
+   it sits beside stay plain — legibility is their job, not atmosphere. */
+
+.nav-rail::before {
+  /* Scanlines. 3px pitch and 4% white: visible as texture, gone as soon as you
+     try to read through it. Behind everything, and never catches a click. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 1.25rem;
+  color: var(--color-mist);
+  transition: color 0.2s, background-color 0.2s;
+}
+.nav-item:hover { color: var(--color-vellum); background: rgba(255, 255, 255, 0.04); }
+
+/* The accent bar grows from the middle rather than appearing, so moving between
+   items reads as one control travelling instead of two lights blinking. */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  width: 2px; height: 0;
+  background: var(--color-ember);
+  transform: translateY(-50%);
+  transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nav-item.is-active::before { height: 100%; }
+.nav-item.is-active { color: var(--color-vellum); background: rgba(255, 255, 255, 0.06); }
+
+/* Slot number: ordinal, not a keyboard shortcut — it should not look pressable. */
+.nav-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--color-mist) 55%, transparent);
+  transition: color 0.2s;
+}
+.nav-item:hover .nav-num, .nav-item.is-active .nav-num { color: var(--color-ember); }
+
+.nav-label { font-size: 13px; letter-spacing: 0.01em; }
+.nav-item.is-active .nav-label { font-weight: 500; }
+
+/* A caret that slides in from the right edge on the active row. */
+.nav-tick {
+  margin-left: auto;
+  width: 6px; height: 6px;
+  border-right: 1px solid var(--color-ember);
+  border-top: 1px solid var(--color-ember);
+  transform: rotate(45deg) translateX(-4px);
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.nav-item.is-active .nav-tick { opacity: 1; transform: rotate(45deg) translateX(0); }
+
+/* The status dot next to the desk name — a slow pulse, not a blink. */
+@keyframes nav-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.nav-live { animation: nav-pulse 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-live { animation: none; }
+  .nav-item::before, .nav-tick { transition: none; }
+}
+
 /* ------------------------------------------------- the public page's surface
    Scoped to .landing so none of it reaches the app, which stays on the tokens.
    These follow the reference the client chose (altiuslabs.xyz), and knowingly

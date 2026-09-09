@@ -174,24 +174,41 @@ function Shell({ dark, setDark, onLogout }: {
     <div className="flex h-full bg-vellum text-obsidian dark:bg-obsidian dark:text-vellum">
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
           while the app keeps the same visual DNA as the marketing hero. */}
-      <aside className="flex w-56 shrink-0 flex-col bg-obsidian dark:bg-onyx">
-        <div className="px-5 py-5">
-          <span className="font-display text-lg text-vellum">Pantera GP</span>
-          <span className="text-ember"> ///</span>
-          <p className="mt-1 font-mono text-[11px] uppercase tracking-wide text-mist">
+      {/* The dark palette lives in the nav chrome, so tables and forms stay readable
+          while the app keeps the same visual DNA as the marketing hero. The rail reads
+          as instrument panel rather than website menu: numbered slots, mono labels, a
+          scanline wash, and an accent bar that slides between items. */}
+      <aside className="nav-rail relative flex w-56 shrink-0 flex-col overflow-hidden bg-obsidian dark:bg-onyx">
+        <div className="relative z-10 px-5 py-5">
+          <div className="flex items-baseline gap-1">
+            <span className="font-display text-lg text-vellum">Pantera GP</span>
+            <span className="text-ember">///</span>
+          </div>
+          <p className="mt-1 flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase">
+            <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
             {crm ? 'Client desk' : 'Terminal'}
           </p>
           <ThemeToggle dark={dark} setDark={setDark} />
         </div>
-        <nav className="flex flex-col py-2 text-sm">
-          {nav.filter(([, , show]) => show).map(([href, label]) => (
-            <a key={href} href={href} className={`px-5 py-2 ${here(href) ? navOn : navOff}`}>{label}</a>
+
+        <nav className="relative z-10 flex flex-col py-2 text-sm">
+          {nav.filter(([, , show]) => show).map(([href, label], i) => (
+            <a key={href} href={href} className={`nav-item ${here(href) ? navOn : navOff}`}>
+              {/* A slot number, as on a console. Ordinal, not a keyboard shortcut. */}
+              <span className="nav-num">{String(i + 1).padStart(2, '0')}</span>
+              <span className="nav-label">{label}</span>
+              <span className="nav-tick" aria-hidden />
+            </a>
           ))}
         </nav>
-        <div className="mt-auto flex items-center gap-3 px-5 py-4 text-mist">
-          <span className="font-mono text-xs">{me?.role}</span>
+
+        <div className="relative z-10 mt-auto flex items-center gap-3 border-t border-white/10 px-5 py-4 text-mist">
+          <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
           {trading && <NotificationBell />}
-          <button onClick={onLogout} className="ml-auto text-xs hover:text-vellum">Sign out</button>
+          <button onClick={onLogout}
+            className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
+            Sign out
+          </button>
         </div>
       </aside>
       <main className={`min-h-0 flex-1 ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
@@ -239,8 +256,10 @@ function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) =
 // shadows anywhere; ember orange only for primary actions, focus and needs-action.
 
 // Active nav carries a thin orange left border rather than a filled orange block.
-const navOn = 'border-l-2 border-ember bg-vellum/5 font-medium text-vellum';
-const navOff = 'border-l-2 border-transparent text-mist hover:text-vellum';
+// The rail's treatment — slot numbers, sliding accent, tick, scanlines — lives in
+// index.css under .nav-*, because it is presentation with no logic in it.
+const navOn = 'is-active';
+const navOff = '';
 
 // `field` carries no width so a caller can size it; `input` is the full-width default.
 // (A `w-32` next to `w-full` does not win — same specificity, and w-full is defined later.)

@@ -217,18 +217,18 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         <div className="relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
-            <Eyebrow onDark>Trading desk &amp; client system</Eyebrow>
+            <Eyebrow onDark>Execution layer // client system</Eyebrow>
           </div>
           {/* Sans, medium weight, −0.045em: the reference's headline is one tight mass. */}
           <h1 className="display mt-7 text-[42px] text-vellum sm:text-[56px] lg:text-[68px]">
-            <span className="anim-rise block" style={{ animationDelay: '200ms' }}>Your Desk.</span>
-            <span className="anim-rise block" style={{ animationDelay: '330ms' }}>Your Book.</span>
+            <span className="anim-rise block" style={{ animationDelay: '200ms' }}>One surface.</span>
+            <span className="anim-rise block" style={{ animationDelay: '330ms' }}>Whole position.</span>
           </h1>
           <p className="anim-rise mt-7 max-w-xl text-base leading-relaxed text-ember/90"
             style={{ animationDelay: '470ms' }}>
-            Execution and the client relationship in one system. Charting, order types and a
-            settlement engine on one side; funding, documents, compliance and the whole client
-            timeline on the other.
+            Order routing, continuous pricing and a settlement engine, wired to the client
+            record they belong to. One state, one timeline, one audit trail — and no
+            reconciliation step between the trade and the person who made it.
           </p>
           <div className="anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
             <button onClick={onRegister} className="btn-line font-mono text-sm">Open an account</button>
@@ -258,11 +258,12 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         <Reveal>
           <Eyebrow>The problem</Eyebrow>
           <MaskedHeading className="display mx-auto mt-6 max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['A trade without its client', 'is half a record.']} />
+            lines={['A position without its', 'counterparty is half a record.']} />
           <p className="soft mx-auto mt-6 max-w-2xl text-base leading-relaxed">
-            Most desks run a trading system and a CRM that barely speak. Positions live in one,
-            the person lives in the other, and the answer to “why did we approve that
-            withdrawal?” lives in neither.
+            Most desks run execution and relationship as separate stacks. State diverges, the two
+            disagree, and the answer to “why was that withdrawal approved” exists in neither.
+            Reconciliation becomes a job somebody does, instead of a thing the system makes
+            unnecessary.
           </p>
         </Reveal>
       </section>
@@ -285,16 +286,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pb-28">
         <Reveal>
           <MaskedHeading className="display max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['One system,', 'built as one thing.']} />
+            lines={['Built as one system,', 'not two that sync.']} />
         </Reveal>
 
         <div className="mt-14 divide-y divide-black/10 border-y border-black/10">
           {[
-            ['01', 'Own the whole record.',
+            ['01', 'Single source of state.',
               'Balances in any currency, crypto wallets, portfolios, orders, fills, funding, documents, tickets and notes — on one client timeline. Nothing to reconcile, because nothing was ever split.'],
-            ['02', 'Execution that keeps running.',
+            ['02', 'Execution that does not sleep.',
               'Market, limit, stop, stop-limit and trailing orders, positions priced continuously, risk-based sizing, and a settlement engine that fills resting orders whether or not anyone has the screen open.'],
-            ['03', 'Auditable by construction.',
+            ['03', 'Audit enforced below the app.',
               'Every change to a client or a trade is written by a database trigger to an append-only log — not an updated-at column. Compliance flags, KYC review and withdrawal thresholds sit in the flow of work.'],
           ].map(([n, title, body], i) => (
             <Reveal key={n} delay={i * 90}>
