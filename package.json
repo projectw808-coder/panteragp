@@ -9,7 +9,7 @@
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "test:e2e": "node --env-file-if-exists=.env test/acceptance.mjs",
     "db:reset": "psql \"$DATABASE_URL\" -f db/schema.sql",
-    "build": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build",
+    "build": "npm --prefix web ci --include=dev --no-audit --no-fund && npm --prefix web run build",
     "start:prod": "node --experimental-strip-types src/server.ts",
     "db:init": "node scripts/db-init.mjs",
     "seed:admins": "node --experimental-strip-types scripts/seed-admins.mjs"
