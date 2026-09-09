@@ -93,6 +93,51 @@
   .font-mono, code, kbd { font-variant-numeric: tabular-nums; }
 }
 
+/* ------------------------------------------------- the public page's surface
+   Scoped to .landing so none of it reaches the app, which stays on the tokens.
+   These follow the reference the client chose (altiuslabs.xyz), and knowingly
+   depart from the design doc in three places: a sans display face rather than the
+   thin serif, very tight tracking, and square-cornered outline buttons where the
+   doc says never 0px. The reference wins here because it is what was asked for;
+   the product UI is untouched. */
+.landing {
+  --canvas: #f7f6ff;          /* lavender-white, not pure white */
+  --ink: #190501;             /* warm near-black, not the neutral obsidian */
+  --ink-soft: #4a3a35;
+  --stage: #140402;           /* the dark hero ground */
+  background: var(--canvas);
+  color: var(--ink);
+}
+.landing .stage { background: var(--stage); }
+.landing .soft { color: var(--ink-soft); }
+
+/* Display type: sans, medium weight, tracking tight enough to read as one mass. */
+.landing .display {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.06;
+}
+
+/* Square outline buttons, 8px 16px, exactly as the reference draws them. */
+.landing .btn-line {
+  border: 1px solid var(--color-ember);
+  color: var(--color-ember);
+  padding: 10px 20px;
+  font-weight: 500;
+  transition: background-color 0.2s, color 0.2s;
+}
+.landing .btn-line:hover { background: var(--color-ember); color: #fff; }
+.landing .btn-fill {
+  border: 1px solid var(--color-ember);
+  background: var(--color-ember);
+  color: #fff;
+  padding: 10px 20px;
+  font-weight: 500;
+  transition: filter 0.2s;
+}
+.landing .btn-fill:hover { filter: brightness(0.94); }
+
 /* ---------------------------------------------------------------- motion
    For the public page only. The house style is editorial rather than playful:
    things arrive, they do not bounce. One easing curve, short durations, and
