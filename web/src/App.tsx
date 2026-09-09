@@ -129,6 +129,7 @@ function Shell({ dark, setDark, onLogout }: {
           <p className="mt-1 font-mono text-[11px] uppercase tracking-wide text-mist">
             {crm ? 'Client desk' : 'Terminal'}
           </p>
+          <ThemeToggle dark={dark} setDark={setDark} />
         </div>
         <nav className="flex flex-col py-2 text-sm">
           {nav.filter(([, , show]) => show).map(([href, label]) => (
@@ -138,10 +139,7 @@ function Shell({ dark, setDark, onLogout }: {
         <div className="mt-auto flex items-center gap-3 px-5 py-4 text-mist">
           <span className="font-mono text-xs">{me?.role}</span>
           {trading && <NotificationBell />}
-          <button onClick={() => setDark(!dark)} aria-label="Toggle dark mode" className="ml-auto text-sm hover:text-vellum">
-            {dark ? '☀' : '☾'}
-          </button>
-          <button onClick={onLogout} className="text-xs hover:text-vellum">Sign out</button>
+          <button onClick={onLogout} className="ml-auto text-xs hover:text-vellum">Sign out</button>
         </div>
       </aside>
       <main className={`min-h-0 flex-1 ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
@@ -161,6 +159,25 @@ function Shell({ dark, setDark, onLogout }: {
 }
 
 const Denied = () => <p className="text-sm text-slate-ink">You do not have access to this page.</p>;
+
+/**
+ * Light / terminal switch, at the top of the nav where it is findable. Both surfaces are
+ * the same design system — the tokens swap roles, nothing else changes.
+ */
+function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) => void }) {
+  return (
+    <div role="group" aria-label="Colour theme" className="mt-4 flex gap-1 rounded-full bg-white/10 p-0.5">
+      {([['Light', false], ['Dark', true]] as const).map(([label, on]) => (
+        <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on}
+          className={`flex-1 rounded-full px-2 py-1 font-mono text-[11px] transition-colors ${dark === on
+            ? 'bg-ember text-graphite'
+            : 'text-mist hover:text-vellum'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── PanteraGP primitives ────────────────────────────────────────────────────────
 // Defined once and consumed by every screen, so the system holds instead of drifting.
