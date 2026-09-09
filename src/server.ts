@@ -27,7 +27,7 @@ pg.types.setTypeParser(20, Number);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  max: Number(process.env.PG_POOL_MAX ?? 10),   // src/devdb.ts serves one connection at a time
+  max: Number(process.env.PG_POOL_MAX ?? 10),
 });
 
 /** Every write runs in here: one transaction, actor stamped for the audit triggers. */
@@ -2256,10 +2256,9 @@ if (process.argv[1]?.endsWith('server.ts')) {
   setTimeout(sweep, 5_000).unref();          // once shortly after boot
   setInterval(sweep, 3600_000).unref();
 
-  // Hand the connection back on the way out. The dev database never notices a client that
-  // vanishes without closing, and each one it loses that way costs it a connection slot
-  // for good — see src/devdb.ts. Windows kills without delivering this, so it is a
-  // courtesy, not a guarantee; the database is hardened for the case where it fails.
+  // Drain in-flight requests and hand the pool back rather than dropping connections
+  // mid-query. Windows kills without delivering this, and Postgres copes either way, so
+  // it is good manners rather than something anything depends on.
   let closing = false;
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {

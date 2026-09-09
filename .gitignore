@@ -4,3 +4,4 @@ uploads/
 dist/
 tsconfig.tsbuildinfo
 .pgdata/
+.pgdata-ephemeral/

@@ -35,10 +35,8 @@ function loadEnv() {
       '# Written by npm start on first run. Development only.',
       'DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres',
       `JWT_SECRET=${randomBytes(32).toString('base64url')}`,
-      '# src/devdb.ts serves one connection at a time.',
-      'PG_POOL_MAX=1',
       '# Uncomment to keep the demo data between restarts:',
-      '# DEV_DB_DIR=./.pgdata',
+      '# DEV_DB_DIR=.pgdata',
       '',
     ].join('\n'));
     log('wrote .env with a freshly generated JWT_SECRET');
@@ -195,11 +193,9 @@ if (await portOpen(5432)) {
 if (await portOpen(3000)) {
   log('api: something is already listening on 3000, reusing it');
 } else {
-  // Deliberately not --watch: the dev database does not survive its client being killed
-  // repeatedly (pglite-socket leaves a zombie handler on the shared query queue, and after
-  // a few every connection breaks), so a watched API wedges the database within minutes.
-  // Restart npm start to pick up an API change, or run against a real Postgres to watch.
-  start('api', 'node', ['--experimental-strip-types', 'src/server.ts'], { env });
+  // --watch so an edit to the API applies by itself. Safe now that the dev database is a
+  // real Postgres: it does not care how abruptly a client goes away.
+  start('api', 'node', ['--experimental-strip-types', '--watch', 'src/server.ts'], { env });
   await waitFor('the API', () => httpOk('http://localhost:3000/clients'));
   log('api: up on 3000');
 }

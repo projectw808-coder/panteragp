@@ -10,8 +10,9 @@ all carry `client_id`, so reading a client's timeline never joins through tradin
 That is the whole thing. It installs anything missing, writes a `.env` with a generated
 `JWT_SECRET` on first run, starts the database, the API and the web app, waits until each
 one actually answers, and seeds a demo client if the database is empty. Ctrl-C stops all
-three. No Postgres install is needed — the dev database is an in-process Postgres (PGlite)
-on port 5432.
+three. No Postgres install is needed: the dev database is a real PostgreSQL 18 server on
+port 5432, whose binaries arrive with `npm install` (`embedded-postgres`) and run as an
+ordinary user process — no installer, no service, no admin rights.
 
 Then open **http://localhost:5173**:
 
@@ -23,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 79 acceptance checks against the running stack
+    npm run test:e2e # 80 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -34,14 +35,14 @@ Running the pieces by hand, if you want them in separate terminals:
     npm run dev                         # API on 3000 (needs DATABASE_URL, JWT_SECRET)
     cd web && npm run dev               # web on 5173
 
-`npm run dev` watches, and the dev database does not survive its client being killed over
-and over: expect about three reloads before every connection breaks, and restart both when
-it does. Watch the API against a real Postgres instead. `npm start` does not watch for the
-same reason — restart it to pick up an API change.
+The API runs under `--watch` either way, so an edit to it applies by itself; the database
+is a separate process and is left alone.
 
-Set `DEV_DB_DIR` to keep the data between restarts; without it the database starts clean
-each time. Against a real Postgres: `npm run db:reset`, then
-`src/seed.ts <email> <password> [role]` for the first staff account, and drop `PG_POOL_MAX`.
+Set `DEV_DB_DIR` to keep the data between restarts. Without it the cluster lives in
+`.pgdata-ephemeral`, which is wiped on every boot so the database starts clean — which is
+what the acceptance run wants. Against a Postgres you host yourself: point `DATABASE_URL`
+at it, `npm run db:reset`, then `src/seed.ts <email> <password> [role]` for the first staff
+account.
 
 ## Enforced by the database, not the app
 - `audit_log` is written by an AFTER trigger on all 11 mutable tables, with `password_hash`
@@ -349,7 +350,8 @@ live list. At the time of writing:
 | `web/src/chart.tsx` | Resizing a chart re-fits and so resets zoom. | When someone complains. |
 
 ## Before this touches production
-1. Run `db:reset` against a real Postgres (`src/devdb.ts` is in-memory PGlite, dev only).
+1. Run `db:reset` against a Postgres you host and back up (`src/devdb.ts` runs a real
+   server, but it is an unmanaged local cluster wiped on boot — dev only).
 2. Add migration tooling — there is none, and the schema is applied by dropping it.
 3. Move KYC uploads off local disk to object storage; `storage_key` already assumes it.
 4. Set `JWT_SECRET` from a secrets manager, not the environment inline.
