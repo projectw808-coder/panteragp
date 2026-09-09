@@ -15,9 +15,12 @@ import pg from 'pg';
 import { hashPassword } from '../src/auth.ts';
 
 const password = process.argv[2] ?? process.env.SEED_ADMIN_PASSWORD;
+// No password given is not an error: this runs on every deploy, and does nothing unless
+// SEED_ADMIN_PASSWORD is set. Set it once to create or reset the accounts, then remove it,
+// or every future deploy quietly resets those passwords back.
 if (!password) {
-  console.error("usage: node scripts/seed-admins.mjs '<password>'  (or set SEED_ADMIN_PASSWORD)");
-  process.exit(1);
+  console.log('no SEED_ADMIN_PASSWORD set - skipping admin seeding');
+  process.exit(0);
 }
 if (password.length < 8) {
   console.error('that password is shorter than the 8 characters the API accepts anywhere');

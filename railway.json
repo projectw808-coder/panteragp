@@ -5,7 +5,7 @@
     "buildCommand": "npm install --omit=dev --no-audit --no-fund && npm run build"
   },
   "deploy": {
-    "startCommand": "npm run db:init && npm run start:prod",
+    "startCommand": "npm run db:init && npm run seed:admins && npm run start:prod",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",
