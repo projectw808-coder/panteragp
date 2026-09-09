@@ -384,19 +384,45 @@ always calls `/api/...` — Vite proxies that away in development, and `rewriteU
    Edit the existing `www` record rather than adding a second one — a new domain ships with
    `www` already pointing at GoDaddy's parking page, and two records fight.
 
-   The apex, `pntgp.xyz` with no `www`, cannot be a CNAME: DNS forbids it at the zone apex,
-   and GoDaddy offers no ALIAS/ANAME record to work around it. Two ways out:
+   The apex, `pntgp.xyz` with no `www`, cannot be a CNAME: DNS forbids it at the zone apex
+   and GoDaddy has no ALIAS record. DNS therefore moves to Cloudflare, which flattens a
+   CNAME at the apex so the bare domain serves the app directly. The domain stays
+   registered with GoDaddy; only the nameservers change.
 
-   - **Stay on GoDaddy:** Domains → pntgp.xyz → Forwarding → forward `pntgp.xyz` to
-     `https://www.pntgp.xyz`, permanent (301), **masking off**. Masking serves the site in
-     a hidden frame, which breaks the address bar, breaks OAuth-style redirects and hurts
-     search. The cost of this route is that the apex is a redirect, not the site.
-   - **Move DNS to Cloudflare** (free): change the nameservers at GoDaddy to Cloudflare's,
-     then add a CNAME at the apex — Cloudflare flattens it automatically, so `pntgp.xyz`
-     serves the app directly. More setup once, cleaner result. The domain stays registered
-     with GoDaddy either way.
+### Moving DNS to Cloudflare
 
-   Railway issues the TLS certificate once DNS resolves. Propagation is usually minutes.
+1. Add `pntgp.xyz` as a site on Cloudflare (the free plan is enough). It scans the existing
+   zone first — **check what it imported before continuing**. Anything it misses stops
+   working the moment the nameservers change, and mail is the usual casualty: if the domain
+   has MX records, or TXT records for SPF/DKIM/domain verification, confirm each one is
+   present in Cloudflare now.
+2. Cloudflare gives two nameservers. At GoDaddy → Domains → pntgp.xyz → Nameservers →
+   Change → "I'll use my own nameservers", enter both, save. Propagation is usually under
+   an hour; Cloudflare emails you when the zone goes active.
+3. In Cloudflare → DNS → Records, add both, pointing at the Railway target:
+
+   | Type | Name | Target | Proxy |
+   |---|---|---|---|
+   | CNAME | `@` | the `*.up.railway.app` target | **DNS only** (grey cloud) |
+   | CNAME | `www` | the same target | **DNS only** (grey cloud) |
+
+   Delete GoDaddy's leftover parking records for `@` and `www` if the scan carried them
+   over — two records for one name fight.
+4. Add **both** `pntgp.xyz` and `www.pntgp.xyz` as custom domains in Railway, so it issues
+   a certificate for each.
+5. Leave the proxy off (grey cloud) until Railway shows both domains active with a valid
+   certificate. Proxying during setup blocks Railway's certificate validation and produces
+   a redirect loop instead — the failure looks like a Cloudflare error page, not a Railway
+   one, which sends you hunting in the wrong place.
+6. Only then, if you want Cloudflare's CDN and DDoS protection, switch the records to
+   proxied (orange cloud) **and set SSL/TLS mode to Full (strict)** in the same dashboard.
+   The default "Flexible" talks HTTP to the origin, which Railway redirects back to HTTPS —
+   an infinite loop. WebSockets are enabled by default on the free plan, so the price feed
+   keeps working when proxied.
+
+   If you would rather not move DNS at all, the fallback is GoDaddy → Forwarding →
+   `pntgp.xyz` to `https://www.pntgp.xyz`, permanent (301), **masking off** — but then the
+   apex is a redirect rather than the site.
 
    GoDaddy's *hosting* plans (Web Hosting Basic and similar) are cPanel shared hosting and
    cannot run this: no Node runtime, no PostgreSQL, no WebSockets. Only the domain is used.
