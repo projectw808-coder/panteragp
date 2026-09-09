@@ -373,15 +373,33 @@ always calls `/api/...` — Vite proxies that away in development, and `rewriteU
 6. **Create the first staff account** once, from the Railway shell. There is no default
    admin in production on purpose:
    `node --experimental-strip-types src/seed.ts you@example.com 'a-long-password' admin`
-7. **Point the domain at it.** Railway gives the service a `*.up.railway.app` hostname; add
-   your domain in Railway → Settings → Networking, then at GoDaddy (DNS → Manage DNS):
+7. **Point pntgp.xyz at it.** In Railway → service → Settings → Networking → Custom Domain,
+   add `www.pntgp.xyz`. Railway shows a target ending `.up.railway.app` — copy it, it is
+   specific to the service. Then at GoDaddy → Domains → pntgp.xyz → DNS → Manage Zones:
 
-   | Type | Name | Value |
-   |---|---|---|
-   | CNAME | `www` | the `*.up.railway.app` host Railway shows you |
-   | A or forwarding | `@` | GoDaddy cannot CNAME the apex — use its forwarding to `www`, or Railway's apex A record if it offers one for your domain |
+   | Type | Name | Value | TTL |
+   |---|---|---|---|
+   | CNAME | `www` | the `*.up.railway.app` target Railway gave you | 600 |
+
+   Edit the existing `www` record rather than adding a second one — a new domain ships with
+   `www` already pointing at GoDaddy's parking page, and two records fight.
+
+   The apex, `pntgp.xyz` with no `www`, cannot be a CNAME: DNS forbids it at the zone apex,
+   and GoDaddy offers no ALIAS/ANAME record to work around it. Two ways out:
+
+   - **Stay on GoDaddy:** Domains → pntgp.xyz → Forwarding → forward `pntgp.xyz` to
+     `https://www.pntgp.xyz`, permanent (301), **masking off**. Masking serves the site in
+     a hidden frame, which breaks the address bar, breaks OAuth-style redirects and hurts
+     search. The cost of this route is that the apex is a redirect, not the site.
+   - **Move DNS to Cloudflare** (free): change the nameservers at GoDaddy to Cloudflare's,
+     then add a CNAME at the apex — Cloudflare flattens it automatically, so `pntgp.xyz`
+     serves the app directly. More setup once, cleaner result. The domain stays registered
+     with GoDaddy either way.
 
    Railway issues the TLS certificate once DNS resolves. Propagation is usually minutes.
+
+   GoDaddy's *hosting* plans (Web Hosting Basic and similar) are cPanel shared hosting and
+   cannot run this: no Node runtime, no PostgreSQL, no WebSockets. Only the domain is used.
 
 **Two things that will bite if ignored.** Uploaded KYC documents live on local disk, so
 without the volume in step 4 every deploy loses them — this is the `storage_key` note in
