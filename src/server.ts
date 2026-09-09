@@ -1946,6 +1946,12 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
   const { rows: wallets } = await pool.query<{ asset: string; balance: number }>(
     'SELECT id, asset, address, balance FROM wallets WHERE client_id = $1 ORDER BY asset',
     [req.principal.sub]);
+  // Money in a savings pot is still the client's money. Left out of the total, paying
+  // 3,000 into a portfolio read as 3,000 disappearing — the same sum the staff-side
+  // header does, so both sides answer "what do I have" with the same number.
+  const { rows: portfolios } = await pool.query<{ name: string; currency: string; balance: number }>(
+    `SELECT id, name, currency, balance FROM portfolios
+      WHERE client_id = $1 AND status = 'open' ORDER BY name`, [req.principal.sub]);
 
   const priced = async <T extends { balance: number }>(row: T, code: string) => {
     const rate = await rateToUsd(code);
@@ -1953,11 +1959,13 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
   };
   const cash = await Promise.all(accounts.map((a) => priced(a, a.currency)));
   const crypto = await Promise.all(wallets.map((w) => priced(w, w.asset)));
+  const pots = await Promise.all(portfolios.map((p) => priced(p, p.currency)));
   const total = await totalUsd([
     ...accounts.map((a) => ({ code: a.currency, amount: a.balance })),
     ...wallets.map((w) => ({ code: w.asset, amount: w.balance })),
+    ...portfolios.map((p) => ({ code: p.currency, amount: p.balance })),
   ]);
-  return { cash, wallets: crypto, total_usd: total.usd, unpriced: total.unpriced };
+  return { cash, wallets: crypto, portfolios: pots, total_usd: total.usd, unpriced: total.unpriced };
 });
 
 const creditBody = z.object({

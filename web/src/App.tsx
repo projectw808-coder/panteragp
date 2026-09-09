@@ -5,6 +5,7 @@ import { ChartsView } from './chart.tsx';
 import { NotificationBell } from './notifications.tsx';
 import { SupportPanel, SupportQueue } from './tickets.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
+import { BalanceBar } from './balance.tsx';
 import { ProfileView } from './profile.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, ReportsView } from './compliance.tsx';
@@ -217,6 +218,12 @@ function Shell({ dark, setDark, onLogout }: {
         </div>
       </aside>
       <main className={`min-h-0 flex-1 ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
+        {/* Not on charts, which run full-bleed, and not on the profile, which shows the
+            same figures in full — two totals fetched a second apart tick apart, and one
+            screen disagreeing with itself is worse than one that says it once. */}
+        {trading && !charts && hash !== '/profile' && (
+          <div className="mx-auto max-w-6xl"><BalanceBar /></div>
+        )}
         {charts ? <ChartsView dark={dark} />
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)

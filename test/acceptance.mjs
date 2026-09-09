@@ -478,6 +478,33 @@ await step('the desk can run a client portfolio, and it is recorded as the desk 
   assert.ok(other.id, 'a client_id from a client changes nothing');
 });
 
+await step("money moved into a pot is still the client's money", async () => {
+  const before = await get('/accounts', { token: T });
+  await get(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: 500 } });
+  const after = await get('/accounts', { token: T });
+
+  // The cash balance falls, which is the point. What the client holds must not: a pot is
+  // somewhere the money is, not somewhere it went. Without portfolios in the sum, paying
+  // 500 into savings read as 500 vanishing off the client's own balance screen.
+  //
+  // Counted in GBP rather than in the USD total, because crypto prices tick between the
+  // two reads and a dollar comparison would need slack wide enough to hide the bug.
+  const gbpHeld = (a) => [...a.cash, ...a.portfolios]
+    .filter((x) => x.currency === 'GBP')
+    .reduce((n, x) => n + Number(x.balance), 0);
+  assert.ok(Math.abs(gbpHeld(after) - gbpHeld(before)) < 1e-9,
+    'moving money into a pot must not change what the client holds');
+  assert.ok(gbpHeld(before) > 0, 'and there has to be something there for that to mean anything');
+  assert.ok(after.portfolios.some((x) => Number(x.balance) > 0), 'the pot is listed as a holding');
+
+  // And it is the same figure the desk sees on the client record.
+  const staffSide = await get(`/clients/${client.id}/holdings`, { token: A });
+  assert.ok(Math.abs(staffSide.totals.holdings_usd - after.total_usd) < after.total_usd * 0.01,
+    'both sides answer "what do they have" with the same number');
+
+  await get(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: 500 } });
+});
+
 await step('contributing moves money out of the balance, and back again', async () => {
   const before = await gbp();
   await get(`/portfolios/${retirement.id}/contribute`, { token: T, method: 'POST', body: { amount: 3000 } });

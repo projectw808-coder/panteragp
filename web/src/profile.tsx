@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { BalancePanel } from './balance.tsx';
 
 /**
  * The client's own record, as they see it.
@@ -27,6 +28,11 @@ export function ProfileView() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <PageTitle>Profile</PageTitle>
+
+      <div className={`${card} space-y-3`}>
+        <h2 className="metric-label">Balance</h2>
+        <BalancePanel />
+      </div>
 
       <div className={`${card} space-y-3`}>
         <h2 className="metric-label">Your account</h2>
