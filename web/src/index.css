@@ -92,3 +92,49 @@
   /* Numerals line up in tables and stat tiles. */
   .font-mono, code, kbd { font-variant-numeric: tabular-nums; }
 }
+
+/* ---------------------------------------------------------------- motion
+   For the public page only. The house style is editorial rather than playful:
+   things arrive, they do not bounce. One easing curve, short durations, and
+   movement measured in a few pixels — the restraint is the point.
+
+   Everything here is opt-in via a class, so nothing in the app animates by
+   accident, and all of it collapses under prefers-reduced-motion. */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes grow {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.anim-rise { animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-fade { animation: fade 0.9s ease-out both; }
+/* Candles grow from the axis, like a chart drawing itself in. */
+.anim-grow { transform-origin: bottom; animation: grow 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* The ticker strip: one continuous pass, the content duplicated so it never gaps. */
+.anim-drift { animation: drift 40s linear infinite; }
+
+/* Revealed by IntersectionObserver — see useReveal in landing.tsx. Hidden until
+   seen, so a section arrives as you reach it rather than all at once on load. */
+.reveal { opacity: 0; transform: translateY(18px); }
+.reveal.shown {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-rise, .anim-fade, .anim-grow, .anim-drift { animation: none; }
+  .reveal, .reveal.shown { opacity: 1; transform: none; transition: none; }
+}
