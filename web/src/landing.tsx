@@ -200,7 +200,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <span className="font-mono text-xs text-ember">///</span>
           </button>
           <div className="ml-8 hidden items-center gap-7 lg:flex">
-            {[['platform','Platform'],['audiences','Who it is for'],['how','How it works'],['security','Security'],['faq','FAQ']].map(([id,label]) => (
+            {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security'],['faq','FAQ']].map(([id,label]) => (
               <button key={id} onClick={() => go(id)}
                 className="font-mono text-xs tracking-wide text-mist transition-colors hover:text-vellum">
                 {label}
@@ -217,18 +217,18 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         <div className="relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
-            <Eyebrow onDark>Execution layer // client system</Eyebrow>
+            <Eyebrow onDark>Automated execution // client system</Eyebrow>
           </div>
           {/* Sans, medium weight, −0.045em: the reference's headline is one tight mass. */}
           <h1 className="display mt-7 text-[42px] text-vellum sm:text-[56px] lg:text-[68px]">
-            <span className="anim-rise block" style={{ animationDelay: '200ms' }}>One surface.</span>
-            <span className="anim-rise block" style={{ animationDelay: '330ms' }}>Whole position.</span>
+            <span className="anim-rise block" style={{ animationDelay: '200ms' }}>You set the levels.</span>
+            <span className="anim-rise block" style={{ animationDelay: '330ms' }}>The engine waits.</span>
           </h1>
           <p className="anim-rise mt-7 max-w-xl text-base leading-relaxed text-ember/90"
             style={{ animationDelay: '470ms' }}>
-            Order routing, continuous pricing and a settlement engine, wired to the client
-            record they belong to. One state, one timeline, one audit trail — and no
-            reconciliation step between the trade and the person who made it.
+            Rest an order at a price and close the tab. A settlement engine prices every
+            instrument continuously and fires your limits, stops and trailing exits the moment
+            they trigger — server-side, with the client record and audit trail attached.
           </p>
           <div className="anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
             <button onClick={onRegister} className="btn-line font-mono text-sm">Open an account</button>
@@ -311,6 +311,64 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               </div>
             </Reveal>
           ))}
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------- the engine
+          Every claim in this section is behaviour that exists: see settle() and
+          startTicker() in src/server.ts. It describes order automation, not a
+          strategy engine — there are no bots here, and the copy must not imply any. */}
+      <section id="engine" className="stage scroll-mt-20 border-t border-white/10">
+        <div className="mx-auto max-w-[1100px] px-8 py-24">
+          <Reveal>
+            <Eyebrow onDark>The engine</Eyebrow>
+            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
+              lines={['Your orders keep working', 'after you close the tab.']} />
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-mist">
+              Resting orders live on the server, not in your browser. A settlement pass prices
+              every instrument on each tick and acts the moment a level trades — whether or not
+              anyone is connected.
+            </p>
+          </Reveal>
+
+          <div className="mt-12 grid gap-[10px] md:grid-cols-2">
+            {[
+              ['Limit and stop', 'Set the price you want. The engine watches every tick and fills when the market reaches it — no manual monitoring, no missed level while you were away.'],
+              ['Stop-limit', 'Two conditions, one order: the stop arms it, the limit caps what you will pay. It fills only if both hold, so a gap does not fill you at any price.'],
+              ['Trailing stop', 'The stop ratchets behind the price as it moves your way and never loosens. Profit follows the move up; the exit stays where it was if the move reverses.'],
+              ['Attached exits', 'Take-profit and stop-loss ride with the position from the moment it opens. Whichever trades first closes it, so a position is never left unprotected.'],
+            ].map(([title, body], i) => (
+              <Reveal key={title} delay={i * 80}>
+                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-mono text-xs text-ember">{String(i + 1).padStart(2, '0')}</span>
+                    <h3 className="display text-[22px] text-vellum">{title}</h3>
+                  </div>
+                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={120}>
+            <div className="mt-[10px] border border-white/10 p-8">
+              <h3 className="display text-[22px] text-vellum">Sized against your risk, not your nerve</h3>
+              <p className="mt-4 max-w-3xl text-base leading-relaxed text-mist">
+                Give the ticket a stop and the percentage of the balance you are willing to lose,
+                and it works out the position size for you — capped by your available margin, and
+                rounded down so it never overshoots. The arithmetic is done before the order
+                exists rather than after the loss does.
+              </p>
+            </div>
+          </Reveal>
+
+          <Reveal delay={160}>
+            <p className="mt-8 max-w-3xl font-mono text-xs leading-relaxed text-mist">
+              <span className="text-ember">NOTE //</span> this automates the orders you place. It
+              is not a strategy engine and does not trade on your behalf — nothing here opens a
+              position you did not ask for.
+            </p>
+          </Reveal>
         </div>
       </section>
 
