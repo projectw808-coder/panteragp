@@ -299,13 +299,14 @@ app.post('/staff', { preHandler: auth('admin') }, async (req: any, reply) => {
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const b = body.data;
   try {
-    return await tx(req.principal.sub, async (c) => {
+    const created = await tx(req.principal.sub, async (c) => {
       const { rows } = await c.query(
         `INSERT INTO staff (name, email, role, password_hash) VALUES ($1,$2,$3,$4)
          RETURNING id, name, email, role, active, created_at`,
         [b.name, b.email.toLowerCase(), b.role, await hashPassword(b.password)]);
-      return reply.code(201).send(rows[0]);
+      return rows[0];
     });
+    return reply.code(201).send(created);
   } catch (err: any) {
     if (err?.code === '23505') return reply.code(409).send({ error: 'that email is already a staff account' });
     throw err;
@@ -960,7 +961,7 @@ app.post('/me/wallet', { preHandler: trader }, async (req: any, reply) => {
         summary: `Linked wallet ${address.slice(0, 6)}…${address.slice(-4)}`,
         ref_table: 'linked_wallets', ref_id: String(rows[0].id),
       });
-      return reply.code(201).send(rows[0]);
+      return rows[0];
     });
   } catch (err: any) {
     if (err?.code === '23505') return reply.code(409).send({ error: 'that address is already linked to an account' });
@@ -2695,7 +2696,7 @@ app.post('/portfolios', { preHandler: auth() }, async (req: any, reply) => {
         ref_table: 'portfolios', ref_id: rows[0].id,
         data: { type: b.type_code, currency: b.currency, target: b.target_amount ?? null },
       });
-      return reply.code(201).send(rows[0]);
+      return rows[0];
     });
   } catch (err: any) {
     // One name per client, so the list stays legible.
@@ -3131,6 +3132,125 @@ async function accrueStaking(): Promise<{ stakes: number; posted: number }> {
 
 /** Admin: run the staking accrual by hand, the same way interest can be run. */
 app.post('/admin/accrue-staking', { preHandler: auth('admin') }, async () => accrueStaking());
+
+/**
+ * The staking catalogue, as the desk maintains it.
+ *
+ * A product's rate is shared: every stake on it that has not had its own rate agreed is
+ * paid the product's, so changing this number changes what a lot of people earn at once.
+ * The count of stakes riding on it comes back with every product for that reason — the
+ * desk should see the size of what it is about to move before it moves it.
+ */
+const productBody = z.object({
+  name: z.string().min(1).max(80),
+  asset: z.string().min(2).max(10),
+  description: z.string().min(1).max(400),
+  apy: z.number().min(0).max(1),
+  lock_days: z.number().int().min(0).max(3650).default(0),
+  min_amount: z.number().min(0).finite().default(0),
+  sort_order: z.number().int().min(0).max(1000).default(0),
+  active: z.boolean().default(true),
+});
+
+/** Everything the desk offers or has ever offered, with what is riding on each. */
+app.get('/admin/staking-products', { preHandler: auth('crm:read') }, async () =>
+  (await pool.query(`
+    SELECT p.*,
+           (SELECT count(*) FROM stakes s WHERE s.product_code = p.code AND s.status = 'active')      AS active_stakes,
+           (SELECT count(*) FROM stakes s WHERE s.product_code = p.code AND s.status = 'active'
+             AND s.apy_override IS NULL)                                                             AS on_product_rate,
+           (SELECT coalesce(sum(s.amount + s.rewards), 0) FROM stakes s
+             WHERE s.product_code = p.code AND s.status = 'active')                                  AS staked
+      FROM staking_products p ORDER BY p.sort_order, p.name`)).rows);
+
+app.post('/admin/staking-products', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = z.object({ code: z.string().min(2).max(30).regex(/^[a-z0-9_]+$/) })
+    .and(productBody).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  if (!(await currencies()).has(b.asset)) return reply.code(404).send({ error: 'unknown asset' });
+
+  try {
+    const created = await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO staking_products (code, name, asset, description, apy, lock_days, min_amount, sort_order, active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [b.code, b.name, b.asset, b.description, b.apy, b.lock_days, b.min_amount, b.sort_order, b.active]);
+      return rows[0];
+    });
+    return reply.code(201).send(created);
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'a product with that code already exists' });
+    throw err;
+  }
+});
+
+app.patch('/admin/staking-products/:code', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = productBody.partial()
+    .refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (body.data.asset && !(await currencies()).has(body.data.asset)) {
+    return reply.code(404).send({ error: 'unknown asset' });
+  }
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [before] } = await c.query<{ asset: string; apy: number; name: string }>(
+      'SELECT asset, apy, name FROM staking_products WHERE code = $1 FOR UPDATE', [req.params.code]);
+    if (!before) return 'missing' as const;
+
+    // A stake keeps the asset it was opened in, so changing the product's would leave the
+    // two disagreeing about what the same row is denominated in. Retire it and add another.
+    if (body.data.asset && body.data.asset !== before.asset) {
+      const { rows: [{ n }] } = await c.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM stakes WHERE product_code = $1 AND status = 'active'",
+        [req.params.code]);
+      if (Number(n) > 0) return 'asset-locked' as const;
+    }
+
+    const entries = Object.entries(body.data);
+    const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+    const { rows } = await c.query(
+      `UPDATE staking_products SET ${set} WHERE code = $1 RETURNING *`,
+      [req.params.code, ...entries.map(([, v]) => v)]);
+
+    // Worth its own line on the audit trail: this one number moves what everybody on the
+    // product earns, and how many that is belongs in the record beside it.
+    if (body.data.apy !== undefined && Number(body.data.apy) !== Number(before.apy)) {
+      const { rows: [{ n }] } = await c.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM stakes
+          WHERE product_code = $1 AND status = 'active' AND apy_override IS NULL`, [req.params.code]);
+      app.log.info({ product: req.params.code, from: before.apy, to: body.data.apy, stakes: n },
+        'staking product rate changed');
+    }
+    return rows[0];
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such product' });
+  if (out === 'asset-locked') {
+    return reply.code(409).send({ error: 'this product has open stakes — its asset cannot change' });
+  }
+  return out;
+});
+
+/** Every open stake on the desk, for the firm-wide view. */
+app.get('/admin/stakes', { preHandler: auth('crm:read') }, async (req: any) => {
+  const q = z.object({
+    status: z.enum(['active', 'closed', 'all']).default('active'),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+  }).parse(req.query);
+  const { rows } = await pool.query(
+    `SELECT s.id, s.client_id, cl.name AS client_name, s.asset, s.amount, s.rewards,
+            s.status, s.staked_at, s.unlocks_at, s.apy_override,
+            p.name AS product_name, p.code AS product_code,
+            coalesce(s.apy_override, p.apy) AS apy
+       FROM stakes s
+       JOIN staking_products p ON p.code = s.product_code
+       JOIN clients cl ON cl.id = s.client_id
+      WHERE ($1 = 'all' OR s.status = $1)
+      ORDER BY s.staked_at DESC LIMIT $2`, [q.status, q.limit]);
+  return rows;
+});
+
 
 // --------------------------------------------------------------- dashboard
 

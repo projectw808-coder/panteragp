@@ -990,6 +990,65 @@ await step('rewards accrue once a day, however often the job runs', async () => 
   assert.equal(await status('/admin/accrue-staking', { token: T, method: 'POST' }), 403);
 });
 
+await step('the desk maintains the staking catalogue', async () => {
+  const code = `t${Date.now().toString(36)}`;
+  const made = await get('/admin/staking-products', { token: A, method: 'POST', body: {
+    code, name: 'Test product', asset: 'ETH', description: 'For the acceptance run.',
+    apy: 0.04, lock_days: 30, min_amount: 0.5, sort_order: 99 } });
+  assert.equal(made.code, code);
+
+  assert.equal(await status('/admin/staking-products', { token: A, method: 'POST', body: {
+    code, name: 'x', asset: 'ETH', description: 'y', apy: 0.04 } }), 409, 'codes are unique');
+  assert.equal(await status('/admin/staking-products', { token: A, method: 'POST', body: {
+    code: `${code}b`, name: 'x', asset: 'NOPE', description: 'y', apy: 0.04 } }), 404, 'the asset must exist');
+  assert.equal(await status('/admin/staking-products', { token: A, method: 'POST', body: {
+    code: `${code}c`, name: 'x', asset: 'ETH', description: 'y', apy: 5 } }), 400, 'a 500% rate is a typo');
+
+  // A new product is offered to clients straight away, and appears with its numbers.
+  const offered = await get('/staking-products', { token: T });
+  const mine = offered.find((x) => x.code === code);
+  assert.ok(mine, 'clients see it');
+  assert.equal(Number(mine.apy), 0.04);
+  assert.equal(mine.lock_days, 30);
+
+  await get(`/admin/staking-products/${code}`, { token: A, method: 'PATCH', body: { apy: 0.06 } });
+  assert.equal(Number((await get('/staking-products', { token: T })).find((x) => x.code === code).apy), 0.06);
+
+  // Retiring stops it being offered without touching anything already staked on it.
+  await get(`/admin/staking-products/${code}`, { token: A, method: 'PATCH', body: { active: false } });
+  assert.ok(!(await get('/staking-products', { token: T })).some((x) => x.code === code),
+    'a retired product is not offered');
+  assert.ok((await get('/admin/staking-products', { token: A })).some((x) => x.code === code),
+    'but the desk still sees it');
+
+  assert.equal(await status(`/admin/staking-products/no_such_code`, { token: A, method: 'PATCH', body: {
+    apy: 0.01 } }), 404);
+});
+
+await step('the catalogue is the desk\'s, and its asset is fixed once anything is staked', async () => {
+  // Reading the catalogue is ordinary CRM work; changing it is not.
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Catalogue Sales', email: unique('cat-sales'), role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status('/admin/staking-products', { token: sellerToken }), 200, 'staff may read it');
+  assert.equal(await status('/admin/staking-products', { token: sellerToken, method: 'POST', body: {
+    code: 'sneaky', name: 'x', asset: 'ETH', description: 'y', apy: 0.04 } }), 403);
+  assert.equal(await status('/admin/staking-products', { token: T }), 403, 'clients see products, not the desk view');
+
+  // A stake keeps the asset it opened in, so a product carrying open stakes cannot change
+  // its own — the two would end up disagreeing about what the same row is denominated in.
+  const products = await get('/staking-products', { token: T });
+  const live = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
+  await get('/stakes', { token: T, method: 'POST', body: { product_code: live.code, amount: 0.5 } });
+  assert.equal(await status(`/admin/staking-products/${live.code}`, { token: A, method: 'PATCH', body: {
+    asset: 'BTC' } }), 409);
+
+  // The firm-wide view lists it with the client attached.
+  const all = await get('/admin/stakes', { token: A });
+  assert.ok(all.some((s) => s.client_id === client.id && s.client_name), 'stakes carry their client');
+  assert.equal(await status('/admin/stakes', { token: T }), 403);
+});
+
 console.log('\nSupport tickets');
 let ticket;
 
