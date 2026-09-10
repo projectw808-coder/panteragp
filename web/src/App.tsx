@@ -7,6 +7,7 @@ import { SupportPanel, SupportQueue } from './tickets.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { BalanceBar } from './balance.tsx';
 import { ProfileView } from './profile.tsx';
+import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
 import { TradeView } from './trade.tsx';
@@ -178,6 +179,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/settings', 'Settings', true],
     ['#/support', 'Support', trading],
     ['#/documents', 'Documents', trading],
+    ['#/wallet', 'Connect wallet', trading],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
@@ -236,6 +238,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div> : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
+          : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)
           : hash === '/documents' ? (trading && me
             ? <div className="mx-auto max-w-3xl space-y-4">
                 <PageTitle>Documents</PageTitle>

@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { BalancePanel } from './balance.tsx';
-import { WalletConnect } from './wallet-connect.tsx';
 
 /**
  * The client's own record, as they see it.
@@ -51,15 +50,6 @@ export function ProfileView() {
 
       <Details p={p} onSaved={me.reload} />
 
-      <div className={`${card} space-y-3`}>
-        <div>
-          <h2 className="metric-label">Wallet</h2>
-          <p className="mt-1 text-xs text-slate-ink">
-            Link the address you use, so we can tell it is yours.
-          </p>
-        </div>
-        <WalletConnect />
-      </div>
     </div>
   );
 }

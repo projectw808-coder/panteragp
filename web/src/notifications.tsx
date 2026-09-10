@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from './api.ts';
 import { subscribe } from './feed.ts';
 
@@ -28,7 +29,10 @@ export function NotificationBell() {
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const bell = useRef<HTMLButtonElement>(null);
+  // Where to draw the panel, measured from the button when it opens.
+  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null);
 
   const load = async () => {
     try {
@@ -57,7 +61,9 @@ export function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (panel.current?.contains(target) || bell.current?.contains(target)) return;
+      setOpen(false);
     };
     addEventListener('mousedown', away);
     return () => removeEventListener('mousedown', away);
@@ -75,21 +81,51 @@ export function NotificationBell() {
     setUnread(0);
   }
 
+  /**
+   * The panel is drawn into the body rather than next to the button, and placed from the
+   * button's own position.
+   *
+   * It used to be an absolutely positioned child of the bell, which put it inside the nav
+   * rail — a 224px column with overflow:hidden — so a 320px panel was clipped to nothing.
+   * It also opened downwards from a button that sits at the very bottom of the screen, so
+   * even unclipped it would have been below the fold. Clicking the bell did work; there
+   * was simply never anything to see.
+   */
+  function toggle() {
+    // mousedown outside the panel has already closed it by the time this click lands, so
+    // "open" is false here even when the panel was on screen a moment ago. Nothing to undo:
+    // the close already happened and reopening on the same gesture would be wrong.
+    if (open) return setOpen(false);
+    const r = bell.current?.getBoundingClientRect();
+    // Above the button and clear of the left edge; opening upward because the bell lives
+    // at the bottom of the rail and there is no room underneath it.
+    if (r) setAt({ left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 10 });
+    setOpen(true);
+    load();
+  }
+
   return (
-    <div ref={box} className="relative">
-      <button onClick={() => { setOpen((v) => !v); if (!open) load(); }}
+    <div className="relative">
+      <button ref={bell} onClick={toggle} aria-expanded={open}
         aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
-        className="relative text-sm text-slate-ink hover:text-obsidian dark:hover:text-vellum">
-        ☍
+        className="relative text-slate-ink transition-colors hover:text-vellum">
+        {/* A drawn bell rather than a glyph: ☍ renders as a box or a hyphen in half the
+            fonts this ships to, which reads as a broken button. */}
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+          strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M10 2.5a5 5 0 0 0-5 5v3l-1.5 2.5h13L15 10.5v-3a5 5 0 0 0-5-5Z" />
+          <path d="M8 15.5a2 2 0 0 0 4 0" />
+        </svg>
         {unread > 0 && (
-          <span className="absolute -top-1.5 -right-2 rounded-full bg-ember px-1 text-[10px] font-medium text-graphite">
+          <span className="absolute -top-2 -right-2.5 rounded-full bg-ember px-1 text-[10px] leading-4 font-medium text-graphite">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx">
+      {open && at && createPortal(
+        <div ref={panel} style={{ left: at.left, bottom: at.bottom }}
+          className="fixed z-50 w-80 rounded-lg border border-pebble bg-vellum shadow-lg dark:border-white/10 dark:bg-onyx">
           <div className="flex items-center justify-between border-b border-pebble px-3 py-2 dark:border-white/10">
             <span className="text-xs font-semibold">Notifications</span>
             {unread > 0 && (
@@ -121,7 +157,8 @@ export function NotificationBell() {
             ))}
           </ul>
           {!items.length && <p className="px-3 py-4 text-sm text-slate-ink">Nothing yet.</p>}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

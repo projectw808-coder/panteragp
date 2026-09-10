@@ -3,6 +3,7 @@ import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
+import { PortfoliosPanel } from './portfolio.tsx';
 import { ResetPassword } from './settings.tsx';
 
 type Holdings = {
@@ -83,7 +84,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
         {tab === 'overview' && (
           <Overview id={id} client={c} totals={t} flags={flags} admin={admin} onChanged={refresh} />
         )}
-        {tab === 'assets' && <Assets h={holdings.data} />}
+        {tab === 'assets' && <Assets id={id} h={holdings.data} admin={admin} onChanged={refresh} />}
         {tab === 'trading' && <Trading h={holdings.data} />}
         {tab === 'funding' && <Funding id={id} h={holdings.data} compliance={compliance} onChanged={refresh} />}
         {tab === 'documents' && <DocumentsPanel clientId={id} canUpload={false} />}
@@ -360,7 +361,9 @@ function ClientPassword({ id, name }: { id: string; name: string }) {
   );
 }
 
-function Assets({ h }: { h: Holdings | null }) {
+function Assets({ id, h, admin, onChanged }: {
+  id: string; h: Holdings | null; admin: boolean; onChanged: () => void;
+}) {
   if (!h) return <Empty>Loading…</Empty>;
   return (
     <div className="space-y-4">
@@ -384,19 +387,21 @@ function Assets({ h }: { h: Holdings | null }) {
           ))}
         </Table>
       )}
-      {!!h.portfolios.length && (
-        <Table head={['Portfolio', 'Type', 'Balance', 'Target', 'Status']}>
-          {h.portfolios.map((p) => (
-            <Tr key={p.id}>
-              <Td className="font-medium">{p.name}</Td>
-              <Td className="text-slate-ink">{p.type_name}</Td>
-              <Td className="tabular-nums">{num(p.balance)} {p.currency}</Td>
-              <Td className="tabular-nums">{p.target_amount ? num(p.target_amount) : '—'}</Td>
-              <Td>{p.status}</Td>
-            </Tr>
-          ))}
-        </Table>
-      )}
+      {admin
+        ? <PortfoliosPanel clientId={id} onChanged={onChanged} />
+        : !!h.portfolios.length && (
+          <Table head={['Portfolio', 'Type', 'Balance', 'Target', 'Status']}>
+            {h.portfolios.map((p) => (
+              <Tr key={p.id}>
+                <Td className="font-medium">{p.name}</Td>
+                <Td className="text-slate-ink">{p.type_name}</Td>
+                <Td className="tabular-nums">{num(p.balance)} {p.currency}</Td>
+                <Td className="tabular-nums">{p.target_amount ? num(p.target_amount) : '—'}</Td>
+                <Td>{p.status}</Td>
+              </Tr>
+            ))}
+          </Table>
+        )}
     </div>
   );
 }

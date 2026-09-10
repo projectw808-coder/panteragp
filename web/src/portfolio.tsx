@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { alertBox, btn, card, field, input } from './App.tsx';
+import { alertBox, btn, card, field } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { PotArt } from './portfolio-art.tsx';
 import type { Currency } from './wallet.tsx';
 
 type PortfolioType = {
@@ -31,7 +32,7 @@ const day = (d: string) => new Date(d).toLocaleDateString();
  * on every write. One component rather than a staff copy: two versions of a screen that
  * moves money is two places for the rules to drift apart.
  */
-export function PortfoliosPanel({ clientId }: { clientId?: string } = {}) {
+export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; onChanged?: () => void } = {}) {
   const on = clientId ? { client_id: clientId } : {};
   const portfolios = useApi<Portfolio[]>(clientId ? `/portfolios?client_id=${clientId}` : '/portfolios');
   const types = useApi<PortfolioType[]>('/portfolio-types');
@@ -55,7 +56,8 @@ export function PortfoliosPanel({ clientId }: { clientId?: string } = {}) {
           onDone={() => { setAdding(false); portfolios.reload(); }} />
       )}
 
-      {open.map((p) => <Pot key={p.id} p={p} on={on} onDone={portfolios.reload} />)}
+      {open.map((p) => <Pot key={p.id} p={p} on={on}
+        onDone={() => { portfolios.reload(); onChanged?.(); }} />)}
       {!open.length && !adding && (
         <p className="text-sm text-slate-ink">
           {clientId
@@ -108,10 +110,11 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
 
   return (
     <div className="rounded-md border border-pebble p-3 dark:border-white/10">
-      <div className="flex flex-wrap items-baseline gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="shrink-0 text-ember"><PotArt code={p.type_code} size={28} /></span>
         <span className="font-medium">{p.name}</span>
         <span className="text-xs text-slate-ink">{p.type_name}</span>
-        <span className="ml-auto tabular-nums">{money(p.balance, p.currency)}</span>
+        <span className="ml-auto font-mono tabular-nums">{money(p.balance, p.currency)}</span>
       </div>
 
       {p.progress !== null && (
@@ -147,7 +150,9 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">take out</button>
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
-            className="text-ember hover:underline">set rate</button>
+            className="rounded-md border border-ember px-2.5 py-1 font-medium text-ember transition-colors hover:bg-ember hover:text-graphite">
+            {rate ? 'close' : `set rate · ${p.rate_override === null ? 'standard' : pct(p.rate_override)}`}
+          </button>
         )}
         {Number(p.balance) === 0 && (
           <button onClick={close} className="ml-auto text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">close</button>
@@ -263,10 +268,37 @@ function NewPortfolio({ types, currencies, on, onDone }: {
   }
 
   return (
-    <form onSubmit={submit} className={`${card} space-y-2`}>
-      <select className={input} value={type} onChange={(e) => setType(e.target.value)}>
-        {types.map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
-      </select>
+    <form onSubmit={submit} className={`${card} space-y-4`}>
+      <div>
+        <h3 className="metric-label">What is it for?</h3>
+        {/* A radiogroup, not a listbox: these are six things with pictures, and the picture
+            is most of what tells them apart. Kept as real radios underneath so arrow keys
+            move between them and a screen reader reads it as one choice. */}
+        <div role="radiogroup" aria-label="Kind of portfolio"
+          className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {types.map((t) => {
+            const on = t.code === type;
+            return (
+              <label key={t.code}
+                className={`flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border p-3 text-center transition-colors ${on
+                  ? 'border-ember bg-ember/10 text-ember'
+                  : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
+                <input type="radio" name="type_code" value={t.code} checked={on} className="sr-only"
+                  onChange={() => setType(t.code)} />
+                <PotArt code={t.code} />
+                <span className={`text-xs leading-tight font-medium ${on ? '' : 'text-obsidian dark:text-vellum'}`}>
+                  {t.name}
+                </span>
+                {t.indicative_rate !== null && (
+                  <span className="font-mono text-[10px] tabular-nums">
+                    {pct(Number(t.indicative_rate))} a year
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      </div>
       {chosen && <p className="text-xs text-slate-ink">{chosen.description}</p>}
       <div className="flex flex-wrap gap-2">
         <input name="name" required maxLength={80} placeholder="Name it, e.g. Retirement 2055"

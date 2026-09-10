@@ -1,44 +1,102 @@
-import { useState } from 'react';
-import { alertBox, btn, btnGhost, mono } from './App.tsx';
+import { useEffect, useRef, useState } from 'react';
+import { alertBox, btn, card, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 /**
- * Linking a MetaMask wallet to the account.
+ * Linking a wallet to the account.
  *
  * The client signs a challenge to prove the address is theirs. Signing is free, moves
  * nothing, and cannot be replayed as a transaction — the request is personal_sign, never
- * eth_sendTransaction and never an approval, and this component asks for nothing else.
+ * eth_sendTransaction and never an approval, and nothing here asks for anything else.
  *
- * Nothing is deposited or withdrawn through here. It is identification: the desk knowing
- * which address belongs to whom, which is what would have to be true before an address
- * could ever be paid.
+ * Nothing is deposited or withdrawn through this page. It is identification: the desk
+ * knowing which address belongs to whom, which is what would have to be true before an
+ * address could ever be paid.
  */
 
 type Wallet = { id: number; address: string; label: string | null; linked_at: string };
 
-/** MetaMask injects this. Typed to the two calls used, so nothing wider is reachable. */
-type Ethereum = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  isMetaMask?: boolean;
-};
-const injected = (): Ethereum | undefined => (globalThis as { ethereum?: Ethereum }).ethereum;
+/** The EIP-1193 surface, narrowed to the two calls used. */
+type Provider = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
 
+/** What a wallet announces about itself under EIP-6963. */
+type Announced = {
+  info: { uuid: string; name: string; icon: string; rdns: string };
+  provider: Provider;
+};
+
+/**
+ * Wallets we name even when they are not installed, so the page is a list of choices
+ * rather than an empty box on a machine with nothing set up yet. MetaMask is first
+ * because it is the one being led with; the rest are alphabetical, not ranked.
+ */
+const KNOWN: { rdns: string; name: string; url: string }[] = [
+  { rdns: 'io.metamask', name: 'MetaMask', url: 'https://metamask.io/download/' },
+  { rdns: 'com.coinbase.wallet', name: 'Coinbase Wallet', url: 'https://www.coinbase.com/wallet/downloads' },
+  { rdns: 'io.rabby', name: 'Rabby', url: 'https://rabby.io/' },
+  { rdns: 'com.trustwallet.app', name: 'Trust Wallet', url: 'https://trustwallet.com/download' },
+  { rdns: 'app.phantom', name: 'Phantom', url: 'https://phantom.app/download' },
+];
+
+const rank = (rdns: string) => (rdns === 'io.metamask' ? -1 : 0);
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-export function WalletConnect() {
+/**
+ * Every wallet installed in this browser, as each one announces itself.
+ *
+ * EIP-6963 rather than reading window.ethereum: with two extensions installed they fight
+ * over that single property and whichever lost is unreachable, so the person with both
+ * MetaMask and Rabby can end up unable to pick the one they meant. Each wallet announces
+ * its own name and icon here, which is also why this page needs no logos of its own.
+ */
+function useProviders() {
+  const [found, setFound] = useState<Announced[]>([]);
+
+  useEffect(() => {
+    const on = (e: Event) => {
+      const detail = (e as CustomEvent<Announced>).detail;
+      setFound((prev) => (prev.some((p) => p.info.uuid === detail.info.uuid) ? prev : [...prev, detail]));
+    };
+    addEventListener('eip6963:announceProvider', on);
+    // Wallets announce on request as well as at load, so ask — a page rendered after they
+    // finished announcing would otherwise see nothing.
+    dispatchEvent(new Event('eip6963:requestProvider'));
+    return () => removeEventListener('eip6963:announceProvider', on);
+  }, []);
+
+  // A wallet that predates EIP-6963 still only lives on window.ethereum. Include it, but
+  // only when nothing announced itself, so it cannot duplicate a wallet already listed.
+  const legacy = (globalThis as { ethereum?: Provider & { isMetaMask?: boolean } }).ethereum;
+  if (!found.length && legacy) {
+    return [{
+      info: {
+        uuid: 'legacy', name: legacy.isMetaMask ? 'MetaMask' : 'Browser wallet',
+        icon: '', rdns: legacy.isMetaMask ? 'io.metamask' : 'legacy',
+      },
+      provider: legacy,
+    }];
+  }
+  return [...found].sort((a, b) => rank(a.info.rdns) - rank(b.info.rdns)
+    || a.info.name.localeCompare(b.info.name));
+}
+
+export function WalletView() {
   const wallets = useApi<Wallet[]>('/me/wallet');
+  const providers = useProviders();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which wallet is mid-flow, so only that card shows the spinner.
+  const active = useRef<string | null>(null);
 
-  async function connect() {
-    const eth = injected();
-    if (!eth) {
-      return setError('No wallet extension found in this browser. Install MetaMask, then reload this page.');
-    }
+  const installed = new Set(providers.map((p) => p.info.rdns));
+  const missing = KNOWN.filter((k) => !installed.has(k.rdns));
+
+  async function connect(w: Announced) {
     setError(null);
+    active.current = w.info.uuid;
     try {
       setBusy('Waiting for the wallet…');
-      const [address] = await eth.request({ method: 'eth_requestAccounts' }) as string[];
+      const [address] = await w.provider.request({ method: 'eth_requestAccounts' }) as string[];
       if (!address) throw new Error('No account was shared.');
 
       setBusy('Building the challenge…');
@@ -48,15 +106,15 @@ export function WalletConnect() {
 
       // personal_sign takes the message first and the account second. Nothing reaches the
       // chain: this produces a signature, not a transaction.
-      setBusy('Approve the signature in MetaMask…');
-      const signature = await eth.request({
+      setBusy(`Approve the signature in ${w.info.name}…`);
+      const signature = await w.provider.request({
         method: 'personal_sign', params: [challenge.message, address],
       }) as string;
 
       setBusy('Checking it…');
       await api('/me/wallet', {
         method: 'POST',
-        body: JSON.stringify({ address, nonce: challenge.nonce, signature, label: 'MetaMask' }),
+        body: JSON.stringify({ address, nonce: challenge.nonce, signature, label: w.info.name }),
       });
       wallets.reload();
     } catch (err) {
@@ -65,6 +123,7 @@ export function WalletConnect() {
       setError(code === 4001 ? 'Cancelled in the wallet.' : (err as Error).message);
     } finally {
       setBusy(null);
+      active.current = null;
     }
   }
 
@@ -76,53 +135,128 @@ export function WalletConnect() {
     } catch (err) { setError((err as Error).message); }
   }
 
-  const rows = wallets.data ?? [];
+  const linked = wallets.data ?? [];
 
   return (
-    <div className="space-y-3">
-      {rows.length === 0
-        ? <p className="text-sm text-slate-ink">No wallet linked.</p>
-        : (
-          <ul className="divide-y divide-pebble dark:divide-white/10">
-            {rows.map((w) => (
-              <li key={w.id} className="flex flex-wrap items-center gap-3 py-2">
-                <span className={`text-sm ${mono} text-ember`} title={w.address}>{short(w.address)}</span>
-                <span className="text-xs text-slate-ink">{w.label ?? 'wallet'}</span>
-                <span className={`text-xs text-slate-ink ${mono}`}>
-                  linked {new Date(w.linked_at).toLocaleDateString()}
-                </span>
-                <button type="button" onClick={() => unlink(w)}
-                  className="ml-auto font-mono text-xs text-slate-ink hover:text-down hover:underline">
-                  unlink
+    <div className="mx-auto max-w-3xl space-y-4">
+      <PageTitle>Connect wallet</PageTitle>
+
+      <div className={`${card} space-y-4`}>
+        <div>
+          <h2 className="metric-label">Your wallets</h2>
+          <p className="mt-1 text-xs text-slate-ink">
+            Addresses you have proved are yours.
+          </p>
+        </div>
+        {linked.length === 0
+          ? <p className="text-sm text-slate-ink">Nothing linked yet.</p>
+          : (
+            <ul className="divide-y divide-pebble dark:divide-white/10">
+              {linked.map((w) => (
+                <li key={w.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-up" aria-hidden />
+                  <span className={`text-sm ${mono} text-ember`} title={w.address}>{short(w.address)}</span>
+                  <span className="text-xs text-slate-ink">{w.label ?? 'wallet'}</span>
+                  <span className={`text-xs text-slate-ink ${mono}`}>
+                    linked {new Date(w.linked_at).toLocaleDateString()}
+                  </span>
+                  <button type="button" onClick={() => unlink(w)}
+                    className="ml-auto font-mono text-xs text-slate-ink hover:text-down hover:underline">
+                    unlink
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+      </div>
+
+      <div className={`${card} space-y-4`}>
+        <div>
+          <h2 className="metric-label">Choose a wallet</h2>
+          <p className="mt-1 text-xs text-slate-ink">
+            {providers.length
+              ? 'Found in this browser. Pick the one holding the address you want to link.'
+              : 'No wallet extension found in this browser. Install one of these, then reload the page.'}
+          </p>
+        </div>
+
+        {!!providers.length && (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {providers.map((w, i) => (
+              <li key={w.info.uuid}>
+                <button type="button" onClick={() => connect(w)} disabled={!!busy}
+                  className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${
+                    i === 0
+                      ? 'border-ember bg-ember/5 hover:bg-ember/10'
+                      : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
+                  <Mark w={w} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{w.info.name}</span>
+                    <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
+                      {active.current === w.info.uuid && busy ? busy : (i === 0 ? 'recommended' : 'installed')}
+                    </span>
+                  </span>
+                  <span className="font-mono text-xs text-ember" aria-hidden>→</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className={rows.length ? btnGhost : btn} onClick={connect} disabled={!!busy}>
-          {busy ?? (rows.length ? 'Link another wallet' : 'Connect MetaMask')}
-        </button>
-        {!injected() && (
-          <a href="https://metamask.io/download/" target="_blank" rel="noreferrer noopener"
-            className="font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
-            get MetaMask ↗
-          </a>
+        {!!missing.length && (
+          <div>
+            <h3 className="metric-label">Not installed</h3>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {missing.map((k) => (
+                <li key={k.rdns}>
+                  <a href={k.url} target="_blank" rel="noreferrer noopener"
+                    className="flex items-center gap-2 rounded-lg border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                    {k.name} <span aria-hidden>↗</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
+
+        {error && <p role="alert" className={alertBox}>{error}</p>}
       </div>
 
-      <p className="text-xs text-slate-ink">
-        You sign a short message to prove the address is yours. It costs nothing, moves
-        nothing, and gives us no ability to spend from your wallet — we never hold your
-        keys. Deposits and withdrawals do not run through this.
-      </p>
-      {error && <p role="alert" className={alertBox}>{error}</p>}
+      <div className={`${card} space-y-2`}>
+        <h2 className="metric-label">What linking does</h2>
+        <ul className="space-y-1 text-xs text-slate-ink">
+          <li>You sign a short message. It costs no gas and moves nothing.</li>
+          <li>We never hold your keys and cannot spend from your wallet.</li>
+          <li>No transaction or token approval is ever requested from this page.</li>
+          <li>Deposits and withdrawals do not run through here.</li>
+          <li>Unlink whenever you like — it removes the address and nothing else.</li>
+        </ul>
+      </div>
     </div>
   );
 }
 
-/** The same list, read-only, for staff looking at a client record. */
+/**
+ * The wallet's own icon, which it supplies as a data URI. Falls back to its initial rather
+ * than to a broken image: a wallet that announces no icon is unusual, not an error.
+ */
+function Mark({ w }: { w: Announced }) {
+  const [broken, setBroken] = useState(false);
+  if (w.info.icon && !broken) {
+    return (
+      <img src={w.info.icon} alt="" width={32} height={32} onError={() => setBroken(true)}
+        className="h-8 w-8 shrink-0 rounded-md" />
+    );
+  }
+  return (
+    <span aria-hidden
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-sm text-ember">
+      {w.info.name[0] ?? '?'}
+    </span>
+  );
+}
+
+/** The linked addresses, read-only, for staff looking at a client record. */
 export function ClientWallets({ clientId }: { clientId: string }) {
   const wallets = useApi<Wallet[]>(`/clients/${clientId}/wallets`);
   const rows = wallets.data ?? [];
@@ -140,6 +274,7 @@ export function ClientWallets({ clientId }: { clientId: string }) {
                 {/* Shown in full: staff checking an address against something else need all
                     of it, and it is short enough to read. */}
                 <span className={`text-xs ${mono} break-all`}>{w.address}</span>
+                <span className="text-xs text-slate-ink">{w.label ?? 'wallet'}</span>
                 <span className={`ml-auto text-xs text-slate-ink ${mono}`}>
                   {new Date(w.linked_at).toLocaleDateString()}
                 </span>

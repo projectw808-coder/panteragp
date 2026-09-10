@@ -1127,10 +1127,19 @@ console.log('\nPhase 7 — admin dashboard');
 await step('the overview agrees with the underlying endpoints', async () => {
   const o = await get('/admin/overview', { token: A });
   const clients = await get('/clients?limit=200', { token: A });
-  assert.equal(Number(o.clients.total), clients.length);
+  const total = Number(o.clients.total);
+
+  // The tile counts every client; the listing returns at most a page of them. Comparing
+  // the two directly passed only while the database held fewer than 200 — the check was
+  // guaranteed to start failing on the day the desk got busy, which is the worst possible
+  // day for a test to cry wolf.
+  assert.equal(clients.length, Math.min(total, 200), 'the listing is a page of the total');
+  assert.ok(total >= clients.length);
   assert.equal(Number(o.flags.open), (await get('/flags?status=open', { token: A })).length);
   assert.equal(Number(o.kyc.pending_docs), (await get('/kyc/pending', { token: A })).length);
-  assert.equal(o.pipeline.reduce((n, p) => n + Number(p.clients), 0), clients.length, 'pipeline must account for every client');
+  // The pipeline is grouped over every client, not over a page, so it must sum to the total.
+  assert.equal(o.pipeline.reduce((n, p) => n + Number(p.clients), 0), total,
+    'pipeline must account for every client');
   assert.ok(Number(o.trading.volume_today) > 0);
   // Derived rather than hardcoded: the count is firm-wide, so compare how far this run
   // moved it against the withdrawals this run's client actually has outstanding.
