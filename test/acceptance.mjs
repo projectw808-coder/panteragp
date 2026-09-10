@@ -1178,6 +1178,26 @@ await step('a profile photo is a photo, and only theirs to set', async () => {
   assert.equal(await status(`/clients/${client.id}/avatar`, { token: T }), 404, 'and it can be taken down');
 });
 
+await step('the client list filters on verification as well as stage and owner', async () => {
+  // Set a known state on this run's client, then ask for exactly that.
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'expired' } });
+
+  const expired = await get('/clients?kyc_status=expired&limit=200', { token: A });
+  assert.ok(expired.every((c) => c.kyc_status === 'expired'), 'every row matches the filter');
+  assert.ok(expired.some((c) => c.id === client.id), 'including the one just set');
+
+  const approved = await get('/clients?kyc_status=approved&limit=200', { token: A });
+  assert.ok(!approved.some((c) => c.id === client.id), 'and it is absent from the others');
+
+  // The filters combine rather than replacing one another.
+  const both = await get(`/clients?kyc_status=expired&q=${encodeURIComponent(email)}`, { token: A });
+  assert.equal(both.length, 1);
+  assert.equal(both[0].id, client.id);
+
+  assert.equal(await status('/clients?kyc_status=nonsense', { token: A }), 400,
+    'an unknown status is refused rather than ignored');
+});
+
 console.log('\nSupport tickets');
 let ticket;
 

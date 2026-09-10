@@ -89,6 +89,23 @@ const app = Fastify({
 // unhandled 'error' event and takes the process down.
 pool.on('error', (err) => app.log.error({ err }, 'idle pg client error'));
 
+/**
+ * A schema that rejects is the caller's mistake, not ours.
+ *
+ * Route handlers that validate a body use safeParse and answer 400 themselves. Query
+ * strings are parsed with .parse, which throws — and an uncaught throw is a 500, so
+ * ?kyc_status=nonsense came back as a server error and said nothing useful. Sixteen
+ * routes had that shape, which is why this is here rather than in each of them.
+ */
+app.setErrorHandler((err, _req, reply) => {
+  if (err instanceof z.ZodError) return reply.code(400).send({ error: err.flatten() });
+  app.log.error({ err }, 'unhandled');
+  const status = typeof err.statusCode === 'number' ? err.statusCode : 500;
+  return reply.code(status).send(status === 500
+    ? { error: 'Internal Server Error' }
+    : { error: err.message });
+});
+
 // Plenty of clients set content-type: application/json on a bodyless DELETE. Fastify
 // rejects that with a 400 by default; treat an empty body as no body.
 app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
@@ -257,6 +274,7 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
   const q = z.object({
     stage_id: z.coerce.number().int().optional(),
     owner_staff_id: z.string().uuid().optional(),
+    kyc_status: z.enum(['none', 'pending', 'approved', 'rejected', 'expired']).optional(),
     q: z.string().max(100).optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
   }).parse(req.query);
@@ -270,8 +288,9 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
       WHERE ($1::smallint IS NULL OR c.stage_id = $1)
         AND ($2::uuid IS NULL OR c.owner_staff_id = $2)
         AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.email ILIKE '%'||$3||'%')
+        AND ($5::text IS NULL OR c.kyc_status = $5)
       ORDER BY c.created_at DESC LIMIT $4`,
-    [q.stage_id ?? null, q.owner_staff_id ?? null, q.q || null, q.limit],
+    [q.stage_id ?? null, q.owner_staff_id ?? null, q.q || null, q.limit, q.kyc_status ?? null],
   );
   return rows;
 });

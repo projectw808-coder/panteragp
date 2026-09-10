@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { alertBox, btn, card, input, mono, tableCard, thead } from './App.tsx';
+import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi, type Stage, type Task } from './api.ts';
 import { ClientRow } from './client-row.tsx';
 
@@ -12,41 +12,118 @@ const qs = (o: Record<string, string | number | undefined>) => {
 
 // ------------------------------------------------------------- client list
 
+const LIMIT = 200;
+
+/**
+ * Everybody on the desk, with the filters that actually get used.
+ *
+ * The list is capped, and says so when it is full rather than presenting a page as if it
+ * were everything — a screen that quietly shows the first two hundred of a thousand is one
+ * that gets a decision made on the wrong set. The count above the table is what is on
+ * screen; the tiles are what is on the desk.
+ */
 export function ClientList() {
   const [q, setQ] = useState('');
   const [stage, setStage] = useState('');
+  const [kyc, setKyc] = useState('');
+  const [owner, setOwner] = useState('');
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   // Downloading a document needs kyc:review, so the row only offers it to those who have it.
-  const { data: me } = useApi<{ role: string }>("/me");
+  const { data: me } = useApi<{ role: string; sub: string }>('/me');
   const stages = useApi<Stage[]>('/pipeline-stages');
-  const clients = useApi<Parameters<typeof ClientRow>[0]["c"][]>(`/clients${qs({ q, stage_id: stage })}`);
+  const staff = useApi<{ id: string; name: string }[]>('/staff');
+  const clients = useApi<Parameters<typeof ClientRow>[0]['c'][]>(
+    `/clients${qs({ q, stage_id: stage, kyc_status: kyc, owner_staff_id: owner, limit: LIMIT })}`);
+
+  const rows = clients.data ?? [];
+  const capped = rows.length === LIMIT;
+  const filtered = !!(q || stage || kyc || owner);
+
+  // Counted over what came back rather than asked of the database: these describe the set
+  // on screen, which is what somebody filtering wants to know about.
+  const week = Date.now() - 7 * 86_400_000;
+  const isNew = rows.filter((c) => +new Date(c.created_at) > week).length;
+  const waiting = rows.filter((c) => c.kyc_status === 'pending').length;
+  const unowned = rows.filter((c) => !c.owner_name).length;
+
+  const clear = () => { setQ(''); setStage(''); setKyc(''); setOwner(''); };
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <input className={`${input} max-w-xs`} placeholder="Search name or email"
-          value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className={`${input} max-w-40`} value={stage} onChange={(e) => setStage(e.target.value)}>
-          <option value="">All stages</option>
-          {stages.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <PageTitle>Clients</PageTitle>
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New client'}
         </button>
       </div>
 
+      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div>
+          <p className="metric-label">{filtered ? 'Matching' : 'Clients'}</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
+            {rows.length}{capped && <span className="text-sm text-slate-ink">+</span>}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">New this week</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{isNew}</p>
+        </div>
+        <div>
+          <p className="metric-label">Awaiting verification</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${waiting ? 'text-ember' : ''}`}>
+            {waiting}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Unassigned</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${unowned ? 'text-ember' : ''}`}>
+            {unowned}
+          </p>
+        </div>
+        <p className="ml-auto max-w-xs text-xs text-slate-ink">
+          Open a row for their money and the controls that go with it, or the full record
+          for everything else.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input className={`${field} min-w-56 flex-1`} placeholder="Search name or email"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className={`${field} w-36`} value={stage} onChange={(e) => setStage(e.target.value)}>
+          <option value="">All stages</option>
+          {stages.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select className={`${field} w-36`} value={kyc} onChange={(e) => setKyc(e.target.value)}>
+          <option value="">Any verification</option>
+          {['none', 'pending', 'approved', 'rejected', 'expired'].map((k) =>
+            <option key={k} value={k}>{k}</option>)}
+        </select>
+        <select className={`${field} w-40`} value={owner} onChange={(e) => setOwner(e.target.value)}>
+          <option value="">Any owner</option>
+          {me?.sub && <option value={me.sub}>Mine</option>}
+          {staff.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        {filtered && (
+          <button onClick={clear}
+            className="rounded-md border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+            Clear
+          </button>
+        )}
+      </div>
+
       {adding && <NewClient onDone={() => { setAdding(false); clients.reload(); }} />}
 
-      {clients.error && <p role="alert" className={`${alertBox} `}>{clients.error}</p>}
+      {clients.error && <p role="alert" className={alertBox}>{clients.error}</p>}
+
       <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead className={thead}>
             <tr>{['Name', 'Email', 'Stage', 'KYC', 'Owner', 'Created'].map((h) =>
-              <th key={h} className="px-4 py-2">{h}</th>)}</tr>
+              <th key={h} className="px-4 py-2 text-left">{h}</th>)}</tr>
           </thead>
           <tbody>
-            {clients.data?.map((c) => (
+            {rows.map((c) => (
               <ClientRow key={c.id} c={c} open={openId === c.id}
                 onToggle={() => setOpenId(openId === c.id ? null : c.id)}
                 onChanged={clients.reload}
@@ -59,8 +136,18 @@ export function ClientList() {
             ))}
           </tbody>
         </table>
-        {clients.data?.length === 0 && <p className="px-4 py-6 text-sm text-slate-ink">No clients match.</p>}
+        {rows.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-slate-ink">
+            {filtered ? 'Nobody matches that.' : 'No clients yet.'}
+          </p>
+        )}
       </div>
+
+      {capped && (
+        <p className="px-1 text-xs text-slate-ink">
+          Showing the first {LIMIT}, newest first. Narrow the search to see further back.
+        </p>
+      )}
     </div>
   );
 }
@@ -88,17 +175,39 @@ function NewClient({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className={`${card} flex flex-wrap items-end gap-3`}>
-      <label className="text-xs text-slate-ink">Name
-        <input name="name" required maxLength={200} className={input} /></label>
-      <label className="text-xs text-slate-ink">Email
-        <input name="email" type="email" required className={input} /></label>
-      <label className="text-xs text-slate-ink">Phone
-        <input name="phone" maxLength={40} className={input} /></label>
-      <label className="text-xs text-slate-ink">Country
-        <input name="country" maxLength={2} minLength={2} placeholder="GB" className={input} /></label>
-      <button className={btn} disabled={busy}>Create</button>
-      {error && <p role="alert" className={`${alertBox} w-full `}>{error}</p>}
+    <form onSubmit={submit} className={`${card} space-y-4`}>
+      <div>
+        <h2 className="metric-label">New client</h2>
+        <p className="mt-1 text-xs text-slate-ink">
+          A name and an email is enough to start. Everything else can follow, and they can
+          fill in their own details once they have a login.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="metric-label">Name</span>
+          <input name="name" required maxLength={200} className={`${field} mt-1 w-full`} />
+        </label>
+        <label className="block">
+          <span className="metric-label">Email</span>
+          <input name="email" type="email" required className={`${field} mt-1 w-full`} />
+        </label>
+        <label className="block">
+          <span className="metric-label">Phone</span>
+          <input name="phone" maxLength={40} className={`${field} mt-1 w-full`} />
+        </label>
+        <label className="block">
+          <span className="metric-label">Country</span>
+          <input name="country" maxLength={2} minLength={2} placeholder="GB"
+            className={`${field} mt-1 w-full uppercase`} />
+        </label>
+      </div>
+
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+      <div className="border-t border-pebble pt-4 dark:border-white/10">
+        <button className={btn} disabled={busy}>{busy ? 'Creating…' : 'Create client'}</button>
+      </div>
     </form>
   );
 }
