@@ -3567,7 +3567,7 @@ app.get('/admin/stakes', { preHandler: auth('crm:read') }, async (req: any) => {
 app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
   const q = async <T extends pg.QueryResultRow>(sql: string) => (await pool.query<T>(sql)).rows;
 
-  const [clients, pipeline, kyc, flags, tasks, trading, positions, cash, series] = await Promise.all([
+  const [clients, pipeline, kyc, flags, tasks, trading, positions, cash, series, desk] = await Promise.all([
     q<{ total: number; new_7d: number; dormant: number }>(`
       SELECT count(*) AS total,
              count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS new_7d,
@@ -3620,6 +3620,16 @@ app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
                WHERE c.created_at >= d AND c.created_at < d + interval '1 day')    AS new_clients
         FROM generate_series(current_date - interval '13 days', current_date, interval '1 day') d
        ORDER BY day`),
+    // The two queues added since this dashboard was written. A desk-wide view that does
+    // not carry them is one where they are only found by going looking.
+    q<{
+      requests_pending: number; requests_amount: number;
+      stakes_active: number; stakers: number;
+    }>(`
+      SELECT (SELECT count(*) FROM portfolio_requests WHERE status = 'pending')                  AS requests_pending,
+             (SELECT coalesce(sum(amount), 0) FROM portfolio_requests WHERE status = 'pending')  AS requests_amount,
+             (SELECT count(*) FROM stakes WHERE status = 'active')                               AS stakes_active,
+             (SELECT count(DISTINCT client_id) FROM stakes WHERE status = 'active')              AS stakers`),
   ]);
 
   // Client exposure is only knowable with live prices, so it is computed here, not in SQL.
@@ -3639,6 +3649,7 @@ app.get('/admin/overview', { preHandler: auth('admin') }, async () => {
       open_pnl: round8(openPnl),
     },
     cash: cash[0],
+    desk: desk[0],
     series: series.map((r) => ({
       day: r.day,
       volume: Number(r.volume),

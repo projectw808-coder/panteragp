@@ -1518,6 +1518,23 @@ await step('the overview agrees with the underlying endpoints', async () => {
   assert.equal(Number(o.cash.pending_withdrawals) - pendingBefore, minePending,
     'the dashboard should account for exactly the withdrawals this run left pending');
 });
+await step('the dashboard carries the queues added after it was written', async () => {
+  const o = await get('/admin/overview', { token: A });
+
+  // Counted from the tables rather than trusted: a tile that drifts from the page it
+  // links to is worse than no tile, because it is the one somebody acts on.
+  const pending = await get('/portfolio-requests?status=pending', { token: A });
+  assert.equal(Number(o.desk.requests_pending), pending.length);
+  assert.ok(Math.abs(Number(o.desk.requests_amount)
+    - pending.reduce((n, r) => n + Number(r.amount), 0)) < 1e-9,
+    'the amount waiting is the sum of what was asked for');
+
+  const stakes = await get('/admin/stakes?status=active&limit=500', { token: A });
+  assert.equal(Number(o.desk.stakes_active), stakes.length);
+  assert.equal(Number(o.desk.stakers), new Set(stakes.map((x) => x.client_id)).size,
+    'and the client count is distinct clients, not a second count of stakes');
+});
+
 await step('the 14-day series lines up with the figures beside it', async () => {
   const o = await get('/admin/overview', { token: A });
   assert.equal(o.series.length, 14, 'fourteen days, empty ones included');

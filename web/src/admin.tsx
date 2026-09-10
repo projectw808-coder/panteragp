@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { alertBox, btn, card, field } from './App.tsx';
+import { useCallback, useEffect, useState } from 'react';
+import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 type Overview = {
@@ -13,6 +13,7 @@ type Overview = {
     open_positions: number; exposure: number; open_pnl: number;
   };
   cash: { pending_withdrawals: number; pending_amount: number; net_30d: number; balances: number };
+  desk: { requests_pending: number; requests_amount: number; stakes_active: number; stakers: number };
   series: Day[];
 };
 type Day = { day: string; volume: number; fills: number; net_flow: number; new_clients: number };
@@ -32,6 +33,15 @@ const n0 = (n: number) => Math.round(n).toLocaleString();
 const exact = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 const n2 = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const when = (iso: string) => new Date(iso).toLocaleString();
+
+/** How long ago, in the words somebody would use. The exact time is on the hover. */
+function ago(iso: string): string {
+  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86_400)}d ago`;
+}
 const pretty = (s: string) => s.replace(/_/g, ' ');
 
 // Only "high" is asking for someone's attention now, so only "high" gets the accent.
@@ -43,22 +53,43 @@ export function AdminView() {
   const overview = useApi<Overview>('/admin/overview');
   const activity = useApi<Activity[]>('/activity?limit=25');
   const config = useApi<Config>('/admin/config');
+  const [at, setAt] = useState<number>(() => Date.now());
 
   // Numbers move as the engine fills orders; a slow refresh keeps this honest without
-  // making the dashboard a live terminal.
-  useEffect(() => {
-    const id = setInterval(() => { overview.reload(); activity.reload(); }, 15_000);
-    return () => clearInterval(id);
+  // making the dashboard a live terminal. The time it last happened is on screen, because
+  // a figure with no age is one somebody trusts longer than they should.
+  const refresh = useCallback(() => {
+    overview.reload();
+    activity.reload();
+    setAt(Date.now());
   }, [overview.reload, activity.reload]);
+
+  useEffect(() => {
+    const id = setInterval(refresh, 15_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   if (overview.error) return <p role="alert" className={`${alertBox} `}>{overview.error}</p>;
   const o = overview.data;
   const c = config.data;
   const maxStage = Math.max(1, ...(o?.pipeline ?? []).map((p) => Number(p.clients)));
+  const total = (o?.pipeline ?? []).reduce((n, p) => n + Number(p.clients), 0);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Dashboard</PageTitle>
+        <span className="flex items-center gap-2 font-mono text-[11px] text-slate-ink">
+          <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-up" aria-hidden />
+          updated {new Date(at).toLocaleTimeString()}
+        </span>
+        <button onClick={refresh}
+          className="ml-auto rounded-md border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          Refresh
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Tile label="Clients" value={o ? n0(o.clients.total) : '—'}
           sub={o ? `${n0(o.clients.new_7d)} new this week · ${n0(o.clients.dormant)} dormant` : ''}
           href="#/clients" />
@@ -72,6 +103,14 @@ export function AdminView() {
         <Tile label="Open tasks" value={o ? n0(o.tasks.open) : '—'}
           sub={o ? `${n0(o.tasks.overdue)} overdue` : ''} href="#/tasks"
           alert={!!o && o.tasks.overdue > 0} />
+        {/* The two queues that did not exist when this page was written. Money waiting on
+            a decision belongs on the screen the desk opens first. */}
+        <Tile label="Withdrawal requests" value={o ? n0(o.desk.requests_pending) : '—'}
+          sub={o ? `${n0(o.desk.requests_amount)} waiting` : ''} href="#/requests"
+          alert={!!o && Number(o.desk.requests_pending) > 0} />
+        <Tile label="Open stakes" value={o ? n0(o.desk.stakes_active) : '—'}
+          sub={o ? `${n0(o.desk.stakers)} client${Number(o.desk.stakers) === 1 ? '' : 's'}` : ''}
+          href="#/staking" />
       </div>
 
       <Metrics days={o?.series ?? []} />
@@ -80,12 +119,16 @@ export function AdminView() {
         <div className={`${card} space-y-3`}>
           <h2 className="metric-label">Pipeline</h2>
           {o?.pipeline.map((p) => (
-            <div key={p.stage} className="flex items-center gap-3 text-sm">
+            <a key={p.stage} href={`#/clients`}
+              className="flex items-center gap-3 rounded-md px-1 py-0.5 text-sm transition-colors hover:bg-bone dark:hover:bg-white/5">
               <span className="w-28 shrink-0 text-slate-ink">{p.stage}</span>
               <span className="h-2 rounded-md bg-ember"
                 style={{ width: `${(Number(p.clients) / maxStage) * 100}%`, minWidth: Number(p.clients) ? 8 : 0 }} />
-              <span className="tabular-nums">{p.clients}</span>
-            </div>
+              <span className="ml-auto font-mono tabular-nums">{n0(Number(p.clients))}</span>
+              <span className="w-10 text-right font-mono text-[11px] text-slate-ink">
+                {total ? `${Math.round((Number(p.clients) / total) * 100)}%` : ''}
+              </span>
+            </a>
           ))}
         </div>
 
@@ -114,20 +157,36 @@ export function AdminView() {
       <AddFunds />
 
       <div className={`${card} space-y-2`}>
-        <h2 className="metric-label">Everything happening, everywhere</h2>
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 className="metric-label">Everything happening, everywhere</h2>
+          <span className="ml-auto font-mono text-[11px] text-slate-ink">
+            {activity.data?.length ?? 0} most recent
+          </span>
+        </div>
         <ol className="divide-y divide-pebble dark:divide-white/10">
           {activity.data?.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-baseline gap-2 py-1.5 text-sm">
-              <span className={`w-28 shrink-0 text-xs ${a.kind === 'flag' ? 'font-medium text-obsidian dark:text-vellum' : 'text-slate-ink'}`}>
+            <li key={a.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+              <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] tracking-wide uppercase ${
+                a.kind === 'flag'
+                  ? 'bg-ember/15 text-ember'
+                  : 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist'}`}>
                 {pretty(a.kind)}
               </span>
-              <a className="font-medium hover:underline" href={`#/clients/${a.client_id}`}>{a.client_name}</a>
-              <span className="text-slate-ink dark:text-mist">{a.summary}</span>
-              <span className="ml-auto text-xs text-slate-ink">{when(a.at)}</span>
+              <a className="font-medium text-ember hover:underline" href={`#/clients/${a.client_id}`}>
+                {a.client_name}
+              </a>
+              <span className="min-w-0 text-slate-ink dark:text-mist">{a.summary}</span>
+              <span className={`ml-auto shrink-0 text-xs text-slate-ink ${mono}`} title={when(a.at)}>
+                {ago(a.at)}
+              </span>
             </li>
           ))}
         </ol>
-        {activity.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing yet.</p>}
+        {activity.data?.length === 0 && (
+          <p className="py-6 text-center text-sm text-slate-ink">
+            Nothing yet. Every credit, fill, upload and decision lands here as it happens.
+          </p>
+        )}
       </div>
 
       <div className={`${card} space-y-3`}>
