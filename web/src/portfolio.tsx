@@ -10,7 +10,7 @@ type PortfolioType = {
 };
 type Portfolio = {
   id: string; type_code: string; type_name: string; name: string; currency: string;
-  balance: number; target_amount: number | null; target_date: string | null;
+  balance: number; target_date: string | null; featured: boolean;
   status: 'open' | 'closed'; indicative_rate: number | null; standard_rate: number | null;
   rate_override: number | null;
   usd_value: number | null; progress: number | null; projected: number | null;
@@ -80,8 +80,37 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
 
 type On = { client_id?: string };
 
+/**
+ * Which pot the client wants on the balance strip at the top of every page. One at a time,
+ * and theirs to choose — the desk has no business deciding which of somebody's goals they
+ * want to look at.
+ */
+function FeatureToggle({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  if (on.client_id) return null;   // staff act on the client, not on their preferences
+  return (
+    <button type="button" disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await api(`/portfolios/${p.id}/feature`, {
+            method: 'POST', body: JSON.stringify({ featured: !p.featured }),
+          });
+          onDone();
+        } finally { setBusy(false); }
+      }}
+      className={`rounded-md border px-2.5 py-1 transition-colors ${p.featured
+        ? 'border-ember text-ember'
+        : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
+      {p.featured ? '★ on your balance' : '☆ show on balance'}
+    </button>
+  );
+}
+
 function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   const [action, setAction] = useState<'contribute' | 'withdraw' | null>(null);
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
   const [amt, setAmt] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +121,17 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/portfolios/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ ...on, amount: Number(amt) }) });
-      setAmt(''); setAction(null);
+      if (action === 'withdraw' && !on.client_id) {
+        // A client asks; the desk decides. Nothing moves here.
+        await api(`/portfolios/${p.id}/requests`, {
+          method: 'POST', body: JSON.stringify({ amount: Number(amt), note: note || undefined }),
+        });
+        setSent('Sent to the desk. You will hear when it is decided.');
+      } else {
+        await api(`/portfolios/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ ...on, amount: Number(amt) }) });
+        setSent(null);
+      }
+      setAmt(''); setNote(''); setAction(null);
       onDone();
     } catch (err) {
       setError((err as Error).message);
@@ -136,16 +174,8 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         </span>
       </div>
 
-      {p.progress !== null && (
-        <div className="mt-2">
-          <div className="h-1.5 w-full rounded-md bg-bone dark:bg-white/10">
-            <div className="h-1.5 rounded-md bg-ember" style={{ width: pct(p.progress) }} />
-          </div>
-          <p className="mt-1 text-xs text-slate-ink">
-            {pct(p.progress)} of {money(p.target_amount!, p.currency)}
-            {p.target_date && ` by ${day(p.target_date)}`}
-          </p>
-        </div>
+      {p.target_date && (
+        <p className="mt-2 text-xs text-slate-ink">Target date {day(p.target_date)}.</p>
       )}
 
       {p.projected !== null && (
@@ -165,10 +195,11 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
           pay in
         </button>
-        <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); }}
+        <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); setSent(null); }}
           className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-          take out
+          {on.client_id ? 'take out' : 'submit a request'}
         </button>
+        <FeatureToggle p={p} on={on} onDone={onDone} />
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
@@ -183,14 +214,29 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
       </div>
 
       {action && (
-        <form onSubmit={move} className="mt-2 flex items-end gap-2">
-          <input className={`${field} w-32`} type="number" step="any" min="0" required autoFocus
-            placeholder={`Amount in ${p.currency}`} value={amt} onChange={(e) => setAmt(e.target.value)} />
-          <button className={btn} disabled={busy}>
-            {busy ? 'Moving…' : action === 'contribute' ? 'Pay in' : 'Take out'}
-          </button>
+        <form onSubmit={move} className="mt-3 space-y-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <input className={`${field} w-32`} type="number" step="any" min="0" required autoFocus
+              placeholder={`Amount in ${p.currency}`} value={amt} onChange={(e) => setAmt(e.target.value)} />
+            {action === 'withdraw' && !on.client_id && (
+              <input className={`${field} min-w-48 flex-1`} maxLength={400} placeholder="What it is for (optional)"
+                value={note} onChange={(e) => setNote(e.target.value)} />
+            )}
+            <button className={btn} disabled={busy}>
+              {busy ? 'Sending…'
+                : action === 'contribute' ? 'Pay in'
+                : on.client_id ? 'Take out' : 'Submit request'}
+            </button>
+          </div>
+          {action === 'withdraw' && !on.client_id && (
+            <p className="text-xs text-slate-ink">
+              Money comes out of a pot by request. The desk decides, and nothing moves until
+              it does.
+            </p>
+          )}
         </form>
       )}
+      {sent && <p role="status" className="mt-2 text-xs text-up">{sent}</p>}
       {rate && on.client_id && (
         <SetRate p={p} on={on} onDone={() => { setRate(false); onDone(); }} onError={setError} />
       )}
@@ -280,7 +326,6 @@ function NewPortfolio({ types, currencies, on, onDone }: {
           type_code: type,
           name: f.get('name'),
           currency: f.get('currency'),
-          ...(f.get('target_amount') ? { target_amount: Number(f.get('target_amount')) } : {}),
           ...(f.get('target_date') ? { target_date: f.get('target_date') } : {}),
         }),
       });
@@ -312,11 +357,7 @@ function NewPortfolio({ types, currencies, on, onDone }: {
                 <span className={`text-xs leading-tight font-medium ${on ? '' : 'text-obsidian dark:text-vellum'}`}>
                   {t.name}
                 </span>
-                {t.indicative_rate !== null && (
-                  <span className="font-mono text-[10px] tabular-nums">
-                    {pct(Number(t.indicative_rate))} a year
-                  </span>
-                )}
+
               </label>
             );
           })}
@@ -331,8 +372,6 @@ function NewPortfolio({ types, currencies, on, onDone }: {
         </select>
       </div>
       <div className="flex flex-wrap gap-2">
-        <label className="text-xs text-slate-ink">Target amount (optional)
-          <input name="target_amount" type="number" step="any" min="0" className={field} /></label>
         <label className="text-xs text-slate-ink">Target date (optional)
           <input name="target_date" type="date" className={field} /></label>
       </div>

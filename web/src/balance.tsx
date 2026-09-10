@@ -17,7 +17,7 @@ type Held = { balance: number; usd_value: number | null };
 export type Accounts = {
   cash: (Held & { id: string; currency: string; mode: string; leverage: number })[];
   wallets: (Held & { id: string; asset: string; address: string })[];
-  portfolios: (Held & { id: string; name: string; currency: string })[];
+  portfolios: (Held & { id: string; name: string; currency: string; featured: boolean })[];
   stakes: (Held & { id: string; name: string; currency: string })[];
   total_usd: number;
   unpriced: string[];
@@ -42,6 +42,16 @@ export function held(a: Accounts) {
  * fills orders and the desk credits accounts between requests, and a balance that only
  * updates when you happen to reload is a balance nobody trusts.
  */
+/** The pot the client asked to keep an eye on, if they have picked one. */
+const featured = (a: Accounts) => a.portfolios.find((p) => p.featured) ?? null;
+
+/** What is locked in staking, per asset, for the strip's own line. */
+function staked(a: Accounts) {
+  const by = new Map<string, number>();
+  for (const s of a.stakes ?? []) by.set(s.currency, (by.get(s.currency) ?? 0) + Number(s.balance));
+  return [...by].filter(([, n]) => n !== 0).sort((x, y) => x[0].localeCompare(y[0]));
+}
+
 export function BalanceBar() {
   const accounts = useApi<Accounts>('/accounts');
   // The engine fills orders and the desk credits accounts between requests, so a balance
@@ -68,6 +78,26 @@ export function BalanceBar() {
             <span className="font-mono text-sm font-medium tabular-nums">{amount(n)}</span>
           </span>
         ))}
+      {!!staked(a).length && (
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Staked</span>
+          <span className="font-mono text-sm font-medium tabular-nums text-up">
+            {staked(a).map(([code, n]) => `${amount(n)} ${code}`).join(' · ')}
+          </span>
+        </span>
+      )}
+
+      {featured(a) && (
+        <span className="flex items-baseline gap-1.5">
+          <span className="max-w-40 truncate font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">
+            {featured(a)!.name}
+          </span>
+          <span className="font-mono text-sm font-medium tabular-nums">
+            {amount(featured(a)!.balance)} {featured(a)!.currency}
+          </span>
+        </span>
+      )}
+
       <span className="ml-auto flex items-baseline gap-2">
         <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Total</span>
         <span className="font-mono text-base font-medium tabular-nums text-ember">{usd(a.total_usd)}</span>

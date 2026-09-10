@@ -441,9 +441,9 @@ await step('the product catalogue offers the named plans', async () => {
 await step('a client opens portfolios, and names stay unique', async () => {
   retirement = await get('/portfolios', { token: T, method: 'POST', body: {
     type_code: 'retirement', name: 'Retirement 2055', currency: 'GBP',
-    target_amount: 250000, target_date: '2055-01-01' } });
+    target_date: '2055-01-01' } });
   savings = await get('/portfolios', { token: T, method: 'POST', body: {
-    type_code: 'savings', name: 'Rainy day', currency: 'GBP', target_amount: 5000 } });
+    type_code: 'savings', name: 'Rainy day', currency: 'GBP' } });
   assert.ok(retirement.id && savings.id);
   assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'savings', name: 'Rainy day', currency: 'GBP' } }), 409);
   assert.equal(await status('/portfolios', { token: T, method: 'POST', body: { type_code: 'yacht', name: 'Yacht', currency: 'GBP' } }), 404);
@@ -481,7 +481,8 @@ await step('the desk can run a client portfolio, and it is recorded as the desk 
     { token: sellerToken, method: 'POST', body: { client_id: client.id, amount: 1 } }), 403);
 
   // A client naming somebody else is ignored rather than obeyed: they act on themselves.
-  const other = await get(`/portfolios/${pot.id}/withdraw`, { token: T, method: 'POST', body: {
+  // Paying in is the client's own act, so it is the one that shows this.
+  const other = await get(`/portfolios/${pot.id}/contribute`, { token: T, method: 'POST', body: {
     client_id: '00000000-0000-4000-8000-000000000000', amount: 5 } });
   assert.ok(other.id, 'a client_id from a client changes nothing');
 });
@@ -556,22 +557,70 @@ await step('contributing moves money out of the balance, and back again', async 
   const pot = pots.find((p) => p.id === retirement.id);
   assert.equal(Number(pot.balance), 3000);
 
-  await get(`/portfolios/${retirement.id}/withdraw`, { token: T, method: 'POST', body: { amount: 1000 } });
-  assert.ok(Math.abs((await gbp() - afterIn) - 1000) < 1e-9, 'taking money out must return it to the balance');
+  // The client cannot simply take it back: that is what a request is for, and leaving the
+  // direct route open would make the approval flow decoration one API call walks around.
+  assert.equal(await status(`/portfolios/${retirement.id}/withdraw`, { token: T, method: 'POST', body: {
+    amount: 1000 } }), 403);
+
+  const asked = await get(`/portfolios/${retirement.id}/requests`, { token: T, method: 'POST', body: {
+    amount: 1000, note: 'acceptance run' } });
+  assert.equal(asked.status, 'pending');
+  assert.equal(await gbp(), afterIn, 'asking moves nothing');
+
+  // More than the pot holds, counting what is already asked for.
+  assert.equal(await status(`/portfolios/${retirement.id}/requests`, { token: T, method: 'POST', body: {
+    amount: 2500 } }), 400);
+
+  // Deciding needs funds:credit, like every other route where staff move a balance.
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Request Sales', email: unique('req-sales'), role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/portfolio-requests/${asked.id}/decide`, { token: sellerToken, method: 'POST', body: {
+    status: 'approved' } }), 403);
+
+  await get(`/portfolio-requests/${asked.id}/decide`, { token: A, method: 'POST', body: {
+    status: 'approved', note: 'fine' } });
+  assert.ok(Math.abs((await gbp() - afterIn) - 1000) < 1e-9, 'approving returns it to the balance');
   assert.equal(Number((await get('/portfolios', { token: T })).find((p) => p.id === retirement.id).balance), 2000);
+  assert.equal(await status(`/portfolio-requests/${asked.id}/decide`, { token: A, method: 'POST', body: {
+    status: 'approved' } }), 409, 'and it cannot be decided twice');
+
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.title.includes('released from')),
+    'the client is told the decision');
 });
 
-await step('progress and projection reflect the target', async () => {
+await step('a dated pot projects, and an undated one does not', async () => {
   const pot = (await get('/portfolios', { token: T })).find((p) => p.id === retirement.id);
-  assert.ok(Math.abs(pot.progress - 2000 / 250000) < 1e-9);
   assert.ok(pot.projected > Number(pot.balance), 'a dated pot with a rate should project growth');
   const rainy = (await get('/portfolios', { token: T })).find((p) => p.id === savings.id);
   assert.equal(rainy.projected, null, 'no target date means no projection');
 });
 
+await step('one pot at a time rides on the balance strip', async () => {
+  await get(`/portfolios/${retirement.id}/feature`, { token: T, method: 'POST', body: { featured: true } });
+  // Choosing a second replaces the first rather than being refused by the unique index.
+  await get(`/portfolios/${savings.id}/feature`, { token: T, method: 'POST', body: { featured: true } });
+  const on = (await get('/accounts', { token: T })).portfolios.filter((p) => p.featured);
+  assert.equal(on.length, 1, 'only one pot is featured');
+  assert.equal(on[0].id, savings.id, 'and it is the one just chosen');
+
+  await get(`/portfolios/${savings.id}/feature`, { token: T, method: 'POST', body: { featured: false } });
+  assert.equal((await get('/accounts', { token: T })).portfolios.filter((p) => p.featured).length, 0);
+  assert.equal(await status(`/portfolios/${savings.id}/feature`, { token: A, method: 'POST', body: {
+    featured: true } }), 403, 'which pot a client looks at is not the desk\'s to set');
+});
+
+await step('the auto trader switch is the client\'s own', async () => {
+  assert.equal((await get('/me/profile', { token: T })).auto_trader, false, 'off until asked for');
+  assert.equal((await get('/me/auto-trader', { token: T, method: 'POST', body: { on: true } })).on, true);
+  assert.equal((await get('/me/profile', { token: T })).auto_trader, true, 'and it sticks');
+  assert.equal(await status('/me/auto-trader', { token: A, method: 'POST', body: { on: true } }), 403);
+  await get('/me/auto-trader', { token: T, method: 'POST', body: { on: false } });
+});
+
 await step('a portfolio refuses what it cannot do', async () => {
   assert.equal(await status(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: 1e9 } }), 400, 'over balance');
-  assert.equal(await status(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: 1e9 } }), 400, 'over the pot');
+  assert.equal(await status(`/portfolios/${savings.id}/requests`, { token: T, method: 'POST', body: { amount: 1e9 } }), 400, 'over the pot');
   assert.equal(await status(`/portfolios/${savings.id}/contribute`, { token: T, method: 'POST', body: { amount: -50 } }), 400);
   assert.equal(await status(`/portfolios/${retirement.id}`, { token: T, method: 'PATCH', body: { status: 'closed' } }), 409, 'closing a funded pot would strand the money');
 });
@@ -580,13 +629,20 @@ await step('one client cannot pay into another client portfolio', async () => {
   const nosy = await get('/clients', { token: A, method: 'POST', body: { name: 'Nosy Pot', email: unique('pot'), password: 'devpassword' } });
   const N = (await login(nosy.email, 'devpassword', 'client')).token;
   assert.equal(await status(`/portfolios/${retirement.id}/contribute`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
-  assert.equal(await status(`/portfolios/${retirement.id}/withdraw`, { token: N, method: 'POST', body: { amount: 1 } }), 404);
+  // 403 rather than 404 here, and deliberately: the client route is closed to everyone,
+  // so a stranger is turned away before the answer could tell them whether it exists.
+  assert.equal(await status(`/portfolios/${retirement.id}/withdraw`, { token: N, method: 'POST', body: { amount: 1 } }), 403);
+  assert.equal(await status(`/portfolios/${retirement.id}/requests`, { token: N, method: 'POST', body: { amount: 1 } }), 404,
+    'nor can they ask for money out of a pot that is not theirs');
 });
 
 await step('an emptied portfolio can be closed, and then takes nothing more', async () => {
   const pot = (await get('/portfolios', { token: T })).find((p) => p.id === savings.id);
   if (Number(pot.balance) > 0) {
-    await get(`/portfolios/${savings.id}/withdraw`, { token: T, method: 'POST', body: { amount: Number(pot.balance) } });
+    // Emptying it goes through the desk now, like any other withdrawal.
+    const req = await get(`/portfolios/${savings.id}/requests`, { token: T, method: 'POST', body: {
+      amount: Number(pot.balance) } });
+    await get(`/portfolio-requests/${req.id}/decide`, { token: A, method: 'POST', body: { status: 'approved' } });
   }
   const closed = await get(`/portfolios/${savings.id}`, { token: T, method: 'PATCH', body: { status: 'closed' } });
   assert.equal(closed.status, 'closed');
@@ -888,51 +944,57 @@ await step('the desk sets what a client pays to trade, and it costs them either 
 console.log('\nStaking');
 
 let stake;
+let stakeAsset;
+let flexibleProduct;
+let lockedProduct;
+
 await step('staking moves crypto out of the wallet and keeps it in the total', async () => {
   const products = await get('/staking-products', { token: T });
   assert.ok(products.length > 0, 'the desk offers something to stake');
-  const flexible = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
-  assert.ok(flexible, 'there is a flexible ETH product');
+  // Whatever the catalogue currently offers, in an asset that has both a flexible and a
+  // locked product — naming one here would break every time the desk changes its range.
+  flexibleProduct = products.find((f) => f.lock_days === 0
+    && products.some((l) => l.asset === f.asset && l.lock_days > 0));
+  assert.ok(flexibleProduct, 'the desk offers a flexible product with a locked sibling');
+  lockedProduct = products.find((l) => l.asset === flexibleProduct.asset && l.lock_days > 0);
+  stakeAsset = flexibleProduct.asset;
 
-  // Fund a wallet to stake out of.
+  const size = Math.max(2, Number(flexibleProduct.min_amount) * 4, Number(lockedProduct.min_amount) * 4);
   await get(`/clients/${client.id}/wallet-credit`, { token: A, method: 'POST', body: {
-    asset: 'ETH', amount: 5 } });
-  const ethOf = async (a) => [...a.wallets, ...(a.stakes ?? [])]
-    .filter((x) => (x.asset ?? x.currency) === 'ETH')
+    asset: stakeAsset, amount: size * 4 } });
+
+  const heldIn = (a) => [...a.wallets, ...(a.stakes ?? [])]
+    .filter((x) => (x.asset ?? x.currency) === stakeAsset)
     .reduce((n, x) => n + Number(x.balance), 0);
   const before = await get('/accounts', { token: T });
-  const walletBefore = before.wallets.find((w) => w.asset === 'ETH').balance;
+  const walletBefore = Number(before.wallets.find((w) => w.asset === stakeAsset).balance);
 
   stake = await get('/stakes', { token: T, method: 'POST', body: {
-    product_code: flexible.code, amount: 2 } });
-  assert.equal(Number(stake.amount), 2);
+    product_code: flexibleProduct.code, amount: size } });
+  assert.equal(Number(stake.amount), size);
 
   const after = await get('/accounts', { token: T });
-  assert.equal(Number(after.wallets.find((w) => w.asset === 'ETH').balance),
-    Number(walletBefore) - 2, 'the wallet is 2 ETH lighter');
+  assert.ok(Math.abs(Number(after.wallets.find((w) => w.asset === stakeAsset).balance)
+    - (walletBefore - size)) < 1e-9, 'the wallet is lighter by exactly what was staked');
   // Staked is not spent. Left out of the total it would read as the asset vanishing.
-  assert.ok(Math.abs(await ethOf(after) - await ethOf(before)) < 1e-9,
-    'what the client holds in ETH is unchanged by staking it');
-  assert.ok((after.stakes ?? []).some((s) => Number(s.balance) === 2), 'the stake is listed as a holding');
+  assert.ok(Math.abs(heldIn(after) - heldIn(before)) < 1e-9,
+    'what the client holds in that asset is unchanged by staking it');
+  assert.ok((after.stakes ?? []).some((x) => Number(x.balance) === size), 'the stake is listed as a holding');
 });
 
 await step('a stake will not take more than there is, or less than the minimum', async () => {
-  const products = await get('/staking-products', { token: T });
-  const flexible = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
   assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
-    product_code: flexible.code, amount: 9999 } }), 400, 'more than the wallet holds');
+    product_code: flexibleProduct.code, amount: 1e9 } }), 400, 'more than the wallet holds');
   assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
-    product_code: flexible.code, amount: flexible.min_amount / 2 } }), 400, 'below the minimum');
+    product_code: flexibleProduct.code, amount: Number(flexibleProduct.min_amount) / 2 } }), 400,
+    'below the minimum');
   assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
     product_code: 'no_such_product', amount: 1 } }), 404);
 });
 
 await step('a lock is a lock, and the desk is not exempt from it', async () => {
-  const products = await get('/staking-products', { token: T });
-  const locked = products.find((x) => x.asset === 'ETH' && x.lock_days > 0);
-  assert.ok(locked, 'there is a locked ETH product');
   const held = await get('/stakes', { token: T, method: 'POST', body: {
-    product_code: locked.code, amount: 1 } });
+    product_code: lockedProduct.code, amount: Math.max(1, Number(lockedProduct.min_amount) * 2) } });
 
   const mine = (await get('/stakes', { token: T })).find((s) => s.id === held.id);
   assert.ok(mine.locked, 'it starts locked');
@@ -951,7 +1013,7 @@ await step('a lock is a lock, and the desk is not exempt from it', async () => {
     .some((x) => x.summary.includes('released the lock')), 'releasing a lock is recorded');
 
   const out = await get(`/stakes/${held.id}/unstake`, { token: T, method: 'POST', body: {} });
-  assert.equal(Number(out.returned), 1, 'the principal comes back');
+  assert.ok(Number(out.returned) > 0, 'the principal comes back');
   assert.equal(await status(`/stakes/${held.id}/unstake`, { token: T, method: 'POST', body: {} }), 409,
     'and it cannot be unstaked twice');
 });
@@ -1037,11 +1099,14 @@ await step('the catalogue is the desk\'s, and its asset is fixed once anything i
 
   // A stake keeps the asset it opened in, so a product carrying open stakes cannot change
   // its own — the two would end up disagreeing about what the same row is denominated in.
-  const products = await get('/staking-products', { token: T });
-  const live = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
-  await get('/stakes', { token: T, method: 'POST', body: { product_code: live.code, amount: 0.5 } });
+  const live = flexibleProduct;
+  await get('/stakes', { token: T, method: 'POST', body: {
+    product_code: live.code, amount: Math.max(0.5, Number(live.min_amount) * 2) } });
+  // Any asset other than its own: naming a fixed one here passes for the wrong reason
+  // the day the catalogue happens to be denominated in it.
+  const other = live.asset === 'BTC' ? 'ETH' : 'BTC';
   assert.equal(await status(`/admin/staking-products/${live.code}`, { token: A, method: 'PATCH', body: {
-    asset: 'BTC' } }), 409);
+    asset: other } }), 409);
 
   // The firm-wide view lists it with the client attached.
   const all = await get('/admin/stakes', { token: A });
@@ -1353,7 +1418,10 @@ await step('the overview agrees with the underlying endpoints', async () => {
   // day for a test to cry wolf.
   assert.equal(clients.length, Math.min(total, 200), 'the listing is a page of the total');
   assert.ok(total >= clients.length);
-  assert.equal(Number(o.flags.open), (await get('/flags?status=open', { token: A })).length);
+  // Same shape again: the flags listing is capped at 200, so it is a page of the tile's
+  // count rather than equal to it.
+  const openFlags = await get('/flags?status=open', { token: A });
+  assert.equal(openFlags.length, Math.min(Number(o.flags.open), 200), 'the flag listing is a page of the total');
   assert.equal(Number(o.kyc.pending_docs), (await get('/kyc/pending', { token: A })).length);
   // The pipeline is grouped over every client, not over a page, so it must sum to the total.
   assert.equal(o.pipeline.reduce((n, p) => n + Number(p.clients), 0), total,

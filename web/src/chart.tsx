@@ -361,6 +361,58 @@ function Watchlist({ onPick }: { onPick: (s: string) => void }) {
 
 // --------------------------------------------------------------------- view
 
+type Cash = { kind: string; amount: number; status: string };
+type Account = { balance: number; equity: number; unrealized: number; currency: string };
+
+const asUsd = (n: number) =>
+  '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * The three figures worth having in front of you while reading a chart: what has been put
+ * in, what the open positions are doing, and what the account is worth now.
+ *
+ * Deposits are counted from settled cash in, not from the balance, because the balance has
+ * trading in it. Somebody who deposited 10,000 and is down 2,000 has still deposited
+ * 10,000, and a figure labelled "deposits" that quietly said 8,000 would be answering a
+ * different question from the one on the label.
+ */
+function ChartStats() {
+  const account = useApi<Account>('/account');
+  const cash = useApi<Cash[]>('/cash');
+
+  const deposits = (cash.data ?? [])
+    .filter((t) => t.kind === 'deposit' && (t.status === 'approved' || t.status === 'settled'))
+    .reduce((n, t) => n + Number(t.amount), 0);
+  const a = account.data;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-10 gap-y-2 rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
+      <span>
+        <span className="metric-label block">Total deposits</span>
+        <span className="block font-mono text-base leading-tight font-medium tabular-nums">
+          {asUsd(deposits)}
+        </span>
+      </span>
+      <span>
+        <span className="metric-label block">Open P&amp;L</span>
+        <span className={pnlClass(a)}>
+          {a ? `${a.unrealized >= 0 ? '+' : ''}${asUsd(a.unrealized)}` : '—'}
+        </span>
+      </span>
+      <span>
+        <span className="metric-label block">Total</span>
+        <span className="block font-mono text-base leading-tight font-medium tabular-nums text-ember">
+          {a ? asUsd(a.equity) : '—'}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+const pnlClass = (a: Account | null) =>
+  `block font-mono text-base leading-tight font-medium tabular-nums ${
+    a && a.unrealized < 0 ? 'text-down' : 'text-up'}`;
+
 export function ChartsView({ dark }: { dark: boolean }) {
   const instruments = useApi<Instrument[]>('/instruments');
   const [count, setCount] = useState(4);
@@ -368,24 +420,28 @@ export function ChartsView({ dark }: { dark: boolean }) {
   const setAt = (i: number, s: string) => setSymbols((v) => v.map((x, j) => (j === i ? s : x)));
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
-      <div className="flex min-h-0 w-72 shrink-0 flex-col gap-3">
-        <div className="flex gap-1 text-xs">
-          {[1, 2, 4].map((n) => (
-            <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
-              className={`flex-1 rounded-md px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-              {n} chart{n > 1 ? 's' : ''}
-            </button>
+    <div className="flex h-full min-h-0 flex-col">
+      <ChartStats />
+
+      <div className="flex min-h-0 flex-1 gap-4">
+        <div className="flex min-h-0 w-72 shrink-0 flex-col gap-3">
+          <div className="flex gap-1 text-xs">
+            {[1, 2, 4].map((n) => (
+              <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
+                className={`flex-1 rounded-md px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+                {n} chart{n > 1 ? 's' : ''}
+              </button>
+            ))}
+          </div>
+          <Watchlist onPick={(s) => setAt(0, s)} />
+        </div>
+
+        <div className={`grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'grid-cols-2'} ${count === 4 ? 'grid-rows-2' : ''}`}>
+          {symbols.slice(0, count).map((s, i) => (
+            <ChartPanel key={i} symbol={s} onSymbol={(v) => setAt(i, v)}
+              instruments={instruments.data ?? []} dark={dark} />
           ))}
         </div>
-        <Watchlist onPick={(s) => setAt(0, s)} />
-      </div>
-
-      <div className={`grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'grid-cols-2'} ${count === 4 ? 'grid-rows-2' : ''}`}>
-        {symbols.slice(0, count).map((s, i) => (
-          <ChartPanel key={i} symbol={s} onSymbol={(v) => setAt(i, v)}
-            instruments={instruments.data ?? []} dark={dark} />
-        ))}
       </div>
     </div>
   );

@@ -187,3 +187,62 @@ ON CONFLICT (code) DO UPDATE SET
   name = excluded.name, asset = excluded.asset, description = excluded.description,
   apy = excluded.apy, lock_days = excluded.lock_days, min_amount = excluded.min_amount,
   sort_order = excluded.sort_order;
+
+-- --------------------------------------------- staking catalogue, second pass
+
+-- Three assets, and the same ladder of terms on each so they can be compared: flexible,
+-- then 30, 60 and 180 days. The longer the money is locked the more it pays, which is the
+-- only reason a client would accept a lock.
+--
+-- The first catalogue is retired rather than deleted: stakes point at these rows, and a
+-- product that vanishes takes the meaning of every stake on it with it. Retired products
+-- stop being offered and keep paying what is already staked.
+UPDATE staking_products SET active = false
+ WHERE code IN ('eth_flexible', 'eth_90', 'btc_flexible', 'btc_180', 'sol_60', 'usdc_flexible');
+
+INSERT INTO staking_products (code, name, asset, description, apy, lock_days, min_amount, sort_order) VALUES
+  ('btc_flex',  'Bitcoin flexible',  'BTC',  'Earn on BTC with nothing locked — unstake whenever you like.', 0.0180, 0,   0.001, 10),
+  ('btc_30',    'Bitcoin 30-day',    'BTC',  'Locked for 30 days.',                                           0.0260, 30,  0.005, 11),
+  ('btc_60',    'Bitcoin 60-day',    'BTC',  'Locked for 60 days.',                                           0.0340, 60,  0.005, 12),
+  ('btc_180',   'Bitcoin 180-day',   'BTC',  'Locked for 180 days, the highest BTC rate on the desk.',        0.0480, 180, 0.010, 13),
+  ('usdt_flex', 'Tether flexible',   'USDT', 'A stable balance that earns, with nothing locked.',             0.0420, 0,   50,    20),
+  ('usdt_30',   'Tether 30-day',     'USDT', 'Locked for 30 days.',                                           0.0560, 30,  100,   21),
+  ('usdt_60',   'Tether 60-day',     'USDT', 'Locked for 60 days.',                                           0.0680, 60,  100,   22),
+  ('usdt_180',  'Tether 180-day',    'USDT', 'Locked for 180 days, the highest USDT rate on the desk.',       0.0850, 180, 250,   23),
+  ('usdc_flex', 'USD Coin flexible', 'USDC', 'A stable balance that earns, with nothing locked.',             0.0410, 0,   50,    30),
+  ('usdc_30',   'USD Coin 30-day',   'USDC', 'Locked for 30 days.',                                           0.0550, 30,  100,   31),
+  ('usdc_60',   'USD Coin 60-day',   'USDC', 'Locked for 60 days.',                                           0.0670, 60,  100,   32),
+  ('usdc_180',  'USD Coin 180-day',  'USDC', 'Locked for 180 days, the highest USDC rate on the desk.',       0.0840, 180, 250,   33)
+ON CONFLICT (code) DO UPDATE SET
+  name = excluded.name, asset = excluded.asset, description = excluded.description,
+  apy = excluded.apy, lock_days = excluded.lock_days, min_amount = excluded.min_amount,
+  sort_order = excluded.sort_order, active = true;
+
+-- ------------------------------------------------- portfolio withdrawal requests
+
+-- Taking money out of a pot is asked for, not done. The client raises a request and the
+-- desk decides; nothing moves until it is approved, and the row records who decided and
+-- when either way.
+CREATE TABLE IF NOT EXISTS portfolio_requests (
+  id           bigserial PRIMARY KEY,
+  portfolio_id uuid NOT NULL REFERENCES portfolios(id),
+  client_id    uuid NOT NULL REFERENCES clients(id),
+  amount       numeric(38,18) NOT NULL CHECK (amount > 0),
+  note         text,
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+  decided_by   uuid REFERENCES staff(id),
+  decided_at   timestamptz,
+  decision_note text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS portfolio_requests_pending ON portfolio_requests (status, created_at);
+CREATE INDEX IF NOT EXISTS portfolio_requests_by_client ON portfolio_requests (client_id, created_at DESC);
+
+-- Which pot the client wants on the balance strip. At most one, enforced rather than
+-- trusted: two "featured" pots would leave the strip picking one arbitrarily.
+ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS featured boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS portfolios_one_featured
+  ON portfolios (client_id) WHERE featured;
+
+-- Whether the client has the auto trader switched on.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS auto_trader boolean NOT NULL DEFAULT false;

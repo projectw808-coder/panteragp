@@ -7,12 +7,13 @@ import { SupportPanel, SupportQueue } from './tickets.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
 import { StakingAdmin } from './staking-admin.tsx';
+import { PortfolioRequests } from './portfolio-requests.tsx';
 import { BalanceBar } from './balance.tsx';
 import { ProfileView } from './profile.tsx';
 import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
-import { TradeView } from './trade.tsx';
+import { AutoTraderView } from './auto-trader.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
@@ -170,13 +171,14 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/tasks', 'Tasks', crm],
     ['#/compliance', 'Compliance', !!compliance],
     ['#/staking', 'Staking', crm],
+    ['#/requests', 'Requests', crm],
     // Support is the same route to two different things. For staff it is a queue they
     // work, so it sits among the work; for a client it is "get hold of us", which belongs
     // at the bottom with the rest of the account.
     ['#/support', 'Support', crm],
     ['#/reports', 'Reports', crm],
     ['#/charts', 'Charts', true],
-    ['#/trade', 'Trade', trading],
+    ['#/trade', 'Auto trader', trading],
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
     ['#/profile', 'Profile', trading],
@@ -241,6 +243,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div> : <Denied />)
+          : hash === '/requests' ? (crm ? <PortfolioRequests /> : <Denied />)
           : hash === '/staking' ? (crm ? <StakingAdmin />
             : trading
               ? <div className="mx-auto max-w-3xl space-y-4"><PageTitle>Staking</PageTitle><StakingPanel /></div>
@@ -253,10 +256,10 @@ function Shell({ dark, setDark, onLogout }: {
                 <DocumentsPanel clientId={me.sub} canUpload />
               </div>
             : <Denied />)
-          : hash === '/trade' ? (trading ? <TradeView /> : <p className="text-sm text-slate-ink">Trading is for account holders.</p>)
+          : hash === '/trade' ? (trading ? <AutoTraderView /> : <Denied />)
           // Settings is for everyone, so it has to be matched before the trader fallback.
           : hash === '/settings' ? <SettingsView me={me} dark={dark} setDark={setDark} />
-          : !crm ? <TradeView />
+          : !crm ? <ChartsView dark={dark} />
           : clientId ? <ClientWorkspace id={clientId} me={me} />
           : hash === '/tasks' ? <TaskBoard />
           : <ClientList />}

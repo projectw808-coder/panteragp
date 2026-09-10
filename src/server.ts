@@ -876,7 +876,7 @@ const profileBody = z.object({
 app.get('/me/profile', { preHandler: trader }, async (req: any) => {
   const { rows } = await pool.query(
     `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at,
-            commission_bps, spread_bps
+            commission_bps, spread_bps, auto_trader
        FROM clients WHERE id = $1`, [req.principal.sub]);
   // Sent resolved rather than raw: a null means "the desk default", and the client should
   // be told the number they are actually charged, not asked to know what null stands for.
@@ -1556,6 +1556,7 @@ const NOTIFY_KINDS = {
     { kind: 'withdrawal',   label: 'Withdrawals', note: 'When a withdrawal is approved, paid or returned.' },
     { kind: 'interest',     label: 'Interest', note: 'Interest paid into a savings portfolio.' },
     { kind: 'stake',        label: 'Staking', note: 'Stakes opened or closed, and changes to what they earn.' },
+    { kind: 'portfolio.request', label: 'Withdrawal decisions', note: 'When the desk decides on money you asked to take out.' },
     { kind: 'kyc',          label: 'Verification', note: 'Progress on your identity documents.' },
     { kind: 'ticket',       label: 'Support replies', note: 'When we reply on one of your tickets.' },
     { kind: 'message',      label: 'Messages from the desk', note: 'Direct messages from your account manager.' },
@@ -1568,6 +1569,7 @@ const NOTIFY_KINDS = {
     { kind: 'withdrawal.request', label: 'Withdrawal requests', note: 'A client asked to take money out.' },
     { kind: 'task.assigned',      label: 'Tasks assigned to you', note: 'Somebody put a task on your list.' },
     { kind: 'client.registered',  label: 'New sign-ups', note: 'Somebody opened an account themselves.' },
+    { kind: 'portfolio.request',  label: 'Withdrawal requests', note: 'A client asked to take money out of a portfolio.' },
   ],
 } as const;
 
@@ -2111,7 +2113,7 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
   // 3,000 into a portfolio read as 3,000 disappearing — the same sum the staff-side
   // header does, so both sides answer "what do I have" with the same number.
   const { rows: portfolios } = await pool.query<{ name: string; currency: string; balance: number }>(
-    `SELECT id, name, currency, balance FROM portfolios
+    `SELECT id, name, currency, balance, featured FROM portfolios
       WHERE client_id = $1 AND status = 'open' ORDER BY name`, [req.principal.sub]);
 
   const priced = async <T extends { balance: number }>(row: T, code: string) => {
@@ -2655,7 +2657,7 @@ app.get('/portfolios', async (req: any, reply) => {
     return {
       ...p,
       usd_value: rate === null ? null : round8(Number(p.balance) * rate),
-      progress: progress(Number(p.balance), p.target_amount === null ? null : Number(p.target_amount)),
+      progress: null,
       projected: project({
         balance: Number(p.balance),
         annualRate: p.indicative_rate === null ? null : Number(p.indicative_rate),
@@ -2669,7 +2671,9 @@ const portfolioBody = z.object({
   type_code: z.string().min(2).max(30),
   name: z.string().min(1).max(80),
   currency: z.string().min(2).max(10).default('USD'),
-  target_amount: z.number().positive().finite().optional(),
+  // A target date still shapes the projection — "what will this be worth by then" needs a
+  // then. A target amount asked people to commit to a number before they had any, and
+  // measured them against it every time they opened the page, so it is gone.
   target_date: z.coerce.date().optional(),
 });
 
@@ -2688,13 +2692,12 @@ app.post('/portfolios', { preHandler: auth() }, async (req: any, reply) => {
       const { rows } = await c.query(
         `INSERT INTO portfolios (client_id, type_code, name, currency, target_amount, target_date)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [who.clientId, b.type_code, b.name, b.currency,
-         b.target_amount ?? null, b.target_date ?? null]);
+        [who.clientId, b.type_code, b.name, b.currency, null, b.target_date ?? null]);
       await logActivity(c, {
         client_id: who.clientId, kind: 'portfolio', actor: req.principal.sub,
         summary: `${who.onBehalf ? 'Desk opened' : 'Opened'} ${b.name} (${b.type_code.replace(/_/g, ' ')})`,
         ref_table: 'portfolios', ref_id: rows[0].id,
-        data: { type: b.type_code, currency: b.currency, target: b.target_amount ?? null },
+        data: { type: b.type_code, currency: b.currency },
       });
       return rows[0];
     });
@@ -2714,6 +2717,12 @@ const moveBody = z.object({ amount: z.number().positive().finite(), note: z.stri
 async function movePortfolio(req: any, reply: any, into: boolean) {
   const who = await portfolioSubject(req, reply);
   if (!who) return;
+  // Money leaves a pot by decision, not by button. A client asks through /requests and
+  // the desk approves; letting them call this directly would make that flow decoration
+  // that one API call walks around.
+  if (!into && !who.onBehalf) {
+    return reply.code(403).send({ error: 'ask for it through a withdrawal request' });
+  }
   const body = moveBody.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const { amount, note } = body.data;
@@ -2780,12 +2789,12 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
   const body = z.object({
     // client_id is how staff say whose portfolio this is; it is not a field to change.
     client_id: z.string().uuid().optional(),
+    featured: z.boolean().optional(),
     // The rate this pot earns. A fraction, so 0.045 is 4.5% a year. Null puts it back on
     // the product's rate. Bounded here and in the column: it multiplies somebody else's
     // money, and 35 typed for 3.5 is a hundredfold.
     rate_override: z.number().min(0).max(1).nullable().optional(),
     name: z.string().min(1).max(80).optional(),
-    target_amount: z.number().positive().finite().nullable().optional(),
     target_date: z.coerce.date().nullable().optional(),
     status: z.enum(['open', 'closed']).optional(),
   }).transform(({ client_id: _ignored, ...rest }) => rest)
@@ -2846,6 +2855,196 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
   if (out === 'missing') return reply.code(404).send({ error: 'no such portfolio' });
   if (out === 'not-empty') return reply.code(409).send({ error: 'take the balance out before closing' });
   return out;
+});
+
+
+// -------------------------------------------- portfolio withdrawal requests
+
+/*
+ * Taking money out of a pot is asked for rather than done.
+ *
+ * Paying in is the client's own money moving towards their own goal, so it happens on the
+ * spot. Taking it back out is the act the pot exists to make deliberate, so it goes to the
+ * desk: the client raises a request, nothing moves, and an admin decides. Both outcomes
+ * are recorded with who decided and when.
+ */
+
+const requestBody = z.object({
+  amount: z.number().positive().finite(),
+  note: z.string().max(400).optional(),
+});
+
+app.post('/portfolios/:id/requests', { preHandler: trader }, async (req: any, reply) => {
+  const body = requestBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [p] } = await c.query<{ id: string; name: string; currency: string; balance: number; status: string }>(
+      'SELECT id, name, currency, balance, status FROM portfolios WHERE id = $1 AND client_id = $2',
+      [req.params.id, req.principal.sub]);
+    if (!p) return 'missing' as const;
+    if (p.status !== 'open') return 'closed' as const;
+
+    // Counted against what is already asked for, not only against the balance: three
+    // requests for the whole pot would otherwise each look affordable on their own.
+    const { rows: [{ pending }] } = await c.query<{ pending: number }>(
+      `SELECT coalesce(sum(amount), 0) AS pending FROM portfolio_requests
+        WHERE portfolio_id = $1 AND status = 'pending'`, [p.id]);
+    if (body.data.amount + Number(pending) > Number(p.balance)) return 'insufficient' as const;
+
+    const { rows: [request] } = await c.query(
+      `INSERT INTO portfolio_requests (portfolio_id, client_id, amount, note)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [p.id, req.principal.sub, body.data.amount, body.data.note ?? null]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'portfolio', actor: req.principal.sub,
+      summary: `Requested ${body.data.amount} ${p.currency} out of ${p.name}`,
+      ref_table: 'portfolio_requests', ref_id: String(request.id),
+      data: { amount: body.data.amount, currency: p.currency, portfolio: p.name },
+    });
+    await notifyStaff(c, { roles: ['admin'] }, {
+      kind: 'portfolio.request',
+      title: `Withdrawal request: ${body.data.amount} ${p.currency}`,
+      body: `From ${p.name}. Waiting on a decision.`,
+      ref_table: 'clients', ref_id: req.principal.sub,
+    });
+    return request;
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such portfolio' });
+  if (out === 'closed') return reply.code(409).send({ error: 'that portfolio is closed' });
+  if (out === 'insufficient') {
+    return reply.code(400).send({ error: 'that is more than the pot holds, counting requests already waiting' });
+  }
+  return reply.code(201).send(out);
+});
+
+/** The client's own requests, so they can see what they are waiting on. */
+app.get('/me/portfolio-requests', { preHandler: trader }, async (req: any) =>
+  (await pool.query(
+    `SELECT r.*, p.name AS portfolio_name, p.currency
+       FROM portfolio_requests r JOIN portfolios p ON p.id = r.portfolio_id
+      WHERE r.client_id = $1 ORDER BY r.created_at DESC LIMIT 50`, [req.principal.sub])).rows);
+
+/** Everything waiting on the desk, and what has been decided. */
+app.get('/portfolio-requests', { preHandler: auth('crm:read') }, async (req: any) => {
+  const q = z.object({
+    status: z.enum(['pending', 'approved', 'declined', 'all']).default('pending'),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+  }).parse(req.query);
+  const { rows } = await pool.query(
+    `SELECT r.*, p.name AS portfolio_name, p.currency, p.balance AS portfolio_balance,
+            cl.name AS client_name
+       FROM portfolio_requests r
+       JOIN portfolios p ON p.id = r.portfolio_id
+       JOIN clients cl ON cl.id = r.client_id
+      WHERE ($1 = 'all' OR r.status = $1)
+      ORDER BY r.created_at DESC LIMIT $2`, [q.status, q.limit]);
+  return rows;
+});
+
+/**
+ * The decision. Approving moves the money in the same transaction that records the
+ * decision — a request marked approved with nothing moved would be the worst of both.
+ */
+app.post('/portfolio-requests/:id/decide', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = z.object({
+    status: z.enum(['approved', 'declined']),
+    note: z.string().max(400).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [r] } = await c.query<{
+      id: number; portfolio_id: string; client_id: string; amount: number; status: string;
+    }>('SELECT * FROM portfolio_requests WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!r) return 'missing' as const;
+    if (r.status !== 'pending') return 'decided' as const;
+
+    const { rows: [p] } = await c.query<{ name: string; currency: string; balance: number }>(
+      'SELECT name, currency, balance FROM portfolios WHERE id = $1 FOR UPDATE', [r.portfolio_id]);
+    if (!p) return 'missing' as const;
+
+    if (body.data.status === 'approved') {
+      // Re-checked at the moment of approval: the balance may have moved since it was asked.
+      if (Number(r.amount) > Number(p.balance)) return 'insufficient' as const;
+      const ccy = (await currencies()).get(p.currency)!;
+      const holding = await lockHolding(c, r.client_id, p.currency, ccy.kind, true);
+      if (!holding) return 'no-holding' as const;
+      await moveBalance(c, holding, Number(r.amount));
+      await c.query('UPDATE portfolios SET balance = balance - $2 WHERE id = $1', [r.portfolio_id, r.amount]);
+      await c.query(
+        `INSERT INTO portfolio_transactions (portfolio_id, client_id, kind, amount, note)
+         VALUES ($1,$2,'withdrawal',$3,$4)`,
+        [r.portfolio_id, r.client_id, -Number(r.amount), body.data.note ?? 'Approved by the desk']);
+    }
+
+    await c.query(
+      `UPDATE portfolio_requests SET status = $2, decided_by = $3, decided_at = now(), decision_note = $4
+        WHERE id = $1`, [r.id, body.data.status, req.principal.sub, body.data.note ?? null]);
+
+    await logActivity(c, {
+      client_id: r.client_id, kind: 'portfolio', actor: req.principal.sub,
+      summary: `${body.data.status === 'approved' ? 'Approved' : 'Declined'} `
+        + `${r.amount} ${p.currency} out of ${p.name}`
+        + (body.data.note ? ` — ${body.data.note}` : ''),
+      ref_table: 'portfolio_requests', ref_id: String(r.id),
+    });
+    await notifyClientOf(c, {
+      client_id: r.client_id, kind: 'portfolio.request',
+      title: body.data.status === 'approved'
+        ? `${r.amount} ${p.currency} released from ${p.name}`
+        : `Your request on ${p.name} was declined`,
+      body: body.data.note ?? (body.data.status === 'approved'
+        ? 'It is back in your balance.'
+        : 'Open a ticket if you would like to talk it through.'),
+      ref_table: 'portfolio_requests', ref_id: String(r.id),
+    });
+    return { id: r.id, status: body.data.status, amount: Number(r.amount), currency: p.currency };
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such request' });
+  if (out === 'decided') return reply.code(409).send({ error: 'that request has already been decided' });
+  if (out === 'insufficient') return reply.code(422).send({ error: 'the pot no longer holds that much' });
+  if (out === 'no-holding') return reply.code(500).send({ error: 'could not open a balance to release it into' });
+  return out;
+});
+
+/** Which pot the client wants on their balance strip. At most one. */
+app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({ featured: z.boolean() }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rowCount } = await c.query(
+      'SELECT 1 FROM portfolios WHERE id = $1 AND client_id = $2', [req.params.id, req.principal.sub]);
+    if (!rowCount) return null;
+    // Cleared first: the unique index allows one per client, so setting a second without
+    // clearing the first would be refused by the database rather than replacing it.
+    await c.query('UPDATE portfolios SET featured = false WHERE client_id = $1', [req.principal.sub]);
+    if (body.data.featured) {
+      await c.query('UPDATE portfolios SET featured = true WHERE id = $1', [req.params.id]);
+    }
+    return { featured: body.data.featured };
+  });
+  if (!out) return reply.code(404).send({ error: 'no such portfolio' });
+  return out;
+});
+
+/** The auto trader switch. Off by default, and the client's own to set. */
+app.post('/me/auto-trader', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({ on: z.boolean() }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  return tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query(
+      'UPDATE clients SET auto_trader = $2 WHERE id = $1 RETURNING auto_trader',
+      [req.principal.sub, body.data.on]);
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'note', actor: req.principal.sub,
+      summary: `Auto trader switched ${body.data.on ? 'on' : 'off'}`,
+    });
+    return { on: rows[0].auto_trader };
+  });
 });
 
 app.get('/portfolios/:id/transactions', { preHandler: trader }, async (req: any) =>
