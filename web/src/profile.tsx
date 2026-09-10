@@ -16,6 +16,7 @@ type Profile = {
   id: string; email: string; name: string; phone: string | null; country: string | null;
   date_of_birth: string | null; address: string | null;
   tier: string; kyc_status: string; created_at: string;
+  terms: { commission_bps: number; spread_bps: number };
 };
 
 export function ProfileView() {
@@ -41,7 +42,13 @@ export function ProfileView() {
           <Read label="Client since" value={new Date(p.created_at).toLocaleDateString()} />
           <Read label="Tier" value={p.tier} />
           <Read label="Verification" value={p.kyc_status} />
+          <Read label="Commission" value={bps(p.terms?.commission_bps)} />
+          <Read label="Spread" value={bps(p.terms?.spread_bps)} />
         </dl>
+        <p className="text-xs text-slate-ink">
+          Commission is charged on the size of each fill and the spread is built into the
+          price you get. Both are shown on every trade in your history.
+        </p>
         <p className="text-xs text-slate-ink">
           Your email is your login, so it is changed by the desk rather than here — open a
           support ticket and we will do it with you. Tier and verification are ours to set.
@@ -53,6 +60,9 @@ export function ProfileView() {
     </div>
   );
 }
+
+const bps = (n: number | undefined) =>
+  n === undefined ? "—" : n === 0 ? "none" : `${Number((n / 100).toFixed(4))}% per trade`;
 
 const Read = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
   <div>

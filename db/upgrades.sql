@@ -104,3 +104,28 @@ CREATE TABLE IF NOT EXISTS linked_wallets (
   linked_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS linked_wallets_by_client ON linked_wallets (client_id);
+
+-- ------------------------------------------------------- per-client trading terms
+
+-- What a client pays to trade: a commission on the notional of each fill, and a spread
+-- markup that moves the executed price against them. Both in basis points, both null
+-- meaning "the desk default", so nothing existing changes until somebody sets one.
+--
+-- Bounded in the column, not only in the handler. These multiply every trade the client
+-- ever makes, and 500 typed for 5.00 is a hundredfold on money that is not the desk's.
+--
+-- Note what these deliberately cannot do. Commission is charged on the size of a trade,
+-- not on its outcome, and spread always moves the fill against the client. Neither can
+-- turn a losing trade into a winning one, or a winning one into a loss it was not — they
+-- change the cost of trading, which is a term of the account, and they are shown to the
+-- client on every fill and on their own profile.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS commission_bps numeric(6,2);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS spread_bps numeric(6,2);
+DO $$ BEGIN
+  ALTER TABLE clients ADD CONSTRAINT clients_trading_terms_sane
+    CHECK (
+      (commission_bps IS NULL OR (commission_bps >= 0 AND commission_bps <= 500))
+      AND (spread_bps IS NULL OR (spread_bps >= 0 AND spread_bps <= 500))
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

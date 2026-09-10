@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { challengeMessage, checksumAddress, isAddress, recoverSigner } from './wallet-link.ts';
+import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
@@ -464,6 +465,9 @@ const patchBody = z.object({
   // correctable only to another wrong date.
   date_of_birth: z.coerce.date().nullable().optional(),
   address: z.string().max(400).nullable().optional(),
+  // What this client pays to trade. Null puts them back on the desk default.
+  commission_bps: z.number().min(0).max(MAX_BPS).nullable().optional(),
+  spread_bps: z.number().min(0).max(MAX_BPS).nullable().optional(),
   stage_id: z.number().int().min(1).optional(),
   owner_staff_id: z.string().uuid().nullable().optional(),
   risk_profile: z.enum(['low', 'medium', 'high']).nullable().optional(),
@@ -477,6 +481,12 @@ app.patch('/clients/:id', { preHandler: auth('crm:write') }, async (req: any, re
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   if (body.data.kyc_status !== undefined && !can(req.principal.role, 'kyc:review')) {
     return reply.code(403).send({ error: 'changing KYC status needs kyc:review' });
+  }
+  // Trading terms are the price of the service, so they move with the same permission as
+  // every other route where staff change what a client's money does.
+  const termsTouched = body.data.commission_bps !== undefined || body.data.spread_bps !== undefined;
+  if (termsTouched && !can(req.principal.role, 'funds:credit')) {
+    return reply.code(403).send({ error: 'changing trading terms needs funds:credit' });
   }
   if (body.data.email) body.data.email = body.data.email.toLowerCase();
   const entries = Object.entries(body.data);
@@ -714,13 +724,26 @@ async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
       `SELECT status FROM orders WHERE id = $1 FOR UPDATE`, [o.id]);
     if (!live || (live.status !== 'new' && live.status !== 'working')) return;
 
-    await c.query('INSERT INTO fills (order_id, qty, price) VALUES ($1,$2,$3)', [o.id, o.qty, price]);
+    // What this client pays to trade. Read inside the transaction so a term changed a
+    // moment ago applies to this fill rather than to the one after it.
+    // ponytail: one small lookup per fill. Cache it if fills ever outpace the database.
+    const { rows: [terms] } = await c.query<{ commission_bps: number | null; spread_bps: number | null }>(
+      'SELECT commission_bps, spread_bps FROM clients WHERE id = $1', [o.client_id]);
+    const t = termsOf(terms ?? null);
+
+    // The price the client actually gets, and the commission on it. The spread moves
+    // against them by side, so both of these are costs whichever way the trade goes.
+    const filled = executionPrice(price, o.side, t);
+    const fee = commission(o.qty, filled, t);
+
+    await c.query('INSERT INTO fills (order_id, qty, price, fee) VALUES ($1,$2,$3,$4)',
+      [o.id, o.qty, filled, fee]);
     await c.query(`UPDATE orders SET status = 'filled' WHERE id = $1`, [o.id]);
 
     const { rows: [held] } = await c.query<Position>(
       'SELECT qty, avg_price FROM positions WHERE account_id = $1 AND symbol = $2 FOR UPDATE',
       [o.account_id, o.symbol]);
-    const { position, realized } = applyFill(held ?? null, { side: o.side, qty: o.qty, price });
+    const { position, realized } = applyFill(held ?? null, { side: o.side, qty: o.qty, price: filled });
 
     if (position.qty === 0) {
       await c.query('DELETE FROM positions WHERE account_id = $1 AND symbol = $2', [o.account_id, o.symbol]);
@@ -730,8 +753,11 @@ async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
          ON CONFLICT (account_id, symbol) DO UPDATE SET qty = $3, avg_price = $4, updated_at = now()`,
         [o.account_id, o.symbol, position.qty, position.avg_price]);
     }
-    if (realized !== 0) {
-      await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [o.account_id, realized]);
+    // Commission comes off whether or not anything was realised: it is the price of the
+    // trade, not a share of its result.
+    if (realized !== 0 || fee !== 0) {
+      await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1',
+        [o.account_id, realized - fee]);
     }
 
     // One-cancels-the-other: whichever exit fills, the other leg is done.
@@ -754,15 +780,20 @@ async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
 
     await logActivity(c, {
       client_id: o.client_id, kind: 'order.filled', actor: 'engine',
-      summary: `Filled ${o.side} ${o.qty} ${o.symbol} at ${price}`,
+      summary: `Filled ${o.side} ${o.qty} ${o.symbol} at ${filled}`
+        + (fee ? ` — commission ${fee}` : ''),
       ref_table: 'orders', ref_id: o.id,
-      data: { price, qty: o.qty, side: o.side, symbol: o.symbol, realized, type: o.type },
+      data: {
+        price: filled, mid: price, fee, qty: o.qty, side: o.side, symbol: o.symbol,
+        realized, type: o.type, terms: t,
+      },
     });
     if (viaEngine) {
       await notifyClientOf(c, {
         client_id: o.client_id, kind: 'order.filled',
         title: `${o.side === 'buy' ? 'Bought' : 'Sold'} ${o.qty} ${o.symbol}`,
-        body: `Your ${o.type.replace('_', ' ')} order filled at ${price}.`,
+        body: `Your ${o.type.replace('_', ' ')} order filled at ${filled}.`
+          + (fee ? ` Commission ${fee}.` : ''),
         ref_table: 'orders', ref_id: o.id,
       });
     }
@@ -843,9 +874,12 @@ const profileBody = z.object({
 
 app.get('/me/profile', { preHandler: trader }, async (req: any) => {
   const { rows } = await pool.query(
-    `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at
+    `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at,
+            commission_bps, spread_bps
        FROM clients WHERE id = $1`, [req.principal.sub]);
-  return rows[0];
+  // Sent resolved rather than raw: a null means "the desk default", and the client should
+  // be told the number they are actually charged, not asked to know what null stands for.
+  return { ...rows[0], terms: termsOf(rows[0] ?? null) };
 });
 
 app.patch('/me/profile', { preHandler: trader }, async (req: any, reply) => {

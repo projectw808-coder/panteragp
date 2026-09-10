@@ -831,6 +831,60 @@ await step('a wallet is linked by proving it, not by claiming it', async () => {
   assert.equal(await status(`/me/wallet/${linked.id}`, { token: T, method: 'DELETE' }), 404);
 });
 
+await step('the desk sets what a client pays to trade, and it costs them either way', async () => {
+  const before = await get('/me/profile', { token: T });
+  assert.equal(before.terms.commission_bps, 0, 'nothing is charged until the desk says so');
+  assert.equal(before.terms.spread_bps, 0);
+
+  // Ordinary CRM write access is not enough: this is the price of the service.
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Terms Sales', email: unique('terms-sales'), role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/clients/${client.id}`, { token: sellerToken, method: 'PATCH', body: {
+    commission_bps: 25 } }), 403);
+
+  // A hundredfold typo is refused rather than stored.
+  assert.equal(await status(`/clients/${client.id}`, { token: A, method: 'PATCH', body: {
+    commission_bps: 9000 } }), 400);
+
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: {
+    commission_bps: 25, spread_bps: 10 } });
+  assert.equal((await get('/me/profile', { token: T })).terms.commission_bps, 25,
+    'the client is told what they are charged');
+
+  const cash = async () => Number((await get('/account', { token: T })).balance);
+  const spot = async () => Number((await get('/quotes', { token: T })).find((q) => q.symbol === 'EURUSD').price);
+
+  // Buying fills above the market and selling below it, both times costing commission.
+  const openedAt = await spot();
+  const beforeBuy = await cash();
+  await get('/orders', { token: T, method: 'POST', body: {
+    symbol: 'EURUSD', side: 'buy', type: 'market', qty: 1000 } });
+  const buy = (await get('/trades', { token: T }))[0];
+  assert.ok(Number(buy.price) > openedAt * 0.999, 'a buy does not fill below the market');
+  assert.ok(Number(buy.fee) > 0, 'the fill carries its commission');
+  // The commission is 25 bps of what was actually traded.
+  assert.ok(Math.abs(Number(buy.fee) - (1000 * Number(buy.price) * 0.0025)) < 1e-6);
+  // And it came off the balance, before any position was closed.
+  assert.ok(Math.abs((beforeBuy - await cash()) - Number(buy.fee)) < 1e-6,
+    'commission leaves the balance on the way in');
+
+  // Close it straight back. The market has barely moved, so a round trip must lose money:
+  // that is the whole point of these being costs rather than a dial on the outcome.
+  const beforeSell = await cash();
+  await get('/orders', { token: T, method: 'POST', body: {
+    symbol: 'EURUSD', side: 'sell', type: 'market', qty: 1000 } });
+  const sell = (await get('/trades', { token: T }))[0];
+  assert.ok(Number(sell.price) < Number(buy.price), 'the spread is paid on the way out too');
+  assert.ok(await cash() < beforeSell + Number(buy.fee),
+    'a round trip at an unchanged price cannot make money');
+
+  // Put them back so the rest of the run is not paying commission it does not expect.
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: {
+    commission_bps: null, spread_bps: null } });
+  assert.equal((await get('/me/profile', { token: T })).terms.commission_bps, 0);
+});
+
 console.log('\nSupport tickets');
 let ticket;
 
