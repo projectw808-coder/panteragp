@@ -263,8 +263,43 @@ const REPORTS = [
   { name: 'team', title: 'Team report', blurb: 'Pipeline throughput, KYC conversion and time to first contact per staff member.' },
 ] as const;
 
+/**
+ * The reports, as something you can actually read an answer out of.
+ *
+ * A report is a table somebody is looking for one row in, or one column's total. So it
+ * sorts on any column, searches across all of them, and totals the numeric ones above the
+ * table. The rows on screen are capped and it says so — a report that silently shows the
+ * first slice of a thousand is one that gets a conclusion drawn from the wrong data.
+ *
+ * The export is always the whole report, not what happens to be on screen: a filtered CSV
+ * that does not say it was filtered is a spreadsheet somebody will circulate as the truth.
+ */
+
+const ROWS = 250;
+
+/** Numbers as money-ish, dates as dates, and nulls as a dash rather than "null". */
+function cell(key: string, value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (key.endsWith('_at')) {
+    const d = new Date(String(value));
+    return Number.isNaN(+d) ? String(value) : d.toLocaleDateString();
+  }
+  if (typeof value === 'number') {
+    return Number.isInteger(value)
+      ? value.toLocaleString()
+      : value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return String(value);
+}
+
+/** Columns worth adding up: numeric, and not an id or a count of something unrelated. */
+const totalled = (rows: Record<string, unknown>[], col: string) =>
+  rows.length > 0 && typeof rows[0]![col] === 'number';
+
 export function ReportsView() {
   const [open, setOpen] = useState<string>('clients');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ col: string; desc: boolean } | null>(null);
   const rows = useApi<Record<string, unknown>[]>(`/reports/${open}`);
 
   // The CSV endpoint needs the auth header, so fetch it and save the blob.
@@ -279,42 +314,146 @@ export function ReportsView() {
     URL.revokeObjectURL(url);
   };
 
-  const cols = rows.data?.[0] ? Object.keys(rows.data[0]) : [];
+  const all = rows.data ?? [];
+  const cols = all[0] ? Object.keys(all[0]) : [];
+  const term = q.trim().toLowerCase();
+
+  const matched = term
+    ? all.filter((r) => cols.some((c) => String(r[c] ?? '').toLowerCase().includes(term)))
+    : all;
+
+  const sorted = sort
+    ? [...matched].sort((a, b) => {
+      const x = a[sort.col];
+      const y = b[sort.col];
+      if (x === y) return 0;
+      if (x === null || x === undefined) return 1;   // blanks last, either direction
+      if (y === null || y === undefined) return -1;
+      const cmp = typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : String(x).localeCompare(String(y));
+      return sort.desc ? -cmp : cmp;
+    })
+    : matched;
+
+  const shown = sorted.slice(0, ROWS);
+  const report = REPORTS.find((r) => r.name === open);
+
+  const toggle = (col: string) =>
+    setSort((s) => (s?.col === col ? { col, desc: !s.desc } : { col, desc: true }));
+
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Reports</PageTitle>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button className={btn} onClick={() => download(open)}>Export CSV</button>
+          <button
+            className="rounded-md border border-pebble px-4 py-2 font-mono text-sm text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
+            onClick={() => window.print()}>
+            Print
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
         {REPORTS.map((r) => (
-          <button key={r.name} onClick={() => setOpen(r.name)} aria-pressed={open === r.name}
-            className={`rounded-md px-3 py-1 text-xs ${open === r.name
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-            {r.title}
+          <button key={r.name} onClick={() => { setOpen(r.name); setSort(null); setQ(''); }}
+            aria-pressed={open === r.name}
+            className={`rounded-lg border p-3 text-left transition-colors ${open === r.name
+              ? 'border-ember bg-ember/5'
+              : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
+            <span className={`block text-sm font-medium ${open === r.name ? 'text-ember' : ''}`}>
+              {r.title}
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-ink">{r.blurb}</span>
           </button>
         ))}
-        <button className={`${btn} ml-auto`} onClick={() => download(open)}>Export CSV</button>
-        <button className={btn} onClick={() => window.print()}>Print / PDF</button>
       </div>
-      <p className="text-sm text-slate-ink">{REPORTS.find((r) => r.name === open)?.blurb}</p>
+
+      {/* Totals over everything that matched, not over the page on screen. */}
+      {!!matched.length && (
+        <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+          <div>
+            <p className="metric-label">{term ? 'Matching rows' : 'Rows'}</p>
+            <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
+              {matched.length.toLocaleString()}
+            </p>
+          </div>
+          {cols.filter((c) => totalled(all, c)).slice(0, 4).map((c) => (
+            <div key={c}>
+              <p className="metric-label">{pretty(c)}</p>
+              <p className="font-mono text-xl leading-tight font-medium tabular-nums">
+                {cell(c, matched.reduce((n, r) => n + Number(r[c] ?? 0), 0))}
+              </p>
+            </div>
+          ))}
+          <p className="ml-auto max-w-xs text-xs text-slate-ink">
+            {report?.blurb} Totals cover every matching row; the export is always the whole
+            report.
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input className={`${field} min-w-56 flex-1`} placeholder="Search every column"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+        {sort && (
+          <button onClick={() => setSort(null)}
+            className="rounded-md border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+            Clear sort
+          </button>
+        )}
+        <span className="ml-auto font-mono text-xs text-slate-ink">
+          {shown.length.toLocaleString()} of {matched.length.toLocaleString()}
+        </span>
+      </div>
 
       <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead className={thead}>
-            <tr>{cols.map((c) => <th key={c} className="px-3 py-2 font-medium">{pretty(c)}</th>)}</tr>
+            <tr>
+              {cols.map((c) => (
+                <th key={c} className="px-3 py-2 text-left font-medium">
+                  <button onClick={() => toggle(c)}
+                    className="flex items-center gap-1 transition-colors hover:text-obsidian dark:hover:text-vellum">
+                    {pretty(c)}
+                    <span className={`font-mono text-[10px] ${sort?.col === c ? 'text-ember' : 'opacity-0'}`}
+                      aria-hidden>
+                      {sort?.col === c && sort.desc ? '▼' : '▲'}
+                    </span>
+                  </button>
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
-            {rows.data?.map((r, i) => (
+            {shown.map((r, i) => (
               <tr key={i} className="border-t border-pebble dark:border-white/10">
                 {cols.map((c) => (
-                  <td key={c} className={`px-3 py-1.5 ${typeof r[c] === 'number' ? 'tabular-nums' : ''}`}>
-                    {r[c] === null ? '—' : String(r[c])}
+                  <td key={c}
+                    className={`px-3 py-1.5 ${typeof r[c] === 'number' ? 'text-right font-mono tabular-nums' : ''}`}>
+                    {cell(c, r[c])}
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        {rows.data?.length === 0 && <p className="p-4 text-sm text-slate-ink">No rows.</p>}
+        {!rows.data && <p className="p-4 text-sm text-slate-ink">Loading…</p>}
+        {rows.data && shown.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-slate-ink">
+            {term ? 'Nothing matches that.' : 'No rows.'}
+          </p>
+        )}
       </div>
+
+      {matched.length > ROWS && (
+        <p className="px-1 text-xs text-slate-ink">
+          Showing the first {ROWS} of {matched.length.toLocaleString()}. Search or sort to
+          bring what you want to the top — the CSV has all of them.
+        </p>
+      )}
     </div>
   );
 }
