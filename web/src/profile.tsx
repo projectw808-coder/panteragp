@@ -6,16 +6,29 @@ import { BalancePanel } from './balance.tsx';
 /**
  * The client's own record, as they see it.
  *
- * Two halves on purpose. The top is what the desk holds about them and they cannot change:
- * their tier, their verification status, the email they sign in with. The bottom is theirs
- * to correct. Showing both together answers the question people actually arrive with —
- * "what do you have on me?" — instead of only offering a form.
+ * Three parts, in the order somebody actually wants them: who they are, what the desk
+ * holds about them that they cannot change, and the half that is theirs to correct.
+ * Putting the read-only half first is deliberate — the question people arrive with is
+ * "what do you have on me", and answering it before offering a form is the difference
+ * between a record and a data-entry screen.
  */
 
 type Profile = {
   id: string; email: string; name: string; phone: string | null; country: string | null;
   date_of_birth: string | null; address: string | null;
   tier: string; kyc_status: string; created_at: string;
+};
+
+/** Initials for the avatar. Two at most; a long name should not fill the circle. */
+const initials = (name: string) =>
+  name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+
+const VERIFICATION: Record<string, string> = {
+  approved: 'bg-up/15 text-up',
+  pending: 'bg-ember/15 text-ember',
+  rejected: 'bg-down/15 text-down',
+  expired: 'bg-down/15 text-down',
+  none: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 
 export function ProfileView() {
@@ -29,37 +42,43 @@ export function ProfileView() {
     <div className="mx-auto max-w-3xl space-y-4">
       <PageTitle>Profile</PageTitle>
 
+      <div className={`${card} flex flex-wrap items-center gap-5`}>
+        <span aria-hidden
+          className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-ember/15 font-display text-xl text-ember">
+          {initials(p.name)}
+        </span>
+        <div className="min-w-0">
+          <h2 className="font-display text-[22px] leading-tight tracking-tight">{p.name}</h2>
+          <p className={`text-sm text-ember ${mono}`}>{p.email}</p>
+          <p className={`text-xs text-slate-ink ${mono}`}>
+            Client since {new Date(p.created_at).toLocaleDateString()}
+          </p>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-bone px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase dark:bg-white/10">
+            {p.tier}
+          </span>
+          <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
+            VERIFICATION[p.kyc_status] ?? VERIFICATION.none}`}>
+            {p.kyc_status === 'none' ? 'unverified' : p.kyc_status}
+          </span>
+        </div>
+      </div>
+
       <div className={`${card} space-y-3`}>
         <h2 className="metric-label">Balance</h2>
         <BalancePanel />
       </div>
 
-      <div className={`${card} space-y-3`}>
-        <h2 className="metric-label">Your account</h2>
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          <Read label="Signed in as" value={p.email} accent />
-          <Read label="Client since" value={new Date(p.created_at).toLocaleDateString()} />
-          <Read label="Tier" value={p.tier} />
-          <Read label="Verification" value={p.kyc_status} />
-        </dl>
-        <p className="text-xs text-slate-ink">
-          Your email is your login, so it is changed by the desk rather than here — open a
-          support ticket and we will do it with you. Tier and verification are ours to set.
-        </p>
-      </div>
-
       <Details p={p} onSaved={me.reload} />
 
+      <p className="px-1 text-xs text-slate-ink">
+        Your email is the login, so it is changed by the desk rather than here — open a
+        support ticket and we will do it with you. Tier and verification are ours to set.
+      </p>
     </div>
   );
 }
-
-const Read = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
-  <div>
-    <dt className="metric-label">{label}</dt>
-    <dd className={`mt-1 text-sm ${mono} ${accent ? 'text-ember' : 'text-obsidian dark:text-vellum'}`}>{value}</dd>
-  </div>
-);
 
 /** The half they own. Blank means remove it — every field here is allowed to be nothing. */
 function Details({ p, onSaved }: { p: Profile; onSaved: () => void }) {
@@ -98,7 +117,7 @@ function Details({ p, onSaved }: { p: Profile; onSaved: () => void }) {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Labelled label="Full name">
           <input name="name" required maxLength={200} defaultValue={p.name} className={field} />
         </Labelled>
@@ -123,8 +142,10 @@ function Details({ p, onSaved }: { p: Profile; onSaved: () => void }) {
       </div>
 
       {error && <p role="alert" className={alertBox}>{error}</p>}
-      {done && <p role="status" className="font-mono text-xs text-slate-ink">Saved.</p>}
-      <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button>
+      <div className="flex flex-wrap items-center gap-3 border-t border-pebble pt-4 dark:border-white/10">
+        <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Save details'}</button>
+        {done && <span role="status" className="font-mono text-xs text-up">Saved.</span>}
+      </div>
     </form>
   );
 }

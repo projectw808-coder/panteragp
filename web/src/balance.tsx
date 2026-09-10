@@ -14,6 +14,9 @@ import { useApi } from './api.ts';
  */
 
 type Held = { balance: number; usd_value: number | null };
+type Cash = { kind: string; amount: number; status: string };
+type Account = { balance: number; equity: number; unrealized: number; currency: string };
+
 export type Accounts = {
   cash: (Held & { id: string; currency: string; mode: string; leverage: number })[];
   wallets: (Held & { id: string; asset: string; address: string })[];
@@ -54,6 +57,8 @@ function staked(a: Accounts) {
 
 export function BalanceBar() {
   const accounts = useApi<Accounts>('/accounts');
+  const account = useApi<Account>('/account');
+  const cash = useApi<Cash[]>('/cash');
   // The engine fills orders and the desk credits accounts between requests, so a balance
   // that only moves when you happen to reload is a balance nobody trusts. Same cadence as
   // the dashboard, for the same reason: current enough to believe, not a live ticker.
@@ -66,6 +71,10 @@ export function BalanceBar() {
   const a = accounts.data;
   if (!a) return null;
   const rows = held(a);
+  const deposits = (cash.data ?? [])
+    .filter((t) => t.kind === 'deposit' && (t.status === 'approved' || t.status === 'settled'))
+    .reduce((n, t) => n + Number(t.amount), 0);
+  const open = Number(account.data?.unrealized ?? 0);
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
@@ -98,9 +107,25 @@ export function BalanceBar() {
         </span>
       )}
 
-      <span className="ml-auto flex items-baseline gap-2">
-        <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Total</span>
-        <span className="font-mono text-base font-medium tabular-nums text-ember">{usd(a.total_usd)}</span>
+      {/* Deposits come from settled cash in rather than from the balance: the balance has
+          trading in it, and somebody who paid in 10,000 and is down 2,000 has still paid
+          in 10,000. */}
+      <span className="ml-auto flex flex-wrap items-baseline gap-x-6 gap-y-2">
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Deposits</span>
+          <span className="font-mono text-sm font-medium tabular-nums">{usd(deposits)}</span>
+        </span>
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Open P&amp;L</span>
+          <span className={`font-mono text-sm font-medium tabular-nums ${
+            open < 0 ? 'text-down' : 'text-up'}`}>
+            {open >= 0 ? '+' : ''}{usd(open)}
+          </span>
+        </span>
+        <span className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Total</span>
+          <span className="font-mono text-base font-medium tabular-nums text-ember">{usd(a.total_usd)}</span>
+        </span>
       </span>
     </div>
   );

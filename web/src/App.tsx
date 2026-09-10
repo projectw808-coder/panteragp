@@ -13,7 +13,7 @@ import { ProfileView } from './profile.tsx';
 import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
-import { AutoTraderView } from './auto-trader.tsx';
+import { AutoTraderRunner, AutoTraderView } from './auto-trader.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
@@ -181,11 +181,13 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/trade', 'Auto trader', trading],
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
-    ['#/profile', 'Profile', trading],
-    ['#/settings', 'Settings', true],
+    ['#/wallet', 'Connect wallet', trading],
+    // Settings, then support, then documents: the account tail, after the things a client
+    // came here to do. Staff keep their own Settings at the very end of their own rail.
+    ['#/settings', 'Settings', trading],
     ['#/support', 'Support', trading],
     ['#/documents', 'Documents', trading],
-    ['#/wallet', 'Connect wallet', trading],
+    ['#/settings', 'Settings', crm],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
@@ -221,22 +223,32 @@ function Shell({ dark, setDark, onLogout }: {
           ))}
         </nav>
 
-        <div className="relative z-10 mt-auto flex items-center gap-3 border-t border-white/10 px-5 py-4 text-mist">
-          <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
-          <NotificationBell />
-          <button onClick={onLogout}
-            className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
-            Sign out
-          </button>
+        <div className="relative z-10 mt-auto border-t border-white/10 px-5 py-4 text-mist">
+          <div className="flex items-center gap-3">
+            {trading ? (
+              <a href="#/profile" aria-label="Your profile" title="Your profile"
+                className={`flex items-center gap-2 transition-colors ${
+                  hash === '/profile' ? 'text-ember' : 'hover:text-vellum'}`}>
+                <Person />
+                <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
+              </a>
+            ) : (
+              <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
+            )}
+            <NotificationBell />
+            <button onClick={onLogout}
+              className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
-      <main className={`min-h-0 flex-1 ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
-        {/* Not on charts, which run full-bleed, and not on the profile, which shows the
-            same figures in full — two totals fetched a second apart tick apart, and one
-            screen disagreeing with itself is worse than one that says it once. */}
-        {trading && !charts && hash !== '/profile' && (
-          <div className="mx-auto max-w-6xl"><BalanceBar /></div>
-        )}
+      <main className={`flex min-h-0 flex-1 flex-col ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
+        {/* On every client screen, charts included. It used to be hidden there because the
+            charts run full-bleed, which stopped mattering the moment charts became where a
+            trader lands. */}
+        {trading && <AutoTraderRunner />}
+        {trading && <div className={charts ? 'shrink-0' : 'mx-auto max-w-6xl'}><BalanceBar /></div>}
         {charts ? <ChartsView dark={dark} />
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)
@@ -269,6 +281,15 @@ function Shell({ dark, setDark, onLogout }: {
 }
 
 const Denied = () => <p className="text-sm text-slate-ink">You do not have access to this page.</p>;
+
+/** Head and shoulders, drawn rather than an emoji so it takes the rail's colour. */
+const Person = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="8" r="3.6" />
+    <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
+  </svg>
+);
 
 /**
  * Light / terminal switch, at the top of the nav where it is findable. Both surfaces are
