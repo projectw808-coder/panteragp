@@ -2771,7 +2771,11 @@ app.get('/portfolios', async (req: any, reply) => {
   const { rows } = await pool.query(
     `SELECT p.*, t.name AS type_name,
             coalesce(p.rate_override, t.indicative_rate) AS indicative_rate,
-            t.indicative_rate AS standard_rate
+            t.indicative_rate AS standard_rate,
+            (SELECT coalesce(sum(amount), 0) FROM portfolio_transactions x
+              WHERE x.portfolio_id = p.id AND x.kind = 'interest')            AS earned,
+            (SELECT coalesce(sum(amount), 0) FROM portfolio_requests r
+              WHERE r.portfolio_id = p.id AND r.status = 'pending')           AS requested
        FROM portfolios p JOIN portfolio_types t ON t.code = p.type_code
       WHERE p.client_id = $1 ORDER BY p.status, p.created_at`, [clientId]);
 
@@ -3172,11 +3176,20 @@ app.post('/me/auto-trader', { preHandler: trader }, async (req: any, reply) => {
   });
 });
 
-app.get('/portfolios/:id/transactions', { preHandler: trader }, async (req: any) =>
-  (await pool.query(
-    `SELECT t.* FROM portfolio_transactions t JOIN portfolios p ON p.id = t.portfolio_id
-      WHERE t.portfolio_id = $1 AND p.client_id = $2 ORDER BY t.at DESC LIMIT 200`,
-    [req.params.id, req.principal.sub])).rows);
+app.get('/portfolios/:id/transactions', { preHandler: auth() }, async (req: any, reply) => {
+  // A client sees their own; staff see whoever's they are looking at. Scoped by the
+  // portfolio's owner either way, so naming somebody else's id gets nothing back rather
+  // than somebody else's history.
+  const { rows: [owner] } = await pool.query<{ client_id: string }>(
+    'SELECT client_id FROM portfolios WHERE id = $1', [req.params.id]);
+  if (!owner) return reply.code(404).send({ error: 'no such portfolio' });
+  const own = req.principal.kind === 'client' && req.principal.sub === owner.client_id;
+  if (!own && !can(req.principal.role, 'crm:read')) return reply.code(403).send({ error: 'forbidden' });
+
+  return (await pool.query(
+    `SELECT t.* FROM portfolio_transactions t
+      WHERE t.portfolio_id = $1 ORDER BY t.at DESC LIMIT 200`, [req.params.id])).rows;
+});
 
 // ---------------------------------------------------------------- staking
 

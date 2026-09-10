@@ -14,6 +14,15 @@ type Portfolio = {
   status: 'open' | 'closed'; indicative_rate: number | null; standard_rate: number | null;
   rate_override: number | null;
   usd_value: number | null; progress: number | null; projected: number | null;
+  earned: number; requested: number;
+};
+type Movement = {
+  id: number; kind: 'contribution' | 'withdrawal' | 'interest'; amount: number;
+  note: string | null; at: string;
+};
+type Request = {
+  id: number; portfolio_name: string; currency: string; amount: number;
+  status: string; note: string | null; decision_note: string | null; created_at: string;
 };
 
 const money = (n: number, code: string) =>
@@ -23,47 +32,116 @@ const money = (n: number, code: string) =>
 // with trailing zeros trimmed, so 3.5% does not become 3.50%.
 const pct = (n: number) => `${Number((n * 100).toFixed(2))}%`;
 const day = (d: string) => new Date(d).toLocaleDateString();
+const usd = (n: number) =>
+  '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+type On = { client_id?: string };
 
 /**
- * A client's pots: open one, pay into it, take money back out.
+ * A client's pots: open one, pay into it, ask for money back out.
  *
  * The same panel serves both sides. A client passes no clientId and acts on themselves;
- * staff pass one and act on that client, which the API requires them to name explicitly
- * on every write. One component rather than a staff copy: two versions of a screen that
- * moves money is two places for the rules to drift apart.
+ * staff pass one and act on that client, which the API makes them name on every write. One
+ * component rather than a staff copy — two versions of a screen that moves money is two
+ * places for the rules to drift apart.
  */
 export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; onChanged?: () => void } = {}) {
-  const on = clientId ? { client_id: clientId } : {};
+  const on: On = clientId ? { client_id: clientId } : {};
   const portfolios = useApi<Portfolio[]>(clientId ? `/portfolios?client_id=${clientId}` : '/portfolios');
   const types = useApi<PortfolioType[]>('/portfolio-types');
   const currencies = useApi<Currency[]>('/currencies');
+  // A client's own requests; staff see the whole queue on their own page.
+  const requests = useApi<Request[]>(clientId ? '' : '/me/portfolio-requests');
   const [adding, setAdding] = useState(false);
 
+  const reload = () => { portfolios.reload(); requests.reload(); onChanged?.(); };
   const open = portfolios.data?.filter((p) => p.status === 'open') ?? [];
   const closed = portfolios.data?.filter((p) => p.status === 'closed') ?? [];
+  const waiting = (requests.data ?? []).filter((r) => r.status === 'pending');
+
+  // Valued in dollars so pots in different currencies can be one figure; null when
+  // something has no price source, which the strip already says elsewhere.
+  const total = open.reduce((n, p) => n + Number(p.usd_value ?? 0), 0);
+  const earned = open.reduce((n, p) => n + Number(p.earned ?? 0), 0);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center gap-3">
         <h3 className="metric-label">{clientId ? 'Portfolios' : 'Your portfolios'}</h3>
-        <button className={btn} onClick={() => setAdding((v) => !v)}>
+        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New portfolio'}
         </button>
       </div>
 
-      {adding && (
-        <NewPortfolio types={types.data ?? []} currencies={currencies.data ?? []} on={on}
-          onDone={() => { setAdding(false); portfolios.reload(); }} />
+      {!!open.length && (
+        <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+          <div>
+            <p className="metric-label">Set aside</p>
+            <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember">
+              {usd(total)}
+            </p>
+          </div>
+          <div>
+            <p className="metric-label">Pots</p>
+            <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{open.length}</p>
+          </div>
+          <div>
+            <p className="metric-label">Interest earned</p>
+            <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-up">
+              {earned > 0 ? `+${earned.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '0'}
+            </p>
+          </div>
+          {!!waiting.length && (
+            <div>
+              <p className="metric-label">Awaiting a decision</p>
+              <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember">
+                {waiting.length}
+              </p>
+            </div>
+          )}
+          <p className="ml-auto max-w-xs text-xs text-slate-ink">
+            Money pays in straight away and comes back out by request, so what is set aside
+            stays set aside until you mean it.
+          </p>
+        </div>
       )}
 
-      {open.map((p) => <Pot key={p.id} p={p} on={on}
-        onDone={() => { portfolios.reload(); onChanged?.(); }} />)}
+      {adding && (
+        <NewPortfolio types={types.data ?? []} currencies={currencies.data ?? []} on={on}
+          onDone={() => { setAdding(false); reload(); }} />
+      )}
+
+      {open.map((p) => <Pot key={p.id} p={p} on={on} onDone={reload} />)}
       {!open.length && !adding && (
         <p className="text-sm text-slate-ink">
           {clientId
             ? 'No portfolios yet. Opening one here does it on the client’s behalf, and is recorded that way.'
-            : 'No portfolios yet. Open one to set money aside for a particular purpose.'}
+            : 'No portfolios yet. Open one to set money aside for a particular purpose — it earns while it sits there.'}
         </p>
+      )}
+
+      {!clientId && !!(requests.data ?? []).length && (
+        <div className={`${card} space-y-3`}>
+          <h3 className="metric-label">Your requests</h3>
+          <ul className="divide-y divide-pebble dark:divide-white/10">
+            {requests.data!.slice(0, 8).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                <span className="font-mono tabular-nums">{money(r.amount, r.currency)}</span>
+                <span className="text-slate-ink">from {r.portfolio_name}</span>
+                <span className="font-mono text-xs text-slate-ink">{day(r.created_at)}</span>
+                <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
+                  r.status === 'approved' ? 'bg-up/15 text-up'
+                    : r.status === 'declined' ? 'bg-down/15 text-down'
+                    : 'bg-ember/15 text-ember'}`}>
+                  {r.status === 'pending' ? 'with the desk' : r.status}
+                </span>
+                {r.decision_note && (
+                  <span className="w-full text-xs text-slate-ink">{r.decision_note}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {!!closed.length && (
@@ -77,8 +155,6 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
     </div>
   );
 }
-
-type On = { client_id?: string };
 
 /**
  * Which pot the client wants on the balance strip at the top of every page. One at a time,
@@ -107,11 +183,41 @@ function FeatureToggle({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => 
   );
 }
 
+/** What has gone in, come out and been paid, once somebody asks to see it. */
+function History({ p }: { p: Portfolio }) {
+  const rows = useApi<Movement[]>(`/portfolios/${p.id}/transactions`);
+  const list = rows.data ?? [];
+
+  if (!rows.data) return <p className="mt-3 text-xs text-slate-ink">Loading…</p>;
+  if (!list.length) return <p className="mt-3 text-xs text-slate-ink">Nothing has moved yet.</p>;
+
+  return (
+    <ul className="mt-3 divide-y divide-pebble text-xs dark:divide-white/10">
+      {list.slice(0, 20).map((m) => (
+        <li key={m.id} className="flex flex-wrap items-center gap-3 py-1.5">
+          <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] uppercase ${
+            m.kind === 'interest' ? 'bg-up/15 text-up'
+              : m.kind === 'contribution' ? 'bg-bone text-slate-ink dark:bg-white/10'
+              : 'bg-ember/15 text-ember'}`}>
+            {m.kind === 'contribution' ? 'paid in' : m.kind === 'withdrawal' ? 'taken out' : 'interest'}
+          </span>
+          <span className={`font-mono tabular-nums ${Number(m.amount) < 0 ? 'text-down' : 'text-up'}`}>
+            {Number(m.amount) > 0 ? '+' : ''}{money(m.amount, p.currency)}
+          </span>
+          {m.note && <span className="text-slate-ink">{m.note}</span>}
+          <span className="ml-auto font-mono text-slate-ink">{day(m.at)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   const [action, setAction] = useState<'contribute' | 'withdraw' | null>(null);
   const [note, setNote] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
+  const [history, setHistory] = useState(false);
   const [amt, setAmt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -166,6 +272,12 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
             )}
           </span>
           <span className="text-right">
+            <span className="metric-label block">Earned</span>
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-up">
+              {Number(p.earned) > 0 ? `+${money(p.earned, p.currency)}` : `0 ${p.currency}`}
+            </span>
+          </span>
+          <span className="text-right">
             <span className="metric-label block">Balance</span>
             <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
               {money(p.balance, p.currency)}
@@ -173,6 +285,13 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           </span>
         </span>
       </div>
+
+      {/* Money already asked for, so a second request is made knowing about the first. */}
+      {Number(p.requested) > 0 && (
+        <p className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-2.5 py-1.5 text-xs text-ember">
+          {money(p.requested, p.currency)} is with the desk waiting on a decision.
+        </p>
+      )}
 
       {p.target_date && (
         <p className="mt-2 text-xs text-slate-ink">Target date {day(p.target_date)}.</p>
@@ -200,6 +319,10 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
           {on.client_id ? 'take out' : 'submit a request'}
         </button>
         <FeatureToggle p={p} on={on} onDone={onDone} />
+        <button onClick={() => setHistory((v) => !v)}
+          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          {history ? 'hide history' : 'history'}
+        </button>
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
@@ -237,6 +360,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         </form>
       )}
       {sent && <p role="status" className="mt-2 text-xs text-up">{sent}</p>}
+      {history && <History p={p} />}
       {rate && on.client_id && (
         <SetRate p={p} on={on} onDone={() => { setRate(false); onDone(); }} onError={setError} />
       )}

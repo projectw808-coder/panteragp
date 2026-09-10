@@ -1227,6 +1227,35 @@ await step('a client can open their own document, and nobody else can', async ()
   assert.equal(await status(`/kyc/${doc.id}/file`, { token: A }), 200, 'kyc:review does');
 });
 
+await step('a pot shows what it has earned, and who may read its history', async () => {
+  const pot = (await get('/portfolios', { token: T })).find((x) => x.status === 'open');
+  assert.ok(pot, 'this run has an open pot');
+
+  // Interest paid and money still asked for come back with the pot rather than needing a
+  // request each: they are facts about it, and a page that has to ask again per row makes
+  // one call per pot for two numbers.
+  assert.equal(typeof Number(pot.earned), 'number');
+  assert.ok(Number(pot.earned) >= 0, 'interest paid is never negative');
+  assert.ok(Number(pot.requested) >= 0);
+
+  const history = await get(`/portfolios/${pot.id}/transactions`, { token: T });
+  assert.ok(Array.isArray(history), 'the client can read their own pot history');
+  assert.ok(history.every((m) => ['contribution', 'withdrawal', 'interest'].includes(m.kind)),
+    'and it is only the three kinds of movement');
+
+  // Staff read it the same way they read everything else about a client.
+  assert.equal(await status(`/portfolios/${pot.id}/transactions`, { token: A }), 200);
+
+  // Another client cannot, whatever id they name.
+  const nosy = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Nosy History', email: unique('history'), password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/portfolios/${pot.id}/transactions`, { token: N }), 403);
+  assert.equal(await status(`/portfolios/${pot.id}/transactions`), 401);
+  assert.equal(await status('/portfolios/00000000-0000-4000-8000-000000000000/transactions',
+    { token: T }), 404);
+});
+
 console.log('\nSupport tickets');
 let ticket;
 
