@@ -51,6 +51,13 @@
      surface. Never a blur, never on a light surface. */
   --shadow-inset-dark: rgba(255, 255, 255, 0.1) 0 0 0 1px inset;
   --page-max-width: 1200px;
+
+  /* Scrollbars are part of the surface, not furniture the browser is entitled to paint
+     white over a dark panel. Neutral by default and only reaching the accent on hover,
+     because a permanently orange bar would be the loudest thing on a screen full of
+     numbers, and orange is spent on what needs attention. */
+  --scroll-thumb: rgba(24, 24, 27, 0.22);
+  --scroll-thumb-hover: rgba(24, 24, 27, 0.38);
 }
 
 /* Terminal mode inverts which surface these sit on, so the two money-delta colours have to
@@ -60,6 +67,15 @@
 .dark {
   --color-up: #369258;
   --color-down: #ce6060;
+  --scroll-thumb: rgba(255, 255, 255, 0.16);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.3);
+}
+
+/* The public page keeps its own light ground whichever way the app is set, so its
+   scrollbar follows the page rather than the theme. */
+.landing {
+  --scroll-thumb: rgba(25, 5, 1, 0.22);
+  --scroll-thumb-hover: rgba(25, 5, 1, 0.38);
 }
 
 /* Manual toggle: .dark on <html>, set by useDarkMode in App.tsx. Section 1.6 terminal
@@ -357,4 +373,35 @@
 @media (prefers-reduced-motion: reduce) {
   .tile::after { transition: none; }
   .bar { animation: none; }
+}
+
+/* --------------------------------------------------------------- scrollbars
+   Two syntaxes for the same thing: the standard properties, and the WebKit
+   pseudo-elements that Safari still needs. Both are set because neither covers
+   every browser this ships to on its own.
+
+   The thumb is drawn inside a transparent border so it reads as a slim bar with
+   air around it rather than a block wedged against the content. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
 }
