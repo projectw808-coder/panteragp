@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
 
@@ -9,6 +9,7 @@ type PendingDoc = {
 type Doc = {
   id: number; kind: string; status: string; note: string | null;
   uploaded_at: string; reviewed_at: string | null; reviewed_by: string | null;
+  storage_key?: string;
 };
 type Flag = {
   id: number; client_id: string; client_name: string; rule: string;
@@ -478,6 +479,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
   const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
   const [kind, setKind] = useState('id_front');
   const [file, setFile] = useState<File | null>(null);
+  const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -485,7 +487,29 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
   const rows = docs.data ?? [];
   const identity = rows.filter((d) => IDENTITY.includes(d.kind));
   const extra = rows.filter((d) => !IDENTITY.includes(d.kind));
-  const missing = REQUIRED.filter((k) => !identity.some((d) => d.kind === k && d.status !== 'rejected'));
+
+  // What verification is actually waiting on, one line per required document, so the
+  // answer to "what else do you need" is on the screen rather than in a support ticket.
+  const checklist = REQUIRED.map((k) => {
+    const sent = identity.filter((d) => d.kind === k);
+    const best = sent.find((d) => d.status === 'approved')
+      ?? sent.find((d) => d.status === 'pending')
+      ?? sent[0] ?? null;
+    return { kind: k, state: best?.status ?? 'missing' as const };
+  });
+  const done = checklist.filter((c) => c.state === 'approved').length;
+
+  function choose(f: File | null) {
+    setFile(f);
+    setError(null);
+    // Pick the type from the name where it is obvious, so the commonest upload is one
+    // drop and one button rather than a dropdown somebody has to remember to set.
+    const name = f?.name.toLowerCase() ?? '';
+    const guess = [...IDENTITY, ...ADDITIONAL].find((k) => name.includes(k.replace(/_/g, '')))
+      ?? (/passport|licence|license|\bid\b/.test(name) ? 'id_front' : null)
+      ?? (/address|utility|bill|bank/.test(name) ? 'proof_of_address' : null);
+    if (guess) setKind(guess);
+  }
 
   async function upload() {
     if (!file) return setError('Choose a file first.');
@@ -508,35 +532,35 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
 
   return (
     <div className="space-y-4">
-      {/* Verification first, and said plainly. Somebody opening this screen wants one
-          answer — am I done, and if not what is missing — and that should not be a grey
-          line under a grey heading. */}
       <div className={`${card} space-y-4`}>
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="metric-label">Identity</h2>
           <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-            missing.length === 0 ? 'bg-up/15 text-up' : 'bg-ember/15 text-ember'}`}>
-            {missing.length === 0 ? 'complete' : `${missing.length} outstanding`}
+            done === REQUIRED.length ? 'bg-up/15 text-up' : 'bg-ember/15 text-ember'}`}>
+            {done} of {REQUIRED.length} approved
           </span>
         </div>
 
-        {missing.length === 0 ? (
-          <p className="text-sm text-obsidian dark:text-vellum">
-            Everything needed for verification is on file.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-sm text-obsidian dark:text-vellum">Still needed:</p>
-            <ul className="flex flex-wrap gap-2">
-              {missing.map((k) => (
-                <li key={k}
-                  className="rounded-md border border-ember/40 bg-ember/10 px-2.5 py-1 text-xs font-medium text-ember">
-                  {pretty(k)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <ol className="space-y-2">
+          {checklist.map((c) => (
+            <li key={c.kind} className="flex flex-wrap items-center gap-3">
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-mono text-[11px] ${
+                c.state === 'approved' ? 'bg-up/15 text-up'
+                  : c.state === 'rejected' ? 'bg-down/15 text-down'
+                  : c.state === 'pending' ? 'bg-ember/15 text-ember'
+                  : 'bg-bone text-slate-ink dark:bg-white/10'}`} aria-hidden>
+                {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : '•'}
+              </span>
+              <span className="text-sm font-medium text-obsidian dark:text-vellum">{pretty(c.kind)}</span>
+              <span className="text-xs text-slate-ink">
+                {c.state === 'approved' ? 'Accepted'
+                  : c.state === 'pending' ? 'With us for review'
+                  : c.state === 'rejected' ? 'Needs sending again'
+                  : 'Not sent yet'}
+              </span>
+            </li>
+          ))}
+        </ol>
 
         <DocList rows={identity} empty="No identification uploaded yet." />
       </div>
@@ -555,9 +579,33 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
       {canUpload && (
         <div className={`${card} space-y-3`}>
           <h2 className="metric-label">Upload</h2>
+
+          {/* A drop target that is also a file picker: dragging is the fast path and the
+              click is the one that works on a phone and with a keyboard. */}
+          <label
+            onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+            onDragLeave={() => setOver(false)}
+            onDrop={(e) => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files?.[0] ?? null); }}
+            className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-6 transition-colors ${
+              over ? 'border-ember bg-ember/5' : 'border-pebble hover:border-ember/60 dark:border-white/15'}`}>
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
+              onChange={(e) => choose(e.target.files?.[0] ?? null)} />
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-ember" aria-hidden>↑</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-obsidian dark:text-vellum">
+                {file ? file.name : 'Drop a file here, or choose one'}
+              </span>
+              <span className="block text-xs text-slate-ink">
+                {file
+                  ? `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || 'unknown type'}`
+                  : 'JPEG, PNG or PDF, up to 10 MB'}
+              </span>
+            </span>
+          </label>
+
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <label className="block">
-              <span className="text-xs text-slate-ink">Document type</span>
+              <span className="metric-label">Document type</span>
               <select className={`${field} mt-1 w-full`} value={kind} onChange={(e) => setKind(e.target.value)}>
                 <optgroup label="Identity">
                   {IDENTITY.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
@@ -572,26 +620,70 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
             </button>
           </div>
 
-          {/* The browser's own file button is unstyled and says nothing useful once a file
-              is chosen, so it is hidden behind a label that reports the name back. */}
-          <label className="flex cursor-pointer flex-wrap items-center gap-3 rounded-lg border border-dashed border-pebble px-4 py-4 transition-colors hover:border-ember/60 dark:border-white/15">
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
-              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null); }} />
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-ember" aria-hidden>↑</span>
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-obsidian dark:text-vellum">
-                {file ? file.name : 'Choose a file'}
-              </span>
-              <span className="block text-xs text-slate-ink">
-                {file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'JPEG, PNG or PDF, up to 10 MB'}
-              </span>
-            </span>
-          </label>
-
           {error && <p role="alert" className={alertBox}>{error}</p>}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A document on file.
+ *
+ * The thumbnail is fetched with the bearer token and handed over as a blob: these sit
+ * behind auth, so a plain src would arrive without one and draw a broken image. Seeing
+ * what was actually sent is most of the value — "is that the right page" cannot be
+ * answered from a filename.
+ */
+function DocRow({ d }: { d: Doc }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (/\.pdf$/i.test(d.storage_key ?? '')) return;
+    let url: string | null = null;
+    let dropped = false;
+    fetch(`/api/kyc/${d.id}/file`, { headers: { authorization: `Bearer ${token.get()}` } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('no preview'))))
+      .then((b) => { if (!dropped) { url = URL.createObjectURL(b); setSrc(url); } })
+      .catch(() => setSrc(null));
+    return () => { dropped = true; if (url) URL.revokeObjectURL(url); };
+  }, [d.id, d.storage_key]);
+
+  const open = async () => {
+    const res = await fetch(`/api/kyc/${d.id}/file`, {
+      headers: { authorization: `Bearer ${token.get()}` },
+    });
+    if (!res.ok) return;
+    const url = URL.createObjectURL(await res.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 py-2.5">
+      <button type="button" onClick={open} title="Open the document"
+        className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md border border-pebble bg-bone transition-colors hover:border-ember dark:border-white/10 dark:bg-white/5">
+        {src
+          ? <img src={src} alt="" className="h-full w-full object-cover" />
+          : <span className="font-mono text-[10px] text-slate-ink" aria-hidden>PDF</span>}
+      </button>
+      <span className="min-w-0">
+        <button type="button" onClick={open}
+          className="block text-left text-sm font-medium text-obsidian hover:underline dark:text-vellum">
+          {pretty(d.kind)}
+        </button>
+        <span className={`block text-xs text-slate-ink ${mono}`}>
+          {new Date(d.uploaded_at).toLocaleDateString()}
+          {d.reviewed_at && ` · reviewed ${new Date(d.reviewed_at).toLocaleDateString()}`}
+        </span>
+      </span>
+      <span className={`ml-auto ${STATUS[d.status] ?? ''}`}>{d.status}</span>
+      {d.note && (
+        <span className="w-full text-xs text-slate-ink">
+          <span className="text-obsidian dark:text-vellum">Note from the desk:</span> {d.note}
+        </span>
+      )}
+    </li>
   );
 }
 
@@ -600,21 +692,7 @@ const DocList = ({ rows, empty }: { rows: Doc[]; empty: string }) => (
     ? <p className="text-sm text-slate-ink">{empty}</p>
     : (
       <ul className="divide-y divide-pebble dark:divide-white/10">
-        {rows.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center gap-3 py-2.5">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-bone font-mono text-xs text-slate-ink dark:bg-white/5" aria-hidden>
-              &#9636;
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-obsidian dark:text-vellum">{pretty(d.kind)}</span>
-              <span className={`block text-xs text-slate-ink ${mono}`}>
-                {new Date(d.uploaded_at).toLocaleDateString()}
-              </span>
-            </span>
-            <span className={`ml-auto ${STATUS[d.status] ?? ''}`}>{d.status}</span>
-            {d.note && <span className="w-full text-xs text-slate-ink">{d.note}</span>}
-          </li>
-        ))}
+        {rows.map((d) => <DocRow key={d.id} d={d} />)}
       </ul>
     )
 );

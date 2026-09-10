@@ -225,11 +225,14 @@ await step('only permitted document types and kinds are accepted', async () => {
   assert.equal(await upload('id_back', 'application/x-msdownload'), 415);
   assert.equal(await upload('not_a_kind', 'image/jpeg'), 400);
 });
-await step('documents are readable by compliance only', async () => {
+await step('documents are readable by compliance, and by whoever sent them', async () => {
   const doc = (await get('/kyc/pending', { token: A })).find((d) => d.client_id === client.id);
   assert.ok(doc, 'uploaded document not in the review queue');
   assert.equal(await status(`/kyc/${doc.id}/file`, { token: A }), 200);
-  assert.equal(await status(`/kyc/${doc.id}/file`, { token: T }), 403, 'the client must not read the raw file');
+  // This rule changed on purpose. Compliance-only meant a client could not see the page
+  // they had sent us, which is the commonest thing wrong with a stalled verification and
+  // the one thing they could fix themselves. Their own document is their own data.
+  assert.equal(await status(`/kyc/${doc.id}/file`, { token: T }), 200, 'their own document is theirs to open');
   assert.equal(await status(`/kyc/${doc.id}/file`), 401);
 });
 await step('approval requires every required document', async () => {
@@ -1196,6 +1199,32 @@ await step('the client list filters on verification as well as stage and owner',
 
   assert.equal(await status('/clients?kyc_status=nonsense', { token: A }), 400,
     'an unknown status is refused rather than ignored');
+});
+
+await step('a client can open their own document, and nobody else can', async () => {
+  const mine = await get(`/clients/${client.id}/kyc`, { token: T });
+  assert.ok(mine.length > 0, 'this run has already uploaded one');
+  const doc = mine[0];
+
+  // The commonest reason a verification stalls is the wrong page being sent, and the
+  // person who can fix that is the one who sent it — so they can see what they sent.
+  assert.equal(await status(`/kyc/${doc.id}/file`, { token: T }), 200);
+  assert.ok(doc.storage_key, 'the listing says enough to know whether a preview is worth trying');
+
+  // Everybody else still needs kyc:review, which is what that permission is for.
+  const nosy = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Nosy Document', email: unique('doc'), password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/kyc/${doc.id}/file`, { token: N }), 403,
+    'another client cannot read it');
+  assert.equal(await status(`/kyc/${doc.id}/file`), 401);
+
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Doc Sales', email: unique('doc-sales'), role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/kyc/${doc.id}/file`, { token: sellerToken }), 403,
+    'nor does ordinary CRM access');
+  assert.equal(await status(`/kyc/${doc.id}/file`, { token: A }), 200, 'kyc:review does');
 });
 
 console.log('\nSupport tickets');
