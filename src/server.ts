@@ -876,7 +876,7 @@ const profileBody = z.object({
 app.get('/me/profile', { preHandler: trader }, async (req: any) => {
   const { rows } = await pool.query(
     `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at,
-            commission_bps, spread_bps, auto_trader
+            commission_bps, spread_bps, auto_trader, avatar_key
        FROM clients WHERE id = $1`, [req.principal.sub]);
   // Sent resolved rather than raw: a null means "the desk default", and the client should
   // be told the number they are actually charged, not asked to know what null stands for.
@@ -1220,6 +1220,97 @@ app.get('/kyc/:id/file', { preHandler: auth('kyc:review') }, async (req: any, re
   const path = join(UPLOAD_DIR, basename(rows[0].storage_key));
   if (!path.startsWith(UPLOAD_DIR)) return reply.code(400).send({ error: 'bad key' });
   return reply.type(extname(path) === '.pdf' ? 'application/pdf' : 'image/*').send(createReadStream(path));
+});
+
+
+// --------------------------------------------------------------- profile photo
+
+/*
+ * A photo of the account holder.
+ *
+ * A picture of a person is personal data like any other, so it is served from behind the
+ * same auth as their documents rather than from a guessable public path: the stored name
+ * is generated, and reading it needs either being that client or holding CRM access.
+ *
+ * Images only, and smaller than the document limit — a headshot is not a scan of a
+ * passport, and accepting a PDF here would only ever be a mistake.
+ */
+const AVATAR_TYPES = new Map([['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp']]);
+const AVATAR_MAX = 2 * 1024 * 1024;
+
+/** Where the photo lives on disk, with the key re-checked even though we generated it. */
+function avatarPath(key: string, reply: any): string | null {
+  const path = join(UPLOAD_DIR, basename(key));
+  if (!path.startsWith(UPLOAD_DIR)) {
+    reply.code(400).send({ error: 'bad key' });
+    return null;
+  }
+  return path;
+}
+
+app.post('/me/avatar', { preHandler: trader }, async (req: any, reply) => {
+  const file = await req.file();
+  if (!file) return reply.code(400).send({ error: 'no file' });
+
+  const ext = AVATAR_TYPES.get(file.mimetype);
+  if (!ext) return reply.code(415).send({ error: 'a photo, as JPEG, PNG or WebP' });
+
+  const key = `avatar-${randomUUID()}${ext}`;
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  await pipeline(file.file, createWriteStream(join(UPLOAD_DIR, key)));
+  // The multipart limit is set for documents, so the size is enforced here as well.
+  if (file.file.truncated || file.file.bytesRead > AVATAR_MAX) {
+    await rm(join(UPLOAD_DIR, key), { force: true });
+    return reply.code(413).send({ error: 'that photo is larger than 2 MB' });
+  }
+
+  const previous = await tx(req.principal.sub, async (c) => {
+    // Locked and read before the write, so the key that comes back is the one this upload
+    // actually replaced rather than whatever happened to be there a moment earlier.
+    const { rows: [before] } = await c.query<{ avatar_key: string | null }>(
+      'SELECT avatar_key FROM clients WHERE id = $1 FOR UPDATE', [req.principal.sub]);
+    await c.query('UPDATE clients SET avatar_key = $2 WHERE id = $1', [req.principal.sub, key]);
+    const rows = [{ old_key: before?.avatar_key ?? null }];
+    await logActivity(c, {
+      client_id: req.principal.sub, kind: 'note', actor: req.principal.sub,
+      summary: 'Updated their profile photo',
+    });
+    return rows[0]?.old_key ?? null;
+  });
+
+  // The one it replaced is deleted rather than left behind: keeping every photo somebody
+  // ever uploaded of themselves is holding more than was asked for.
+  if (previous && basename(previous) !== key) {
+    await rm(join(UPLOAD_DIR, basename(previous)), { force: true });
+  }
+  return reply.code(201).send({ avatar: true });
+});
+
+app.delete('/me/avatar', { preHandler: trader }, async (req: any) => {
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query<{ avatar_key: string | null }>(
+      'UPDATE clients SET avatar_key = NULL WHERE id = $1 RETURNING avatar_key', [req.principal.sub]);
+    return rows[0];
+  });
+  return { avatar: false, removed: !!out };
+});
+
+/**
+ * The photo itself. A client may fetch their own; staff with CRM access may fetch anyone's,
+ * which is the same rule their record already follows.
+ */
+app.get('/clients/:id/avatar', { preHandler: clientScope }, async (req: any, reply) => {
+  const { rows } = await pool.query<{ avatar_key: string | null }>(
+    'SELECT avatar_key FROM clients WHERE id = $1', [req.params.id]);
+  const key = rows[0]?.avatar_key;
+  if (!key) return reply.code(404).send({ error: 'no photo' });
+  const path = avatarPath(key, reply);
+  if (!path) return;
+  if (!existsSync(path)) return reply.code(404).send({ error: 'no photo' });
+  const type = extname(path) === '.png' ? 'image/png'
+    : extname(path) === '.webp' ? 'image/webp' : 'image/jpeg';
+  // Private: it is a picture of a person, and a shared cache is not the place for it.
+  return reply.type(type).header('cache-control', 'private, max-age=60').send(createReadStream(path));
 });
 
 app.post('/kyc/:id/review', { preHandler: auth('kyc:review') }, async (req: any, reply) => {

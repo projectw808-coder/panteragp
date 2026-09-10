@@ -9,6 +9,7 @@
  * It asserts rather than prints, so a regression anywhere fails the run.
  */
 import assert from 'node:assert/strict';
+import zlib from 'node:zlib';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { WebSocket } from 'ws';
@@ -1112,6 +1113,69 @@ await step('the catalogue is the desk\'s, and its asset is fixed once anything i
   const all = await get('/admin/stakes', { token: A });
   assert.ok(all.some((s) => s.client_id === client.id && s.client_name), 'stakes carry their client');
   assert.equal(await status('/admin/stakes', { token: T }), 403);
+});
+
+await step('a profile photo is a photo, and only theirs to set', async () => {
+  // A tiny valid PNG, built here so the check needs no image library and no fixture file.
+  const png = (() => {
+    // node:zlib is imported at the top of this file for the same reason.
+    const w = 4, h = 4;
+    const raw = Buffer.alloc((w * 3 + 1) * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw[y * (w * 3 + 1) + 1 + x * 3] = 255;
+    const table = [...Array(256)].map((_, n) => {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      return c >>> 0;
+    });
+    const crc32 = (buf) => {
+      let c = 0xffffffff;
+      for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const chunk = (t, d) => {
+      const len = Buffer.alloc(4); len.writeUInt32BE(d.length);
+      const td = Buffer.concat([Buffer.from(t), d]);
+      const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+      return Buffer.concat([len, td, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    return Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+    ]);
+  })();
+
+  const send = async (token, bytes, type, name) => {
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type }), name);
+    const r = await fetch(`${B}/me/avatar`, {
+      method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form,
+    });
+    return r.status;
+  };
+
+  assert.equal(await status(`/clients/${client.id}/avatar`, { token: T }), 404, 'none until one is set');
+  assert.equal(await send(T, png, 'image/png', 'me.png'), 201);
+  assert.equal(await status(`/clients/${client.id}/avatar`, { token: T }), 200, 'and then it is there');
+
+  // A headshot, not a filing cabinet: documents are a different route with a different limit.
+  assert.equal(await send(T, Buffer.from('%PDF-1.4 not a photo'), 'application/pdf', 'x.pdf'), 415);
+
+  // It is a picture of a person, so it sits behind the same auth as their record.
+  assert.equal(await status(`/clients/${client.id}/avatar`), 401);
+  const nosy = await get('/clients', { token: A, method: 'POST', body: {
+    name: 'Nosy Photo', email: unique('photo'), password: 'devpassword' } });
+  const N = (await login(nosy.email, 'devpassword', 'client')).token;
+  assert.equal(await status(`/clients/${client.id}/avatar`, { token: N }), 403,
+    'another client cannot look at it');
+  assert.equal(await status(`/clients/${client.id}/avatar`, { token: A }), 200, 'the desk can');
+
+  // Staff have no photo of their own to set: this is a client record field.
+  assert.equal(await send(A, png, 'image/png', 'staff.png'), 403);
+
+  await get('/me/avatar', { token: T, method: 'DELETE' });
+  assert.equal(await status(`/clients/${client.id}/avatar`, { token: T }), 404, 'and it can be taken down');
 });
 
 console.log('\nSupport tickets');

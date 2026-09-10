@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
-import { api, useApi } from './api.ts';
+import { api, token, useApi } from './api.ts';
 import { BalancePanel } from './balance.tsx';
 
 /**
@@ -17,6 +17,7 @@ type Profile = {
   id: string; email: string; name: string; phone: string | null; country: string | null;
   date_of_birth: string | null; address: string | null;
   tier: string; kyc_status: string; created_at: string;
+  avatar_key: string | null;
 };
 
 /** Initials for the avatar. Two at most; a long name should not fill the circle. */
@@ -43,10 +44,7 @@ export function ProfileView() {
       <PageTitle>Profile</PageTitle>
 
       <div className={`${card} flex flex-wrap items-center gap-5`}>
-        <span aria-hidden
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-ember/15 font-display text-xl text-ember">
-          {initials(p.name)}
-        </span>
+        <Avatar p={p} onChanged={me.reload} />
         <div className="min-w-0">
           <h2 className="font-display text-[22px] leading-tight tracking-tight">{p.name}</h2>
           <p className={`text-sm text-ember ${mono}`}>{p.email}</p>
@@ -76,6 +74,87 @@ export function ProfileView() {
         Your email is the login, so it is changed by the desk rather than here — open a
         support ticket and we will do it with you. Tier and verification are ours to set.
       </p>
+    </div>
+  );
+}
+
+/**
+ * The photo, and changing it.
+ *
+ * Fetched with the bearer token and handed to the page as a blob: the file sits behind
+ * auth, so a plain src would arrive without one and draw a broken image. The URL carries
+ * the stored key, so replacing the photo changes the URL and the browser cannot serve the
+ * old one from cache.
+ */
+function Avatar({ p, onChanged }: { p: Profile; onChanged: () => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!p.avatar_key) { setSrc(null); return; }
+    let url: string | null = null;
+    let dropped = false;
+    fetch(`/api/clients/${p.id}/avatar`, { headers: { authorization: `Bearer ${token.get()}` } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('could not load the photo'))))
+      .then((b) => {
+        if (dropped) return;
+        url = URL.createObjectURL(b);
+        setSrc(url);
+      })
+      .catch(() => setSrc(null));
+    // Revoked on the way out, or every change leaks the one before it.
+    return () => { dropped = true; if (url) URL.revokeObjectURL(url); };
+  }, [p.id, p.avatar_key]);
+
+  async function upload(chosen: File) {
+    setBusy(true);
+    setError(null);
+    const form = new FormData();
+    form.append('file', chosen);
+    const res = await fetch('/api/me/avatar', {
+      method: 'POST', headers: { authorization: `Bearer ${token.get()}` }, body: form,
+    });
+    setBusy(false);
+    if (file.current) file.current.value = '';
+    if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? 'Upload failed');
+    onChanged();
+  }
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api('/me/avatar', { method: 'DELETE' });
+      onChanged();
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="shrink-0">
+      <label className="group relative block h-20 w-20 cursor-pointer" title="Change your photo">
+        <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+        {src ? (
+          <img src={src} alt="" className="h-20 w-20 rounded-full object-cover" />
+        ) : (
+          <span aria-hidden
+            className="grid h-20 w-20 place-items-center rounded-full bg-ember/15 font-display text-2xl text-ember">
+            {initials(p.name)}
+          </span>
+        )}
+        <span className="absolute inset-0 grid place-items-center rounded-full bg-graphite/60 font-mono text-[10px] tracking-wide text-vellum uppercase opacity-0 transition-opacity group-hover:opacity-100">
+          {busy ? '…' : src ? 'change' : 'add photo'}
+        </span>
+      </label>
+      {src && !busy && (
+        <button type="button" onClick={remove}
+          className="mt-1.5 block w-20 text-center font-mono text-[10px] tracking-wide text-slate-ink uppercase hover:text-down">
+          remove
+        </button>
+      )}
+      {error && <p role="alert" className="mt-1 max-w-40 text-xs text-down">{error}</p>}
     </div>
   );
 }

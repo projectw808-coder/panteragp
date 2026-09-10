@@ -32,7 +32,14 @@ const Badge = ({ status }: { status: string }) =>
 
 // ------------------------------------------------------------------ client
 
-/** The client's own tickets: raise one, read the thread, reply. */
+/**
+ * Support, as the client sees it.
+ *
+ * Whose turn it is leads, because that is the only thing somebody opening this page wants
+ * to know: open means we are working on it, pending means it is back with them. A list
+ * that shows five tickets without saying which of them is waiting on the reader is a list
+ * that gets ignored.
+ */
 export function SupportPanel() {
   const tickets = useApi<Ticket[]>('/tickets');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -42,32 +49,87 @@ export function SupportPanel() {
     return <TicketThread id={openId} staff={false} onBack={() => { setOpenId(null); tickets.reload(); }} />;
   }
 
+  const rows = tickets.data ?? [];
+  const live = rows.filter((t) => t.status === 'open' || t.status === 'pending');
+  const yours = rows.filter((t) => t.status === 'pending');
+  const done = rows.filter((t) => t.status === 'resolved' || t.status === 'closed');
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-slate-ink">Support</h3>
-        <button className={btn} onClick={() => setAdding((v) => !v)}>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Support</PageTitle>
+        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New ticket'}
         </button>
       </div>
 
+      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div>
+          <p className="metric-label">Open with us</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
+            {live.length - yours.length}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Waiting on you</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${yours.length ? 'text-ember' : ''}`}>
+            {yours.length}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Answered</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{done.length}</p>
+        </div>
+        <p className="ml-auto max-w-xs text-xs text-slate-ink">
+          Raise a ticket for anything that needs looking at. We answer in the thread, and
+          you will get a notification when we do.
+        </p>
+      </div>
+
       {adding && <NewTicket onDone={() => { setAdding(false); tickets.reload(); }} />}
 
-      {tickets.data?.map((t) => (
-        <button key={t.id} onClick={() => setOpenId(t.id)}
-          className="block w-full rounded-md border border-pebble p-3 text-left hover:border-ember dark:border-white/10 dark:hover:border-ember">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="font-medium">{t.subject}</span>
-            <Badge status={t.status} />
-            <span className="ml-auto text-xs text-slate-ink">
-              {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
-            </span>
-          </div>
-          <p className="text-xs text-slate-ink">{t.category}</p>
-        </button>
-      ))}
-      {tickets.data?.length === 0 && !adding && (
-        <p className="text-sm text-slate-ink">No tickets. Raise one if something needs looking at.</p>
+      {rows.length === 0 && !adding ? (
+        <div className={`${card} py-10 text-center`}>
+          <p className="text-sm font-medium text-obsidian dark:text-vellum">Nothing open</p>
+          <p className="mx-auto mt-2 max-w-md text-xs text-slate-ink">
+            Anything at all — a deposit that has not arrived, a document that will not
+            upload, a question about a rate. It reaches the desk straight away.
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((t) => (
+            <li key={t.id}>
+              <button onClick={() => setOpenId(t.id)}
+                className="block w-full rounded-lg border border-pebble bg-bone/50 p-4 text-left transition-colors hover:border-ember/60 dark:border-white/10 dark:bg-white/5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md font-mono text-[10px] uppercase ${
+                    t.status === 'pending'
+                      ? 'bg-ember/15 text-ember'
+                      : 'bg-bone text-slate-ink dark:bg-white/5'}`} aria-hidden>
+                    {t.category.slice(0, 3)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{t.subject}</span>
+                    <span className={`block text-xs text-slate-ink ${mono}`}>
+                      {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
+                    </span>
+                  </span>
+                  <span className="ml-auto flex items-center gap-3">
+                    {/* Whose turn it is, said in words. "Pending" is our word for it and
+                        means nothing to the person waiting. */}
+                    <span className="hidden text-xs text-slate-ink sm:inline">
+                      {t.status === 'open' ? 'With us'
+                        : t.status === 'pending' ? 'Waiting on you'
+                        : ''}
+                    </span>
+                    <Badge status={t.status} />
+                  </span>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -78,7 +140,7 @@ function NewTicket({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
 
   return (
-    <form className={`${card} space-y-2`} onSubmit={async (e) => {
+    <form className={`${card} space-y-4`} onSubmit={async (e) => {
       e.preventDefault();
       const f = new FormData(e.currentTarget);
       setBusy(true);
@@ -91,24 +153,40 @@ function NewTicket({ onDone }: { onDone: () => void }) {
         setError((err as Error).message);
       } finally { setBusy(false); }
     }}>
-      <div className="flex gap-2">
-        <input name="subject" required maxLength={200} placeholder="What is the problem?"
-          className={`${field} flex-1`} />
-        <select name="category" className={`${field} w-32`} defaultValue="other">
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+      <h3 className="metric-label">New ticket</h3>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
+        <label className="block">
+          <span className="metric-label">Subject</span>
+          <input name="subject" required maxLength={200} placeholder="What is the problem?"
+            className={`${field} mt-1 w-full`} />
+        </label>
+        <label className="block">
+          <span className="metric-label">About</span>
+          <select name="category" className={`${field} mt-1 w-full`} defaultValue="other">
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
       </div>
-      <textarea name="body" required maxLength={5000} rows={4} placeholder="Tell us what happened…"
-        className={input} />
-      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
-      <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Raise ticket'}</button>
+
+      <label className="block">
+        <span className="metric-label">What happened</span>
+        <textarea name="body" required maxLength={5000} rows={5}
+          placeholder="As much as you can — what you did, what you expected, what happened instead."
+          className={`${input} mt-1`} />
+      </label>
+
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+      <div className="flex flex-wrap items-center gap-3 border-t border-pebble pt-4 dark:border-white/10">
+        <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Raise ticket'}</button>
+        <span className="text-xs text-slate-ink">It reaches the desk straight away.</span>
+      </div>
     </form>
   );
 }
 
 // ------------------------------------------------------------------- staff
 
-/** The queue: everything waiting on us, worst first. */
 /**
  * The support desk: every ticket, and which of them are waiting on us.
  *

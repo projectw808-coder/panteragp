@@ -83,14 +83,14 @@ export function BalanceBar() {
         ? <span className="text-sm text-slate-ink">Nothing yet.</span>
         : rows.map(([code, n]) => (
           <span key={code} className="flex items-baseline gap-1.5">
-            <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">{code}</span>
-            <span className="font-mono text-sm font-medium tabular-nums">{amount(n)}</span>
+            <span className="bal-label">{code}</span>
+            <span className="bal-value">{amount(n)}</span>
           </span>
         ))}
       {!!staked(a).length && (
         <span className="flex items-baseline gap-1.5">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Staked</span>
-          <span className="font-mono text-sm font-medium tabular-nums text-up">
+          <span className="bal-label">Staked</span>
+          <span className="bal-value text-up">
             {staked(a).map(([code, n]) => `${amount(n)} ${code}`).join(' · ')}
           </span>
         </span>
@@ -98,10 +98,10 @@ export function BalanceBar() {
 
       {featured(a) && (
         <span className="flex items-baseline gap-1.5">
-          <span className="max-w-40 truncate font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">
+          <span className="max-w-40 truncate bal-label">
             {featured(a)!.name}
           </span>
-          <span className="font-mono text-sm font-medium tabular-nums">
+          <span className="bal-value">
             {amount(featured(a)!.balance)} {featured(a)!.currency}
           </span>
         </span>
@@ -112,19 +112,19 @@ export function BalanceBar() {
           in 10,000. */}
       <span className="ml-auto flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <span className="flex items-baseline gap-1.5">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Deposits</span>
-          <span className="font-mono text-sm font-medium tabular-nums">{usd(deposits)}</span>
+          <span className="bal-label">Deposits</span>
+          <span className="bal-value">{usd(deposits)}</span>
         </span>
         <span className="flex items-baseline gap-1.5">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Open P&amp;L</span>
-          <span className={`font-mono text-sm font-medium tabular-nums ${
+          <span className="bal-label">Open P&amp;L</span>
+          <span className={`bal-value ${
             open < 0 ? 'text-down' : 'text-up'}`}>
             {open >= 0 ? '+' : ''}{usd(open)}
           </span>
         </span>
         <span className="flex items-baseline gap-2">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-slate-ink uppercase">Total</span>
-          <span className="font-mono text-base font-medium tabular-nums text-ember">{usd(a.total_usd)}</span>
+          <span className="bal-label">Total</span>
+          <span className="bal-value bal-total">{usd(a.total_usd)}</span>
         </span>
       </span>
     </div>
@@ -146,7 +146,7 @@ export function BalancePanel() {
           : rows.map(([code, n]) => (
             <div key={code}>
               <dt className="metric-label">{code}</dt>
-              <dd className="font-mono text-sm font-medium tabular-nums">{amount(n)}</dd>
+              <dd className="bal-value">{amount(n)}</dd>
             </div>
           ))}
         <div className="ml-auto text-right">

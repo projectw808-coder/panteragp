@@ -405,3 +405,31 @@
   background: var(--scroll-thumb-hover);
   background-clip: padding-box;
 }
+
+/* ----------------------------------------------------------- the balance strip
+   The one band a client reads on every screen, so it is set to be read at a
+   glance rather than to look like chrome.
+
+   Labels were 10px at 0.12em: at that size the tracking pulls the letters apart
+   faster than the eye puts them back together, which is what made a short word
+   like BTC take a moment. Barely any tracking now, a size up, and off the muted
+   grey — a label nobody can read is not quieter, it is missing. */
+.bal-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-slate-ink);
+}
+.dark .bal-label { color: var(--color-mist); }
+
+.bal-value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;      /* numerals sit closer without touching */
+  font-variant-numeric: tabular-nums;
+}
+
+.bal-total { font-size: 17px; color: var(--color-ember); }
+.dark .bal-total { color: var(--color-ember); }

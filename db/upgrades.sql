@@ -246,3 +246,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS portfolios_one_featured
 
 -- Whether the client has the auto trader switched on.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS auto_trader boolean NOT NULL DEFAULT false;
+
+-- A photo of the account holder. The stored name is generated, and the file is served from
+-- behind auth rather than a guessable path — it is a picture of a person, not an asset.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_key text;
