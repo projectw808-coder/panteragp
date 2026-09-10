@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { alertBox, btn, card, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
@@ -42,6 +42,29 @@ const rank = (rdns: string) => (rdns === 'io.metamask' ? -1 : 0);
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /**
+ * The chains worth naming. Anything else shows its id rather than a guess — telling
+ * somebody they are on the wrong network when we simply do not recognise it is worse
+ * than admitting we do not know.
+ */
+const CHAINS: Record<string, { name: string; symbol: string }> = {
+  '0x1': { name: 'Ethereum', symbol: 'ETH' },
+  '0xaa36a7': { name: 'Sepolia', symbol: 'ETH' },
+  '0x89': { name: 'Polygon', symbol: 'POL' },
+  '0xa': { name: 'Optimism', symbol: 'ETH' },
+  '0xa4b1': { name: 'Arbitrum One', symbol: 'ETH' },
+  '0x2105': { name: 'Base', symbol: 'ETH' },
+  '0x38': { name: 'BNB Chain', symbol: 'BNB' },
+};
+
+/** Wei, as a hex string, to something a person reads. */
+function fromWei(hex: string): string {
+  const wei = BigInt(hex);
+  const whole = wei / 10n ** 18n;
+  const frac = (wei % 10n ** 18n).toString().padStart(18, '0').slice(0, 6).replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : String(whole);
+}
+
+/**
  * Every wallet installed in this browser, as each one announces itself.
  *
  * EIP-6963 rather than reading window.ethereum: with two extensions installed they fight
@@ -66,18 +89,20 @@ function useProviders() {
 
   // A wallet that predates EIP-6963 still only lives on window.ethereum. Include it, but
   // only when nothing announced itself, so it cannot duplicate a wallet already listed.
-  const legacy = (globalThis as { ethereum?: Provider & { isMetaMask?: boolean } }).ethereum;
-  if (!found.length && legacy) {
-    return [{
-      info: {
-        uuid: 'legacy', name: legacy.isMetaMask ? 'MetaMask' : 'Browser wallet',
-        icon: '', rdns: legacy.isMetaMask ? 'io.metamask' : 'legacy',
-      },
-      provider: legacy,
-    }];
-  }
-  return [...found].sort((a, b) => rank(a.info.rdns) - rank(b.info.rdns)
-    || a.info.name.localeCompare(b.info.name));
+  return useMemo(() => {
+    const legacy = (globalThis as { ethereum?: Provider & { isMetaMask?: boolean } }).ethereum;
+    if (!found.length && legacy) {
+      return [{
+        info: {
+          uuid: 'legacy', name: legacy.isMetaMask ? 'MetaMask' : 'Browser wallet',
+          icon: '', rdns: legacy.isMetaMask ? 'io.metamask' : 'legacy',
+        },
+        provider: legacy,
+      }];
+    }
+    return [...found].sort((a, b) => rank(a.info.rdns) - rank(b.info.rdns)
+      || a.info.name.localeCompare(b.info.name));
+  }, [found]);
 }
 
 export function WalletView() {
@@ -164,6 +189,7 @@ export function WalletView() {
                     className="ml-auto font-mono text-xs text-slate-ink hover:text-down hover:underline">
                     unlink
                   </button>
+                  <WalletBalance address={w.address} />
                 </li>
               ))}
             </ul>
@@ -232,6 +258,105 @@ export function WalletView() {
           <li>Unlink whenever you like — it removes the address and nothing else.</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What is actually in the wallet, read from the chain and shown here.
+ *
+ * MetaMask itself cannot be embedded — it is a browser extension, not a page, and its
+ * own window is not something a site is allowed to render. What a site can do is ask the
+ * provider the extension injects, which is what this does: the balance and network below
+ * come from the wallet the client already connected, live, through calls that read and
+ * never spend.
+ *
+ * The figure is deliberately kept apart from the account balances everywhere else on this
+ * platform. It is their money, in their wallet, on a public chain — it is not funding, it
+ * is not a deposit, and putting it in the same column as either would be a lie.
+ */
+function WalletBalance({ address }: { address: string }) {
+  const providers = useProviders();
+  const [state, setState] = useState<{ chain: string; balance: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const read = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // eth_accounts lists what has already been permitted and never prompts, so this can
+      // look for the right wallet without a popup appearing on page load.
+      for (const w of providers) {
+        const accounts = await w.provider.request({ method: 'eth_accounts' }).catch(() => []) as string[];
+        if (!accounts.some((a) => a.toLowerCase() === address.toLowerCase())) continue;
+        const chain = await w.provider.request({ method: 'eth_chainId' }) as string;
+        const wei = await w.provider.request({
+          method: 'eth_getBalance', params: [address, 'latest'],
+        }) as string;
+        setState({ chain, balance: fromWei(wei) });
+        return;
+      }
+      setState(null);
+      setError(providers.length
+        ? 'This address is not unlocked in the wallet right now.'
+        : 'No wallet extension in this browser to read it from.');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }, [providers, address]);
+
+  useEffect(() => { read(); }, [read]);
+
+  // The person can switch account or network in the wallet at any moment, and the figure
+  // on screen has to follow rather than quietly go stale.
+  useEffect(() => {
+    const on = () => read();
+    for (const w of providers) {
+      (w.provider as { on?: (e: string, f: () => void) => void }).on?.('accountsChanged', on);
+      (w.provider as { on?: (e: string, f: () => void) => void }).on?.('chainChanged', on);
+    }
+    return () => {
+      for (const w of providers) {
+        (w.provider as { removeListener?: (e: string, f: () => void) => void })
+          .removeListener?.('accountsChanged', on);
+        (w.provider as { removeListener?: (e: string, f: () => void) => void })
+          .removeListener?.('chainChanged', on);
+      }
+    };
+  }, [providers, read]);
+
+  if (!state) {
+    return (
+      <p className="w-full text-xs text-slate-ink">
+        {busy ? 'Reading the wallet…' : error ?? ''}
+      </p>
+    );
+  }
+
+  const chain = CHAINS[state.chain];
+  return (
+    <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-pebble bg-bone/60 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+      <span>
+        <span className="metric-label block">Network</span>
+        <span className="block font-mono text-sm">{chain?.name ?? `chain ${state.chain}`}</span>
+      </span>
+      <span>
+        <span className="metric-label block">On-chain balance</span>
+        <span className="block font-mono text-sm font-medium tabular-nums">
+          {state.balance} {chain?.symbol ?? ''}
+        </span>
+      </span>
+      <button type="button" onClick={read} disabled={busy}
+        className="ml-auto font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
+        {busy ? 'reading…' : 'refresh'}
+      </button>
+      <p className="w-full text-xs text-slate-ink">
+        Read from the chain. This is your own wallet — it is not part of your account here,
+        and nothing on this page can spend it.
+      </p>
     </div>
   );
 }
