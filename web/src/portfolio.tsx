@@ -109,12 +109,31 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   }
 
   return (
-    <div className="rounded-md border border-pebble p-3 dark:border-white/10">
+    <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="shrink-0 text-ember"><PotArt code={p.type_code} size={28} /></span>
-        <span className="font-medium">{p.name}</span>
-        <span className="text-xs text-slate-ink">{p.type_name}</span>
-        <span className="ml-auto font-mono tabular-nums">{money(p.balance, p.currency)}</span>
+        <span className="shrink-0 text-ember"><PotArt code={p.type_code} size={32} /></span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">{p.name}</span>
+          <span className="block text-xs text-slate-ink">{p.type_name}</span>
+        </span>
+
+        <span className="ml-auto flex items-center gap-6">
+          <span className="text-right">
+            <span className="metric-label block">Return</span>
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember">
+              {p.indicative_rate === null ? '—' : pct(p.indicative_rate)}
+            </span>
+            {p.rate_override !== null && (
+              <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">agreed</span>
+            )}
+          </span>
+          <span className="text-right">
+            <span className="metric-label block">Balance</span>
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
+              {money(p.balance, p.currency)}
+            </span>
+          </span>
+        </span>
       </div>
 
       {p.progress !== null && (
@@ -133,25 +152,29 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         <p className="mt-1 text-xs text-slate-ink">
           {/* Interest is genuinely credited daily at this rate, so the projection is a
               forecast of the accrual rather than a decorative illustration. */}
-          Earning {pct(p.indicative_rate ?? 0)} a year{p.rate_override !== null && ' (agreed with the desk)'}, credited daily —
-          projected {money(p.projected, p.currency)} by then if left untouched.
+          Credited daily — projected {money(p.projected, p.currency)} by {p.target_date && day(p.target_date)} if
+          left untouched.
         </p>
       )}
       {p.projected === null && p.indicative_rate !== null && (
-        <p className="mt-1 text-xs text-slate-ink">
-          Earning {pct(p.indicative_rate)} a year{p.rate_override !== null && ' (agreed with the desk)'}, credited daily.
-        </p>
+        <p className="mt-1 text-xs text-slate-ink">Credited daily on the balance in the pot.</p>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => { setAction(action === 'contribute' ? null : 'contribute'); setError(null); }}
-          className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">pay in</button>
+          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          pay in
+        </button>
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); }}
-          className="text-slate-ink hover:text-obsidian dark:hover:text-vellum">take out</button>
+          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          take out
+        </button>
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
-            className="rounded-md border border-ember px-2.5 py-1 font-medium text-ember transition-colors hover:bg-ember hover:text-graphite">
-            {rate ? 'close' : `set rate · ${p.rate_override === null ? 'standard' : pct(p.rate_override)}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
+              ? 'border border-ember text-ember hover:bg-ember/10'
+              : 'bg-ember text-graphite hover:brightness-110'}`}>
+            {rate ? 'Close' : 'Change return'}
           </button>
         )}
         {Number(p.balance) === 0 && (
