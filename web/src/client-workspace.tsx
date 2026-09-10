@@ -4,6 +4,7 @@ import { api, useApi, type Activity, type Client, type Stage, type Staff, type T
 import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm } from './wallet.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
+import { StakingPanel } from './staking.tsx';
 import { ResetPassword } from './settings.tsx';
 
 type Holdings = {
@@ -388,6 +389,7 @@ function Assets({ id, h, admin, onChanged }: {
           ))}
         </Table>
       )}
+      {admin && <StakingPanel clientId={id} onChanged={onChanged} />}
       {admin
         ? <PortfoliosPanel clientId={id} onChanged={onChanged} />
         : !!h.portfolios.length && (

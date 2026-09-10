@@ -18,6 +18,7 @@ export type Accounts = {
   cash: (Held & { id: string; currency: string; mode: string; leverage: number })[];
   wallets: (Held & { id: string; asset: string; address: string })[];
   portfolios: (Held & { id: string; name: string; currency: string })[];
+  stakes: (Held & { id: string; name: string; currency: string })[];
   total_usd: number;
   unpriced: string[];
 };
@@ -32,6 +33,7 @@ export function held(a: Accounts) {
   for (const x of a.cash) add(x.currency, x.balance);
   for (const x of a.wallets) add(x.asset, x.balance);
   for (const x of a.portfolios) add(x.currency, x.balance);
+  for (const x of a.stakes ?? []) add(x.currency, x.balance);
   return [...by].filter(([, n]) => n !== 0).sort((x, y) => x[0].localeCompare(y[0]));
 }
 

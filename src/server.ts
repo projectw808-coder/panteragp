@@ -1554,6 +1554,7 @@ const NOTIFY_KINDS = {
     { kind: 'deposit',      label: 'Deposits', note: 'When a deposit is approved or declined.' },
     { kind: 'withdrawal',   label: 'Withdrawals', note: 'When a withdrawal is approved, paid or returned.' },
     { kind: 'interest',     label: 'Interest', note: 'Interest paid into a savings portfolio.' },
+    { kind: 'stake',        label: 'Staking', note: 'Stakes opened or closed, and changes to what they earn.' },
     { kind: 'kyc',          label: 'Verification', note: 'Progress on your identity documents.' },
     { kind: 'ticket',       label: 'Support replies', note: 'When we reply on one of your tickets.' },
     { kind: 'message',      label: 'Messages from the desk', note: 'Direct messages from your account manager.' },
@@ -2116,15 +2117,28 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
     const rate = await rateToUsd(code);
     return { ...row, usd_value: rate === null ? null : round8(Number(row.balance) * rate) };
   };
+  // Staked crypto is the client's crypto, in a place it cannot be spent from today. Left
+  // out of the total, staking would read as the asset disappearing — the same mistake
+  // portfolios made before they were counted.
+  const { rows: stakes } = await pool.query<{ name: string; currency: string; balance: number }>(
+    `SELECT s.id, p.name, s.asset AS currency, (s.amount + s.rewards) AS balance
+       FROM stakes s JOIN staking_products p ON p.code = s.product_code
+      WHERE s.client_id = $1 AND s.status = 'active' ORDER BY p.name`, [req.principal.sub]);
+
   const cash = await Promise.all(accounts.map((a) => priced(a, a.currency)));
   const crypto = await Promise.all(wallets.map((w) => priced(w, w.asset)));
   const pots = await Promise.all(portfolios.map((p) => priced(p, p.currency)));
+  const staked = await Promise.all(stakes.map((x) => priced(x, x.currency)));
   const total = await totalUsd([
     ...accounts.map((a) => ({ code: a.currency, amount: a.balance })),
     ...wallets.map((w) => ({ code: w.asset, amount: w.balance })),
     ...portfolios.map((p) => ({ code: p.currency, amount: p.balance })),
+    ...stakes.map((x) => ({ code: x.currency, amount: x.balance })),
   ]);
-  return { cash, wallets: crypto, portfolios: pots, total_usd: total.usd, unpriced: total.unpriced };
+  return {
+    cash, wallets: crypto, portfolios: pots, stakes: staked,
+    total_usd: total.usd, unpriced: total.unpriced,
+  };
 });
 
 const creditBody = z.object({
@@ -2839,6 +2853,285 @@ app.get('/portfolios/:id/transactions', { preHandler: trader }, async (req: any)
       WHERE t.portfolio_id = $1 AND p.client_id = $2 ORDER BY t.at DESC LIMIT 200`,
     [req.params.id, req.principal.sub])).rows);
 
+// ---------------------------------------------------------------- staking
+
+/*
+ * Locking crypto for a term and earning a yield in the same asset.
+ *
+ * The same shape as portfolios, and for the same reasons: a catalogue the desk offers, a
+ * position the client opens against one, and a rate the desk can agree on that one
+ * position without moving the product everybody else holds. What differs is that the
+ * asset comes out of a wallet rather than a cash account, and that a locked stake cannot
+ * be taken back before its date.
+ *
+ * Nothing here touches a chain. The asset moves between two rows the platform already
+ * keeps for this client, exactly as a portfolio contribution does.
+ */
+
+type StakeRow = {
+  id: string; client_id: string; product_code: string; asset: string;
+  amount: number; rewards: number; apy_override: number | null;
+  status: string; staked_at: string; unlocks_at: string | null;
+};
+
+/** A rate as a person reads it: 7.25%, and 9% rather than 9.00%. */
+const asPct = (fraction: number) => `${Number((fraction * 100).toFixed(2))}%`;
+
+/** The rate a stake actually pays: what was agreed on it, or the product's. */
+const stakeApy = (s: { apy_override: number | null; apy: number }) =>
+  Number(s.apy_override ?? s.apy);
+
+app.get('/staking-products', { preHandler: auth() }, async () =>
+  (await pool.query(
+    `SELECT code, name, asset, description, apy, lock_days, min_amount
+       FROM staking_products WHERE active ORDER BY sort_order`)).rows);
+
+app.get('/stakes', async (req: any, reply) => {
+  const clientId = await portfolioScope(req, reply);
+  if (clientId === null) return reply.sent ? undefined : [];
+  const { rows } = await pool.query(
+    `SELECT s.*, p.name AS product_name, p.description, p.lock_days,
+            p.apy AS product_apy, coalesce(s.apy_override, p.apy) AS apy
+       FROM stakes s JOIN staking_products p ON p.code = s.product_code
+      WHERE s.client_id = $1 ORDER BY s.status, s.staked_at DESC`, [clientId]);
+
+  return Promise.all(rows.map(async (s) => {
+    const rate = await rateToUsd(s.asset);
+    return {
+      ...s,
+      // Valued for the client's own total; null rather than a guess when nothing prices it.
+      usd_value: rate === null ? null : round8((Number(s.amount) + Number(s.rewards)) * rate),
+      locked: s.unlocks_at !== null && new Date(s.unlocks_at) > new Date(),
+      // What a full year at this rate would pay on what is in there now. A projection, and
+      // the same arithmetic the accrual actually uses.
+      projected_year: round8(accrue({
+        balance: Number(s.amount), annualRate: stakeApy(s), days: 365,
+      })),
+    };
+  }));
+});
+
+const stakeBody = z.object({
+  client_id: z.string().uuid().optional(),
+  product_code: z.string().min(2).max(30),
+  amount: z.number().positive().finite(),
+});
+
+app.post('/stakes', { preHandler: auth() }, async (req: any, reply) => {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
+  const body = stakeBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { product_code, amount } = body.data;
+
+  const { rows: [product] } = await pool.query<{
+    code: string; name: string; asset: string; apy: number; lock_days: number; min_amount: number;
+  }>('SELECT code, name, asset, apy, lock_days, min_amount FROM staking_products WHERE code = $1 AND active',
+    [product_code]);
+  if (!product) return reply.code(404).send({ error: 'no such staking product' });
+  if (amount < Number(product.min_amount)) {
+    return reply.code(400).send({ error: `the minimum for this product is ${product.min_amount} ${product.asset}` });
+  }
+
+  const out = await tx(req.principal.sub, async (c) => {
+    // The asset leaves a wallet the client already holds. Never opened on the way in: you
+    // cannot stake an asset you have none of, and creating an empty wallet to fail against
+    // would leave litter behind every mistake.
+    const wallet = await lockHolding(c, who.clientId, product.asset, 'crypto', false);
+    if (!wallet) return 'no-wallet' as const;
+    if (Number(wallet.balance) < amount) return 'insufficient' as const;
+
+    await moveBalance(c, wallet, -amount);
+    const { rows: [stake] } = await c.query<StakeRow>(
+      `INSERT INTO stakes (client_id, product_code, asset, amount, unlocks_at)
+       VALUES ($1,$2,$3,$4, CASE WHEN $5::int > 0 THEN now() + ($5 || ' days')::interval ELSE NULL END)
+       RETURNING *`,
+      [who.clientId, product.code, product.asset, amount, product.lock_days]);
+
+    await logActivity(c, {
+      client_id: who.clientId, kind: 'stake', actor: req.principal.sub,
+      summary: `${who.onBehalf ? 'Desk staked' : 'Staked'} ${amount} ${product.asset} in ${product.name}`,
+      ref_table: 'stakes', ref_id: stake.id,
+      data: { product: product.code, amount, asset: product.asset, lock_days: product.lock_days },
+    });
+    // Somebody whose crypto was locked by the desk rather than by themselves should hear
+    // about it from us before they notice the balance missing.
+    if (who.onBehalf) {
+      await notifyClientOf(c, {
+        client_id: who.clientId, kind: 'stake',
+        title: `${amount} ${product.asset} staked in ${product.name}`,
+        body: product.lock_days
+          ? `Locked for ${product.lock_days} days. Moved by the desk.`
+          : 'Moved by the desk. Nothing is locked — unstake whenever you like.',
+        ref_table: 'stakes', ref_id: stake.id,
+      });
+    }
+    return stake;
+  });
+
+  if (out === 'no-wallet') return reply.code(400).send({ error: `no ${product.asset} wallet to stake from` });
+  if (out === 'insufficient') return reply.code(400).send({ error: `not enough ${product.asset}` });
+  return reply.code(201).send(out);
+});
+
+app.post('/stakes/:id/unstake', { preHandler: auth() }, async (req: any, reply) => {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [s] } = await c.query<StakeRow & { product_name: string }>(
+      `SELECT s.*, p.name AS product_name FROM stakes s
+         JOIN staking_products p ON p.code = s.product_code
+        WHERE s.id = $1 AND s.client_id = $2 FOR UPDATE OF s`, [req.params.id, who.clientId]);
+    if (!s) return 'missing' as const;
+    if (s.status !== 'active') return 'closed' as const;
+
+    // A lock is a lock. The desk is not exempt: it is the client's agreement, not ours,
+    // and an early exit is a change to it rather than a button.
+    if (s.unlocks_at && new Date(s.unlocks_at) > new Date()) return 'locked' as const;
+
+    const returned = round8(Number(s.amount) + Number(s.rewards));
+    const wallet = await lockHolding(c, who.clientId, s.asset, 'crypto', true);
+    if (!wallet) return 'no-wallet' as const;
+    await moveBalance(c, wallet, returned);
+    await c.query(
+      `UPDATE stakes SET status = 'closed', amount = 0, rewards = 0, closed_at = now() WHERE id = $1`,
+      [s.id]);
+
+    await logActivity(c, {
+      client_id: who.clientId, kind: 'stake', actor: req.principal.sub,
+      summary: `${who.onBehalf ? 'Desk unstaked' : 'Unstaked'} ${returned} ${s.asset} from ${s.product_name}`,
+      ref_table: 'stakes', ref_id: s.id,
+      data: { returned, asset: s.asset, principal: Number(s.amount), rewards: Number(s.rewards) },
+    });
+    await notifyClientOf(c, {
+      client_id: who.clientId, kind: 'stake',
+      title: `${returned} ${s.asset} returned to your wallet`,
+      body: `${s.amount} staked plus ${s.rewards} earned.`,
+      ref_table: 'stakes', ref_id: s.id,
+    });
+    return { returned, asset: s.asset, rewards: Number(s.rewards) };
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such stake' });
+  if (out === 'closed') return reply.code(409).send({ error: 'that stake is already closed' });
+  if (out === 'locked') return reply.code(409).send({ error: 'this stake is still locked' });
+  if (out === 'no-wallet') return reply.code(500).send({ error: 'could not open a wallet to return it to' });
+  return out;
+});
+
+app.patch('/stakes/:id', { preHandler: auth() }, async (req: any, reply) => {
+  const who = await portfolioSubject(req, reply);
+  if (!who) return;
+  const body = z.object({
+    client_id: z.string().uuid().optional(),
+    // The rate agreed on this one stake. Null puts it back on the product's.
+    apy_override: z.number().min(0).max(1).nullable().optional(),
+    // Ending a lock early. The desk's to give, and recorded as given.
+    unlock_now: z.literal(true).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (!who.onBehalf) return reply.code(403).send({ error: 'the terms of a stake are set by the desk' });
+  if (body.data.apy_override === undefined && !body.data.unlock_now) {
+    return reply.code(400).send({ error: 'nothing to change' });
+  }
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [s] } = await c.query<StakeRow & { product_name: string; product_apy: number }>(
+      `SELECT s.*, p.name AS product_name, p.apy AS product_apy FROM stakes s
+         JOIN staking_products p ON p.code = s.product_code
+        WHERE s.id = $1 AND s.client_id = $2 FOR UPDATE OF s`, [req.params.id, who.clientId]);
+    if (!s) return 'missing' as const;
+
+    if (body.data.apy_override !== undefined) {
+      await c.query('UPDATE stakes SET apy_override = $2 WHERE id = $1', [s.id, body.data.apy_override]);
+      const effective = body.data.apy_override ?? Number(s.product_apy);
+      await logActivity(c, {
+        client_id: who.clientId, kind: 'stake', actor: req.principal.sub,
+        summary: body.data.apy_override === null
+          ? `Desk put ${s.product_name} back on the standard rate`
+          : `Desk set ${s.product_name} to ${asPct(effective)} a year`,
+        ref_table: 'stakes', ref_id: s.id, data: { apy_override: body.data.apy_override },
+      });
+      await notifyClientOf(c, {
+        client_id: who.clientId, kind: 'stake',
+        title: `Your ${s.product_name} stake now earns ${asPct(effective)} a year`,
+        body: 'Credited daily on what is staked.',
+        ref_table: 'stakes', ref_id: s.id,
+      });
+    }
+
+    if (body.data.unlock_now) {
+      await c.query('UPDATE stakes SET unlocks_at = now() WHERE id = $1', [s.id]);
+      await logActivity(c, {
+        client_id: who.clientId, kind: 'stake', actor: req.principal.sub,
+        summary: `Desk released the lock on ${s.product_name}`,
+        ref_table: 'stakes', ref_id: s.id,
+      });
+      await notifyClientOf(c, {
+        client_id: who.clientId, kind: 'stake',
+        title: `Your ${s.product_name} stake is unlocked`,
+        body: 'You can unstake it whenever you like.',
+        ref_table: 'stakes', ref_id: s.id,
+      });
+    }
+
+    const { rows: [after] } = await c.query('SELECT * FROM stakes WHERE id = $1', [s.id]);
+    return after;
+  });
+
+  if (out === 'missing') return reply.code(404).send({ error: 'no such stake' });
+  return out;
+});
+
+/**
+ * Post staking rewards to every open stake with whole days outstanding.
+ *
+ * Same claim-by-date discipline as the portfolio accrual, for the same reason: running it
+ * twice in a day must pay once, and a week missed must pay the week.
+ */
+async function accrueStaking(): Promise<{ stakes: number; posted: number }> {
+  const { rows } = await pool.query<{
+    id: string; client_id: string; asset: string; amount: number; rate: number;
+    days: number; product_name: string;
+  }>(`
+    SELECT s.id, s.client_id, s.asset, s.amount, p.name AS product_name,
+           coalesce(s.apy_override, p.apy) AS rate,
+           (current_date - s.last_accrued_on) AS days
+      FROM stakes s JOIN staking_products p ON p.code = s.product_code
+     WHERE s.status = 'active'
+       AND s.amount > 0
+       AND coalesce(s.apy_override, p.apy) > 0
+       AND s.last_accrued_on < current_date`);
+
+  let posted = 0;
+  for (const s of rows) {
+    const reward = accrue({ balance: Number(s.amount), annualRate: Number(s.rate), days: Number(s.days) });
+    if (reward <= 0) {
+      await pool.query('UPDATE stakes SET last_accrued_on = current_date WHERE id = $1', [s.id]);
+      continue;
+    }
+    await tx('system', async (c) => {
+      // Claimed and credited together: a reward paid without moving the date would pay
+      // again on the next run.
+      const { rowCount } = await c.query(
+        `UPDATE stakes SET rewards = rewards + $2, last_accrued_on = current_date
+          WHERE id = $1 AND last_accrued_on < current_date`, [s.id, reward]);
+      if (!rowCount) return;
+      posted++;
+      await logActivity(c, {
+        client_id: s.client_id, kind: 'stake', actor: 'system',
+        summary: `Staking reward of ${reward} ${s.asset} on ${s.product_name}`,
+        ref_table: 'stakes', ref_id: s.id, data: { reward, asset: s.asset, days: Number(s.days) },
+      });
+    });
+  }
+  return { stakes: rows.length, posted };
+}
+
+/** Admin: run the staking accrual by hand, the same way interest can be run. */
+app.post('/admin/accrue-staking', { preHandler: auth('admin') }, async () => accrueStaking());
+
 // --------------------------------------------------------------- dashboard
 
 /** The whole business in one response: CRM, trading and compliance side by side. */
@@ -3025,9 +3318,15 @@ if (process.argv[1]?.endsWith('server.ts')) {
   // rollover wherever the server happens to be, and picks up anything a restart missed.
   // ponytail: an in-process timer, so several API instances would each run it — harmless
   // because the accrual is idempotent, but move it to a single scheduled job at that point.
-  const sweep = () => accrueInterest()
-    .then(({ posted }) => posted && app.log.info({ posted }, 'interest accrued'))
-    .catch((err: unknown) => app.log.error({ err }, 'interest accrual failed'));
+  // Staking rides the same sweep as portfolio interest: one schedule, so a day that pays
+  // one pays the other, and a failure in either is logged rather than silently skipping.
+  const sweep = () => Promise.allSettled([accrueInterest(), accrueStaking()])
+    .then(([interest, staking]) => {
+      if (interest.status === 'rejected') app.log.error({ err: interest.reason }, 'interest accrual failed');
+      else if (interest.value.posted) app.log.info({ posted: interest.value.posted }, 'interest accrued');
+      if (staking.status === 'rejected') app.log.error({ err: staking.reason }, 'staking accrual failed');
+      else if (staking.value.posted) app.log.info({ posted: staking.value.posted }, 'staking rewards accrued');
+    });
   setTimeout(sweep, 5_000).unref();          // once shortly after boot
   setInterval(sweep, 3600_000).unref();
 

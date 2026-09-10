@@ -129,3 +129,61 @@ DO $$ BEGIN
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- ------------------------------------------------------------- crypto staking
+
+-- Locking crypto for a term and earning a yield in the same asset. The shape follows
+-- portfolios deliberately: a catalogue of products the desk offers, positions a client
+-- opens against them, and a rate the desk can negotiate on one position without touching
+-- the product everybody else holds.
+--
+-- What makes it not a portfolio: it is denominated in a crypto asset rather than a
+-- currency, the money comes out of a wallet rather than a cash account, and it can be
+-- locked until a date instead of being available on demand.
+CREATE TABLE IF NOT EXISTS staking_products (
+  code        text PRIMARY KEY,
+  name        text NOT NULL,
+  asset       text NOT NULL REFERENCES currencies(code),
+  description text NOT NULL,
+  -- A fraction, so 0.0450 is 4.5% a year. Bounded for the same reason every other rate in
+  -- this schema is: it multiplies somebody else's money.
+  apy         numeric(6,4) NOT NULL CHECK (apy >= 0 AND apy <= 1),
+  -- 0 means flexible: unstake whenever, no lock and no penalty.
+  lock_days   smallint NOT NULL DEFAULT 0 CHECK (lock_days >= 0 AND lock_days <= 3650),
+  min_amount  numeric(38,18) NOT NULL DEFAULT 0 CHECK (min_amount >= 0),
+  active      boolean NOT NULL DEFAULT true,
+  sort_order  smallint NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS stakes (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES clients(id),
+  product_code  text NOT NULL REFERENCES staking_products(code),
+  asset         text NOT NULL REFERENCES currencies(code),
+  -- Never negative: the asset only reaches a stake by leaving a wallet the client holds.
+  amount        numeric(38,18) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  rewards       numeric(38,18) NOT NULL DEFAULT 0 CHECK (rewards >= 0),
+  -- The rate agreed on this one stake. Null means the product's, which is what every
+  -- stake means until the desk says otherwise.
+  apy_override  numeric(6,4) CHECK (apy_override IS NULL OR (apy_override >= 0 AND apy_override <= 1)),
+  status        text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
+  staked_at     timestamptz NOT NULL DEFAULT now(),
+  unlocks_at    timestamptz,      -- null on a flexible product
+  closed_at     timestamptz,
+  -- Rewards are posted per whole day elapsed since this date, which is what makes the
+  -- accrual safe to run twice, to retry, or to catch up after an outage.
+  last_accrued_on date NOT NULL DEFAULT current_date
+);
+CREATE INDEX IF NOT EXISTS stakes_by_client ON stakes (client_id, status);
+
+INSERT INTO staking_products (code, name, asset, description, apy, lock_days, min_amount, sort_order) VALUES
+  ('eth_flexible', 'Ethereum flexible', 'ETH', 'Earn on ETH with nothing locked — unstake whenever you like.', 0.0320, 0,  0.01, 1),
+  ('eth_90',       'Ethereum 90-day',   'ETH', 'Locked for 90 days for a higher rate.',                          0.0575, 90, 0.10, 2),
+  ('btc_flexible', 'Bitcoin flexible',  'BTC', 'Earn on BTC with nothing locked.',                               0.0210, 0,  0.001, 3),
+  ('btc_180',      'Bitcoin 180-day',   'BTC', 'Locked for 180 days, the highest BTC rate on the desk.',         0.0450, 180, 0.01, 4),
+  ('sol_60',       'Solana 60-day',     'SOL', 'Locked for 60 days.',                                            0.0680, 60, 1,    5),
+  ('usdc_flexible','USDC flexible',     'USDC','A stable balance that earns, with nothing locked.',              0.0505, 0,  10,   6)
+ON CONFLICT (code) DO UPDATE SET
+  name = excluded.name, asset = excluded.asset, description = excluded.description,
+  apy = excluded.apy, lock_days = excluded.lock_days, min_amount = excluded.min_amount,
+  sort_order = excluded.sort_order;

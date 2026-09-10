@@ -5,6 +5,7 @@ import { ChartsView } from './chart.tsx';
 import { NotificationBell } from './notifications.tsx';
 import { SupportPanel, SupportQueue } from './tickets.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
+import { StakingPanel } from './staking.tsx';
 import { BalanceBar } from './balance.tsx';
 import { ProfileView } from './profile.tsx';
 import { WalletView } from './wallet-connect.tsx';
@@ -175,6 +176,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/charts', 'Charts', true],
     ['#/trade', 'Trade', trading],
     ['#/portfolios', 'Portfolios', trading],
+    ['#/staking', 'Staking', trading],
     ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', true],
     ['#/support', 'Support', trading],
@@ -237,6 +239,9 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div> : <Denied />)
+          : hash === '/staking' ? (trading
+            ? <div className="mx-auto max-w-3xl space-y-4"><PageTitle>Staking</PageTitle><StakingPanel /></div>
+            : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)
           : hash === '/documents' ? (trading && me

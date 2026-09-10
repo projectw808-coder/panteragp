@@ -885,6 +885,111 @@ await step('the desk sets what a client pays to trade, and it costs them either 
   assert.equal((await get('/me/profile', { token: T })).terms.commission_bps, 0);
 });
 
+console.log('\nStaking');
+
+let stake;
+await step('staking moves crypto out of the wallet and keeps it in the total', async () => {
+  const products = await get('/staking-products', { token: T });
+  assert.ok(products.length > 0, 'the desk offers something to stake');
+  const flexible = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
+  assert.ok(flexible, 'there is a flexible ETH product');
+
+  // Fund a wallet to stake out of.
+  await get(`/clients/${client.id}/wallet-credit`, { token: A, method: 'POST', body: {
+    asset: 'ETH', amount: 5 } });
+  const ethOf = async (a) => [...a.wallets, ...(a.stakes ?? [])]
+    .filter((x) => (x.asset ?? x.currency) === 'ETH')
+    .reduce((n, x) => n + Number(x.balance), 0);
+  const before = await get('/accounts', { token: T });
+  const walletBefore = before.wallets.find((w) => w.asset === 'ETH').balance;
+
+  stake = await get('/stakes', { token: T, method: 'POST', body: {
+    product_code: flexible.code, amount: 2 } });
+  assert.equal(Number(stake.amount), 2);
+
+  const after = await get('/accounts', { token: T });
+  assert.equal(Number(after.wallets.find((w) => w.asset === 'ETH').balance),
+    Number(walletBefore) - 2, 'the wallet is 2 ETH lighter');
+  // Staked is not spent. Left out of the total it would read as the asset vanishing.
+  assert.ok(Math.abs(await ethOf(after) - await ethOf(before)) < 1e-9,
+    'what the client holds in ETH is unchanged by staking it');
+  assert.ok((after.stakes ?? []).some((s) => Number(s.balance) === 2), 'the stake is listed as a holding');
+});
+
+await step('a stake will not take more than there is, or less than the minimum', async () => {
+  const products = await get('/staking-products', { token: T });
+  const flexible = products.find((x) => x.asset === 'ETH' && x.lock_days === 0);
+  assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
+    product_code: flexible.code, amount: 9999 } }), 400, 'more than the wallet holds');
+  assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
+    product_code: flexible.code, amount: flexible.min_amount / 2 } }), 400, 'below the minimum');
+  assert.equal(await status('/stakes', { token: T, method: 'POST', body: {
+    product_code: 'no_such_product', amount: 1 } }), 404);
+});
+
+await step('a lock is a lock, and the desk is not exempt from it', async () => {
+  const products = await get('/staking-products', { token: T });
+  const locked = products.find((x) => x.asset === 'ETH' && x.lock_days > 0);
+  assert.ok(locked, 'there is a locked ETH product');
+  const held = await get('/stakes', { token: T, method: 'POST', body: {
+    product_code: locked.code, amount: 1 } });
+
+  const mine = (await get('/stakes', { token: T })).find((s) => s.id === held.id);
+  assert.ok(mine.locked, 'it starts locked');
+  assert.ok(mine.unlocks_at, 'and says until when');
+
+  assert.equal(await status(`/stakes/${held.id}/unstake`, { token: T, method: 'POST', body: {} }), 409,
+    'the client cannot take it back early');
+  // The desk cannot simply take it either: an early exit is a change to the agreement,
+  // which is a separate, recorded act rather than a way around the lock.
+  assert.equal(await status(`/stakes/${held.id}/unstake`, { token: A, method: 'POST', body: {
+    client_id: client.id } }), 409, 'nor can the desk, by unstaking it');
+
+  await get(`/stakes/${held.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, unlock_now: true } });
+  assert.ok((await get(`/clients/${client.id}/timeline`, { token: A }))
+    .some((x) => x.summary.includes('released the lock')), 'releasing a lock is recorded');
+
+  const out = await get(`/stakes/${held.id}/unstake`, { token: T, method: 'POST', body: {} });
+  assert.equal(Number(out.returned), 1, 'the principal comes back');
+  assert.equal(await status(`/stakes/${held.id}/unstake`, { token: T, method: 'POST', body: {} }), 409,
+    'and it cannot be unstaked twice');
+});
+
+await step('the rate on a stake is the desk\'s to set, and nobody else\'s', async () => {
+  const before = (await get('/stakes', { token: T })).find((s) => s.id === stake.id);
+  assert.equal(before.apy_override, null, 'a new stake is on the product rate');
+
+  assert.equal(await status(`/stakes/${stake.id}`, { token: T, method: 'PATCH', body: {
+    apy_override: 0.9 } }), 403, 'a client cannot set what they are paid');
+
+  const seller = await get('/staff', { token: A, method: 'POST', body: {
+    name: 'Stake Sales', email: unique('stake-sales'), role: 'sales', password: 'a-long-enough-password' } });
+  const sellerToken = (await login(seller.email, 'a-long-enough-password', 'staff')).token;
+  assert.equal(await status(`/stakes/${stake.id}`, { token: sellerToken, method: 'PATCH', body: {
+    client_id: client.id, apy_override: 0.09 } }), 403, 'nor does ordinary CRM access');
+
+  assert.equal(await status(`/stakes/${stake.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, apy_override: 5 } }), 400, 'a hundredfold typo is refused');
+
+  await get(`/stakes/${stake.id}`, { token: A, method: 'PATCH', body: {
+    client_id: client.id, apy_override: 0.09 } });
+  const after = (await get('/stakes', { token: T })).find((s) => s.id === stake.id);
+  assert.equal(Number(after.apy), 0.09, 'the client is shown what they will be paid');
+  assert.equal(Number(after.product_apy), Number(before.product_apy), 'the product is untouched');
+  assert.ok((await get('/notifications', { token: T })).some((n) => n.title.includes('9% a year')),
+    'and told when it changes');
+});
+
+await step('rewards accrue once a day, however often the job runs', async () => {
+  const first = await get('/admin/accrue-staking', { token: A, method: 'POST' });
+  assert.ok(typeof first.posted === 'number');
+  // Whatever the first run did, a second on the same day must find nothing left to pay.
+  const second = await get('/admin/accrue-staking', { token: A, method: 'POST' });
+  assert.equal(second.posted, 0, 'running twice in a day pays once');
+  assert.equal(await status('/admin/accrue-staking', { token: T, method: 'POST' }), 403);
+});
+
 console.log('\nSupport tickets');
 let ticket;
 
