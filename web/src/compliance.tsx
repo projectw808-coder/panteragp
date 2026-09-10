@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { alertBox, btn, card, field, input, mono, tableCard, thead } from './App.tsx';
+import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
 
 type PendingDoc = {
@@ -21,8 +21,8 @@ const pretty = (s: string) => s.replace(/_/g, ' ');
 
 const SEVERITY: Record<string, string> = {
   high: 'bg-ember text-graphite',
-  medium: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
-  low: 'bg-bone text-obsidian dark:bg-white/10 dark:text-mist',
+  medium: 'bg-ember/15 text-ember',
+  low: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 const chip = 'rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase';
 const STATUS: Record<string, string> = {
@@ -42,47 +42,151 @@ async function openDocument(id: number) {
 
 // --------------------------------------------------------------- KYC queue
 
+/**
+ * The compliance desk: what is waiting to be reviewed, and what has been flagged.
+ *
+ * Both queues are meant to be empty most of the time, so the empty states carry their
+ * weight — a screen that says only "nothing" gives no way to tell a quiet morning from a
+ * broken feed. They name what would appear here and where it comes from.
+ *
+ * The oldest item leads the summary rather than the count. Ten documents that arrived this
+ * morning is a normal Tuesday; one that has been sitting for three days is the thing worth
+ * knowing, and a count alone cannot tell you which you are looking at.
+ */
+
+/** Longest wait in the queue, as something a person reads. */
+function waited(iso: string): string {
+  const hours = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 export function ComplianceView({ role }: { role?: string }) {
   const [tab, setTab] = useState<'kyc' | 'flags'>('kyc');
   const queue = useApi<PendingDoc[]>('/kyc/pending');
   const flags = useApi<Flag[]>('/flags?status=open');
   const review = role === 'compliance' || role === 'admin';
 
+  const docs = queue.data ?? [];
+  const open = flags.data ?? [];
+  const high = open.filter((f) => f.severity === 'high').length;
+  // The queue comes back newest first, so the last row is the one that has waited longest.
+  const oldest = docs.length ? docs[docs.length - 1] : null;
+
+  const tabs = [
+    { id: 'kyc' as const, label: 'KYC queue', count: docs.length },
+    { id: 'flags' as const, label: 'Open flags', count: open.length },
+  ];
+
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex gap-1 text-xs">
-        {(['kyc', 'flags'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}
-            className={`rounded-md px-3 py-1 ${tab === t
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Compliance</PageTitle>
+        {!review && (
+          <span className="rounded-full bg-bone px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-slate-ink uppercase dark:bg-white/10">
+            read only
+          </span>
+        )}
+      </div>
+
+      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div>
+          <p className="metric-label">Waiting for review</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${docs.length ? 'text-ember' : ''}`}>
+            {docs.length}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Longest wait</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
+            {oldest ? waited(oldest.uploaded_at) : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Open flags</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{open.length}</p>
+        </div>
+        <div>
+          <p className="metric-label">High severity</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${high ? 'text-ember' : ''}`}>
+            {high}
+          </p>
+        </div>
+        <p className="ml-auto max-w-xs text-xs text-slate-ink">
+          Documents arrive when a client uploads identification. Flags are raised by the
+          rules in system configuration, never by hand.
+        </p>
+      </div>
+
+      <div role="tablist" aria-label="Compliance queues" className="flex flex-wrap gap-1 text-xs">
+        {tabs.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 rounded-md px-3 py-1.5 transition-colors ${tab === t.id
               ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-            {t === 'kyc' ? `KYC queue (${queue.data?.length ?? 0})` : `Open flags (${flags.data?.length ?? 0})`}
+              : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
+            {t.label}
+            <span className={`rounded-full px-1.5 font-mono tabular-nums ${tab === t.id
+              ? 'bg-graphite/15' : 'bg-black/10 dark:bg-white/10'}`}>
+              {t.count}
+            </span>
           </button>
         ))}
       </div>
 
       {tab === 'kyc' ? (
-        <div className={`${card} space-y-3`}>
-          {queue.data?.length === 0 && <p className="text-sm text-slate-ink">Nothing waiting for review.</p>}
-          {queue.data?.map((d) => (
-            <div key={d.id} className="flex flex-wrap items-center gap-3 border-b border-pebble pb-3 last:border-0 dark:border-white/10">
-              <div className="min-w-48">
-                <a className="text-sm font-medium hover:underline" href={`#/clients/${d.client_id}`}>{d.client_name}</a>
-                <p className="text-xs text-slate-ink">{pretty(d.kind)} · {when(d.uploaded_at)}</p>
+        docs.length === 0 ? (
+          <Empty
+            title="Nothing waiting for review"
+            body="Identification uploaded by a client lands here. Approving the required documents verifies them; rejecting one sends them back to it." />
+        ) : (
+          <div className={`${card} divide-y divide-pebble dark:divide-white/10`}>
+            {docs.map((d) => (
+              <div key={d.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-bone font-mono text-xs text-slate-ink dark:bg-white/5" aria-hidden>
+                  &#9636;
+                </span>
+                <div className="min-w-48">
+                  <a className="text-sm font-medium text-ember hover:underline" href={`#/clients/${d.client_id}`}>
+                    {d.client_name}
+                  </a>
+                  <p className="text-xs text-obsidian dark:text-vellum">{pretty(d.kind)}</p>
+                  <p className={`text-xs text-slate-ink ${mono}`}>
+                    {when(d.uploaded_at)} · waiting {waited(d.uploaded_at)}
+                    {d.country && ` · ${d.country}`}
+                  </p>
+                </div>
+                <button onClick={() => openDocument(d.id)}
+                  className="rounded-md border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                  View document
+                </button>
+                {review
+                  ? <Decide id={d.id} onDone={() => { queue.reload(); flags.reload(); }} />
+                  : <span className="ml-auto text-xs text-slate-ink">Reviewing needs kyc:review.</span>}
               </div>
-              <button onClick={() => openDocument(d.id)} className="text-xs text-slate-ink underline hover:text-obsidian dark:hover:text-vellum">
-                view document
-              </button>
-              {review && <Decide id={d.id} onDone={() => { queue.reload(); flags.reload(); }} />}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       ) : (
-        <FlagList rows={flags.data ?? []} review={review} onDone={flags.reload} showClient />
+        open.length === 0 ? (
+          <Empty
+            title="No open flags"
+            body="A flag is raised automatically when a client trips one of the risk rules — an unusual volume, a large withdrawal. Clearing one closes it; escalating leaves it open and on the record." />
+        ) : (
+          <FlagList rows={open} review={review} onDone={flags.reload} showClient />
+        )
       )}
     </div>
   );
 }
+
+/** An empty queue that says what would be in it, rather than only that it is empty. */
+const Empty = ({ title, body }: { title: string; body: string }) => (
+  <div className={`${card} py-10 text-center`}>
+    <p className="text-sm font-medium text-obsidian dark:text-vellum">{title}</p>
+    <p className="mx-auto mt-2 max-w-md text-xs text-slate-ink">{body}</p>
+  </div>
+);
 
 function Decide({ id, onDone }: { id: number; onDone: () => void }) {
   const [note, setNote] = useState('');
@@ -101,9 +205,9 @@ function Decide({ id, onDone }: { id: number; onDone: () => void }) {
       {/* Approving is the primary action here, so it takes the ember fill; rejecting is
           the secondary one and takes the neutral. Neither is red or green. */}
       <button disabled={busy} onClick={() => send('approved')}
-        className="rounded-md bg-ember px-3 py-1 font-mono text-xs font-medium text-graphite disabled:opacity-50">approve</button>
+        className="rounded-md bg-ember px-3 py-1 text-xs font-medium text-graphite transition-colors hover:brightness-110 disabled:opacity-50">Approve</button>
       <button disabled={busy} onClick={() => send('rejected')}
-        className="rounded-md border border-pebble bg-bone px-3 py-1 font-mono text-xs font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-vellum">reject</button>
+        className="rounded-md border border-pebble px-3 py-1 text-xs font-medium text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum">Reject</button>
     </div>
   );
 }
@@ -119,21 +223,31 @@ export function FlagList({ rows, review, onDone, showClient = false }: {
   };
   if (!rows.length) return <div className={`${card} text-sm text-slate-ink`}>No open flags.</div>;
   return (
-    <div className={`${card} space-y-3`}>
+    <div className={`${card} divide-y divide-pebble dark:divide-white/10`}>
       {rows.map((f) => (
-        <div key={f.id} className="flex flex-wrap items-center gap-3 border-b border-pebble pb-3 last:border-0 dark:border-white/10">
-          <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${SEVERITY[f.severity]}`}>{f.severity}</span>
-          <div>
+        <div key={f.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+          <span className={`${chip} shrink-0 ${SEVERITY[f.severity]}`}>{f.severity}</span>
+          <div className="min-w-0">
             <p className="text-sm font-medium">{pretty(f.rule)}</p>
-            <p className="text-xs text-slate-ink">
-              {showClient && <a className="hover:underline" href={`#/clients/${f.client_id}`}>{f.client_name} · </a>}
-              {when(f.raised_at)} · {Object.entries(f.details).map(([k, v]) => `${pretty(k)} ${v}`).join(', ')}
+            {showClient && (
+              <a className="text-xs text-ember hover:underline" href={`#/clients/${f.client_id}`}>{f.client_name}</a>
+            )}
+            <p className={`text-xs text-slate-ink ${mono}`}>
+              {when(f.raised_at)}
+              {Object.entries(f.details).length > 0
+                && ` · ${Object.entries(f.details).map(([k, v]) => `${pretty(k)} ${v}`).join(', ')}`}
             </p>
           </div>
           {review && (
             <div className="ml-auto flex gap-2 text-xs">
-              <button onClick={() => decide(f.id, 'cleared')} className="text-slate-ink hover:text-slate-ink">clear</button>
-              <button onClick={() => decide(f.id, 'escalated')} className="text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">escalate</button>
+              <button onClick={() => decide(f.id, 'cleared')}
+                className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                Clear
+              </button>
+              <button onClick={() => decide(f.id, 'escalated')}
+                className="rounded-md bg-ember px-2.5 py-1 font-medium text-graphite transition-colors hover:brightness-110">
+                Escalate
+              </button>
             </div>
           )}
         </div>

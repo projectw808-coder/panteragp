@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
+import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 type Ticket = {
@@ -109,56 +109,145 @@ function NewTicket({ onDone }: { onDone: () => void }) {
 // ------------------------------------------------------------------- staff
 
 /** The queue: everything waiting on us, worst first. */
+/**
+ * The support desk: every ticket, and which of them are waiting on us.
+ *
+ * "Live" leads because it is the working view — open and pending together, everything not
+ * yet finished. The distinction that matters inside it is whose turn it is: open means the
+ * client is waiting on us, pending means we are waiting on them, and a queue that does not
+ * separate those two is a queue where the second kind quietly buries the first.
+ */
+
+/** How long since something last moved, as a person reads it. */
+function since(iso: string): string {
+  const hours = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+const FILTERS = [
+  { id: 'live', label: 'Live', note: 'Open and pending' },
+  { id: 'open', label: 'Open', note: 'Waiting on us' },
+  { id: 'pending', label: 'Pending', note: 'Waiting on the client' },
+  { id: 'resolved', label: 'Resolved', note: 'Answered' },
+  { id: 'closed', label: 'Closed', note: 'Done' },
+] as const;
+
 export function SupportQueue({ role }: { role?: string }) {
-  const [status, setStatus] = useState('live');
+  const [status, setStatus] = useState<string>('live');
   const tickets = useApi<Ticket[]>(`/tickets?status=${status}`);
+  const live = useApi<Ticket[]>('/tickets?status=live');
   const [openId, setOpenId] = useState<string | null>(null);
   const canReply = role !== 'compliance';
 
   if (openId) {
     return (
       <div className="mx-auto max-w-3xl">
-        <TicketThread id={openId} staff canReply={canReply} onBack={() => { setOpenId(null); tickets.reload(); }} />
+        <TicketThread id={openId} staff canReply={canReply}
+          onBack={() => { setOpenId(null); tickets.reload(); live.reload(); }} />
       </div>
     );
   }
 
+  const rows = tickets.data ?? [];
+  const all = live.data ?? [];
+  const ours = all.filter((t) => t.status === 'open');
+  const urgent = all.filter((t) => t.priority === 'high' || t.priority === 'urgent').length;
+  // Oldest first, so the longest-waiting ticket is the one the figure describes.
+  const waiting = [...ours].sort((a, b) => +new Date(a.updated_at) - +new Date(b.updated_at))[0];
+
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex gap-1 text-xs">
-        {['live', 'open', 'pending', 'resolved', 'closed'].map((s) => (
-          <button key={s} onClick={() => setStatus(s)} aria-pressed={status === s}
-            className={`rounded-md px-3 py-1 ${status === s
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-            {s}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Support</PageTitle>
+        {!canReply && (
+          <span className="rounded-full bg-bone px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-slate-ink uppercase dark:bg-white/10">
+            read only
+          </span>
+        )}
       </div>
 
-      <div className={`${tableCard} overflow-x-auto`}>
-        <table className="w-full text-sm">
-          <thead className={thead}>
-            <tr>{['Subject', 'Client', 'Category', 'Priority', 'Status', 'Assigned', 'Updated'].map((h) =>
-              <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {tickets.data?.map((t) => (
-              <tr key={t.id} onClick={() => setOpenId(t.id)}
-                className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
-                <td className="px-3 py-2 font-medium">{t.subject}</td>
-                <td className="px-3 py-2">{t.client_name}</td>
-                <td className="px-3 py-2 text-slate-ink">{t.category}</td>
-                <td className={`px-3 py-2 ${PRIORITY[t.priority] ?? ''}`}>{t.priority}</td>
-                <td className="px-3 py-2"><Badge status={t.status} /></td>
-                <td className="px-3 py-2 text-slate-ink">{t.assignee_name ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-ink">{when(t.updated_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {tickets.data?.length === 0 && <p className="p-4 text-sm text-slate-ink">Nothing here.</p>}
+      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div>
+          <p className="metric-label">Waiting on us</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${ours.length ? 'text-ember' : ''}`}>
+            {ours.length}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Longest wait</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
+            {waiting ? since(waiting.updated_at) : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="metric-label">Live tickets</p>
+          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{all.length}</p>
+        </div>
+        <div>
+          <p className="metric-label">High priority</p>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${urgent ? 'text-ember' : ''}`}>
+            {urgent}
+          </p>
+        </div>
+        <p className="ml-auto max-w-xs text-xs text-slate-ink">
+          A ticket is open while the client is waiting on us and pending once we have
+          replied. Their answer reopens it.
+        </p>
       </div>
+
+      <div role="tablist" aria-label="Ticket status" className="flex flex-wrap gap-1 text-xs">
+        {FILTERS.map((f) => (
+          <button key={f.id} role="tab" aria-selected={status === f.id} onClick={() => setStatus(f.id)}
+            title={f.note}
+            className={`rounded-md px-3 py-1.5 transition-colors ${status === f.id
+              ? 'bg-ember font-medium text-graphite'
+              : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
+            {f.label}
+          </button>
+        ))}
+        <span className="ml-2 self-center text-slate-ink">
+          {FILTERS.find((f) => f.id === status)?.note}
+        </span>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className={`${card} py-10 text-center`}>
+          <p className="text-sm font-medium text-obsidian dark:text-vellum">
+            {status === 'live' ? 'No live tickets' : `Nothing ${status}`}
+          </p>
+          <p className="mx-auto mt-2 max-w-md text-xs text-slate-ink">
+            Clients raise tickets from their own support page. Whatever they send lands
+            here, and replying moves it to pending until they answer.
+          </p>
+        </div>
+      ) : (
+        <div className={`${tableCard} overflow-x-auto`}>
+          <table className="w-full text-sm">
+            <thead className={thead}>
+              <tr>{['Subject', 'Client', 'Category', 'Priority', 'Status', 'Assigned', 'Last moved'].map((h) =>
+                <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((t) => (
+                <tr key={t.id} onClick={() => setOpenId(t.id)}
+                  className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
+                  <td className="px-3 py-2 font-medium">{t.subject}</td>
+                  <td className="px-3 py-2 text-ember">{t.client_name}</td>
+                  <td className="px-3 py-2 text-slate-ink">{t.category}</td>
+                  <td className={`px-3 py-2 ${PRIORITY[t.priority] ?? ''}`}>{t.priority}</td>
+                  <td className="px-3 py-2"><Badge status={t.status} /></td>
+                  <td className="px-3 py-2 text-slate-ink">{t.assignee_name ?? 'Unassigned'}</td>
+                  <td className={`px-3 py-2 text-xs text-slate-ink ${mono}`}>
+                    {since(t.updated_at)} ago
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
