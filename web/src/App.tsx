@@ -182,11 +182,12 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
     ['#/wallet', 'Connect wallet', trading],
-    // Settings, then support, then documents: the account tail, after the things a client
-    // came here to do. Staff keep their own Settings at the very end of their own rail.
-    ['#/settings', 'Settings', trading],
-    ['#/support', 'Support', trading],
+    // Documents, support, settings: the account tail, after the things a client came here
+    // to do. Staff keep their own Settings at the very end of their own rail.
     ['#/documents', 'Documents', trading],
+    ['#/support', 'Support', trading],
+    ['#/settings', 'Settings', trading],
+    ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', crm],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
@@ -215,9 +216,12 @@ function Shell({ dark, setDark, onLogout }: {
         <nav className="relative z-10 flex flex-col py-2 text-sm">
           {nav.filter(([, , show]) => show).map(([href, label], i) => (
             <a key={href} href={href} className={`nav-item ${here(href) ? navOn : navOff}`}>
-              {/* A slot number, as on a console. Ordinal, not a keyboard shortcut. */}
-              <span className="nav-num">{String(i + 1).padStart(2, '0')}</span>
-              <span className="nav-label">{label}</span>
+              {/* A slot number, as on a console. Ordinal, not a keyboard shortcut — except
+                  for the account, which is a person rather than a destination. */}
+              <span className="nav-num">
+                {href === '#/profile' ? <Person /> : String(i + 1).padStart(2, '0')}
+              </span>
+              <span className={`nav-label ${href === '#/profile' ? 'font-medium' : ''}`}>{label}</span>
               <span className="nav-tick" aria-hidden />
             </a>
           ))}
@@ -225,16 +229,7 @@ function Shell({ dark, setDark, onLogout }: {
 
         <div className="relative z-10 mt-auto border-t border-white/10 px-5 py-4 text-mist">
           <div className="flex items-center gap-3">
-            {trading ? (
-              <a href="#/profile" aria-label="Your profile" title="Your profile"
-                className={`flex items-center gap-2 transition-colors ${
-                  hash === '/profile' ? 'text-ember' : 'hover:text-vellum'}`}>
-                <Person />
-                <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
-              </a>
-            ) : (
-              <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
-            )}
+            <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
             <NotificationBell />
             <button onClick={onLogout}
               className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
