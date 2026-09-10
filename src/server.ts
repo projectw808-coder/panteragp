@@ -1657,10 +1657,10 @@ const NOTIFY_KINDS = {
     { kind: 'flag.raised',        label: 'Compliance flags', note: 'A rule fired on a client.' },
     { kind: 'kyc.uploaded',       label: 'Documents to review', note: 'A client uploaded identification.' },
     { kind: 'ticket.activity',    label: 'Support tickets', note: 'A client opened a ticket or replied on one.' },
-    { kind: 'withdrawal.request', label: 'Withdrawal requests', note: 'A client asked to take money out.' },
+    { kind: 'withdrawal.request', label: 'Cash withdrawals', note: 'A client asked to take money or crypto off their account.' },
     { kind: 'task.assigned',      label: 'Tasks assigned to you', note: 'Somebody put a task on your list.' },
     { kind: 'client.registered',  label: 'New sign-ups', note: 'Somebody opened an account themselves.' },
-    { kind: 'portfolio.request',  label: 'Withdrawal requests', note: 'A client asked to take money out of a portfolio.' },
+    { kind: 'portfolio.request',  label: 'Portfolio withdrawals', note: 'A client asked to take money out of a savings pot, which needs a decision.' },
   ],
 } as const;
 
