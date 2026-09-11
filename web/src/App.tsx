@@ -103,7 +103,9 @@ function Login({ mode, onDone, onMode, onBack }: {
 
   return (
     // Sign-in is the one full-bleed dark surface in the app: it is chrome, not data.
-    <div className="grid h-full place-items-center bg-obsidian">
+    // auth-screen pins ember-as-text to the dark value, because this ground stays dark
+    // whichever way the theme is set — the same reason the rail and the public hero do it.
+    <div className="auth-screen grid h-full place-items-center bg-obsidian">
       <form onSubmit={submit} className="w-80 space-y-3 rounded-xl bg-onyx p-6 [box-shadow:var(--shadow-inset-dark)]">
         <button type="button" onClick={onBack} className="font-mono text-xs text-mist hover:text-vellum">← back</button>
         <div>

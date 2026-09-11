@@ -143,10 +143,12 @@
    wash, and an accent bar that grows down the active item. The tables and forms
    it sits beside stay plain — legibility is their job, not atmosphere. */
 
-/* The rail keeps its dark ground whichever way the app is set, so ember-as-text has to be
-   pinned to the rail rather than to the theme: in light mode the token is the darkened one,
-   which on the rail measured 3.12:1. Same reasoning as the public page's hero. */
-.nav-rail { --color-ember-ink: #ff7817; }
+/* The rail and the sign-in screen keep their dark ground whichever way the app is set, so
+   ember-as-text has to be pinned to the surface rather than the theme: in light mode the
+   token is the darkened one, which measured 3.12:1 on the rail and 2.94:1 on the sign-in
+   card — where one of the three things written in it is the error message. Same reasoning
+   as the public page's hero. */
+.nav-rail, .auth-screen { --color-ember-ink: #ff7817; }
 
 .nav-rail::before {
   /* Scanlines. 3px pitch and 4% white: visible as texture, gone as soon as you
