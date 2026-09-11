@@ -236,8 +236,10 @@
   /* The public page sets its own grounds and ignores the app's theme, so ember-as-text has
      to follow the section rather than the toggle: a visitor with terminal mode on would
      otherwise get the bright ember on the light canvas, which is the 2.22:1 this token
-     exists to avoid. Pinned here and lifted again inside the dark hero. */
-  --color-ember-ink: #ad4800;
+     exists to avoid. Pinned here and lifted again inside the dark hero — the same two
+     values the theme uses, restated because a custom property cannot ask for the one it
+     would have inherited two steps up. */
+  --color-ember-ink: #9a4000;
   --canvas: #f7f6ff;          /* lavender-white, not pure white */
   --ink: #190501;             /* warm near-black, not the neutral obsidian */
   --ink-soft: #4a3a35;
