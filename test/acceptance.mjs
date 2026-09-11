@@ -1622,6 +1622,21 @@ await step('a token for a deleted subject is unauthorised, not a crash', async (
     assert.equal(await status(path, { token: forged }), 401, `${path} leaked a 500`);
   }
 });
+await step('an unknown API path answers as the API, not as the front end', async () => {
+  // One origin serves both, and the /api prefix is stripped before routing, so the only
+  // thing separating "no such endpoint" from "a deep link into the app" is the 404
+  // handler knowing which one was asked for. It stopped knowing once, and a mistyped
+  // path came back as the whole index.html with a 200 — which surfaces to the caller as
+  // a JSON parse error and sends you looking in entirely the wrong place.
+  const r = await fetch(`${B}/api/there-is-no-such-endpoint`);
+  assert.equal(r.status, 404, 'an unknown API path should 404');
+  assert.match(r.headers.get('content-type') ?? '', /json/, 'and answer as JSON, not HTML');
+
+  // The same path without the prefix is a deep link, and still lands on the app.
+  const app = await fetch(`${B}/there-is-no-such-endpoint`);
+  assert.equal(app.status, 200);
+  assert.match(app.headers.get('content-type') ?? '', /html/);
+});
 await step('the trader sees no CRM, the client record is its own', async () => {
   assert.equal(await status('/clients', { token: T }), 403);
   assert.equal(await status('/audit', { token: T }), 403);

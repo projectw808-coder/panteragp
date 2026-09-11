@@ -77,10 +77,16 @@ export function logActivity(c: pg.PoolClient, a: {
  * front end needs no build-time switch. rewriteUrl runs before routing, which an onRequest
  * hook does not, and it also catches the WebSocket upgrade at /api/feed.
  */
+type ApiMarked = { cameInUnderApi?: boolean };
+
 const app = Fastify({
   logger: true,
   rewriteUrl: (req) => {
     const url = req.url ?? '/';
+    // Record that this arrived under /api before the prefix is stripped. Nothing
+    // downstream can tell afterwards, and the 404 handler has to know which of the two
+    // things this origin serves the caller was asking for.
+    if (url === '/api' || url.startsWith('/api/')) (req as ApiMarked).cameInUnderApi = true;
     return url === '/api' ? '/' : url.startsWith('/api/') ? url.slice(4) : url;
   },
 });
@@ -3880,10 +3886,16 @@ app.get('/health', async (_req, reply) => {
 const WEB_DIST = join(import.meta.dirname, '..', 'web', 'dist');
 if (existsSync(join(WEB_DIST, 'index.html'))) {
   await app.register(fastifyStatic, { root: WEB_DIST });
-  // Hash routing means every deep link is still '/', but a stray path should land on the
-  // app rather than a 404 page. API 404s are unaffected: they were routed before this.
+  // Hash routing means every deep link is still '/', so a stray path should land on the
+  // app rather than a 404 page — but only if the caller wanted the app. An unknown API
+  // path has to answer as the API.
+  //
+  // This used to test req.url for an /api prefix, which by this point rewriteUrl has
+  // already stripped, so the test never matched and GET /api/anything returned the whole
+  // front end with a 200. The caller then got 'Unexpected token <' out of .json() and a
+  // mistyped path looked like a parse bug rather than a missing route.
   app.setNotFoundHandler((req, reply) => (
-    req.method === 'GET' && !req.url.startsWith('/api')
+    req.method === 'GET' && !(req.raw as ApiMarked).cameInUnderApi
       ? reply.sendFile('index.html')
       : reply.code(404).send({ error: 'not found' })
   ));
