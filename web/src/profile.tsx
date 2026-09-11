@@ -26,7 +26,7 @@ const initials = (name: string) =>
 
 const VERIFICATION: Record<string, string> = {
   approved: 'bg-up/15 text-up',
-  pending: 'bg-ember/15 text-ember',
+  pending: 'bg-ember/15 text-ember-ink',
   rejected: 'bg-down/15 text-down',
   expired: 'bg-down/15 text-down',
   none: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
@@ -47,7 +47,7 @@ export function ProfileView() {
         <Avatar p={p} onChanged={me.reload} />
         <div className="min-w-0">
           <h2 className="font-display text-[22px] leading-tight tracking-tight">{p.name}</h2>
-          <p className={`text-sm text-ember ${mono}`}>{p.email}</p>
+          <p className={`text-sm text-ember-ink ${mono}`}>{p.email}</p>
           <p className={`text-xs text-slate-ink ${mono}`}>
             Client since {new Date(p.created_at).toLocaleDateString()}
           </p>
@@ -140,7 +140,7 @@ function Avatar({ p, onChanged }: { p: Profile; onChanged: () => void }) {
           <img src={src} alt="" className="h-20 w-20 rounded-full object-cover" />
         ) : (
           <span aria-hidden
-            className="grid h-20 w-20 place-items-center rounded-full bg-ember/15 font-display text-2xl text-ember">
+            className="grid h-20 w-20 place-items-center rounded-full bg-ember/15 font-display text-2xl text-ember-ink">
             {initials(p.name)}
           </span>
         )}

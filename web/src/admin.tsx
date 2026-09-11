@@ -168,11 +168,11 @@ export function AdminView() {
             <li key={a.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
               <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] tracking-wide uppercase ${
                 a.kind === 'flag'
-                  ? 'bg-ember/15 text-ember'
+                  ? 'bg-ember/15 text-ember-ink'
                   : 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist'}`}>
                 {pretty(a.kind)}
               </span>
-              <a className="font-medium text-ember hover:underline" href={`#/clients/${a.client_id}`}>
+              <a className="font-medium text-ember-ink hover:underline" href={`#/clients/${a.client_id}`}>
                 {a.client_name}
               </a>
               <span className="min-w-0 text-slate-ink dark:text-mist">{a.summary}</span>
@@ -415,7 +415,7 @@ function Tile({ label, value, sub, href, alert }: {
       <span className="tile-corner" aria-hidden />
       <p className="metric-label">{label}</p>
       {/* Mono numerals at tile size: the stat should read as a terminal readout. */}
-      <p className={`mt-2 font-mono text-[34px] font-medium leading-none tabular-nums ${alert ? 'text-ember' : ''}`}>{value}</p>
+      <p className={`mt-2 font-mono text-[34px] font-medium leading-none tabular-nums ${alert ? 'text-ember-ink' : ''}`}>{value}</p>
       {sub && <p className="mt-2 text-xs text-slate-ink">{sub}</p>}
     </a>
   );

@@ -108,7 +108,7 @@ export function NotificationBell() {
     <div className="relative">
       <button ref={bell} onClick={toggle} aria-expanded={open}
         aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
-        className="relative text-slate-ink transition-colors hover:text-vellum">
+        className="relative text-mist transition-colors hover:text-vellum">
         {/* A drawn bell rather than a glyph: ☍ renders as a box or a hyphen in half the
             fonts this ships to, which reads as a broken button. */}
         <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor"
@@ -140,15 +140,15 @@ export function NotificationBell() {
                 className={`border-b border-pebble px-3 py-2 last:border-0 dark:border-white/10 ${
                   n.read_at ? '' : 'bg-bone dark:bg-white/5'}`}>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-mist">{ICON[n.kind] ?? '•'}</span>
+                  <span className="text-slate-ink dark:text-mist">{ICON[n.kind] ?? '•'}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{n.title}</p>
                     {n.body && <p className="text-xs text-slate-ink">{n.body}</p>}
-                    <p className="text-xs text-mist">{when(n.created_at)}</p>
+                    <p className="text-xs text-slate-ink dark:text-mist">{when(n.created_at)}</p>
                   </div>
                   {!n.read_at && (
                     <button onClick={() => markRead(n.id)}
-                      className="text-xs text-mist hover:text-obsidian dark:hover:text-vellum">
+                      className="text-xs text-slate-ink hover:text-obsidian dark:text-mist dark:hover:text-vellum">
                       read
                     </button>
                   )}

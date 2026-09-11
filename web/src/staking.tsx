@@ -102,7 +102,7 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
   return (
     <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember-ink">
           {s.asset}
         </span>
         <span className="min-w-0">
@@ -116,7 +116,7 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
         <span className="ml-auto flex items-center gap-6">
           <span className="text-right">
             <span className="metric-label block">Rate</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember">
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
               {pct(s.apy)}
             </span>
             {s.apy_override !== null && (
@@ -156,7 +156,7 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
             )}
             <button onClick={() => { setRate((v) => !v); setError(null); }}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
-                ? 'border border-ember text-ember hover:bg-ember/10'
+                ? 'border border-ember text-ember-ink hover:bg-ember/10'
                 : 'bg-ember text-graphite hover:brightness-110'}`}>
               {rate ? 'Close' : 'Change rate'}
             </button>
@@ -265,7 +265,7 @@ function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDon
                 <input type="radio" name="product" value={p.code} checked={active} className="sr-only"
                   onChange={() => setCode(p.code)} />
                 <span className="flex items-center justify-between">
-                  <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember">
+                  <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember-ink">
                     {p.asset}
                   </span>
                   <span className="font-mono text-[10px] tracking-wide text-slate-ink uppercase">
@@ -273,7 +273,7 @@ function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDon
                   </span>
                 </span>
                 <span>
-                  <span className="block font-mono text-2xl leading-none font-medium tabular-nums text-ember">
+                  <span className="block font-mono text-2xl leading-none font-medium tabular-nums text-ember-ink">
                     {pct(p.apy)}
                   </span>
                   <span className="metric-label mt-0.5 block">a year</span>

@@ -71,13 +71,13 @@ export function ClientList() {
         </div>
         <div>
           <p className="metric-label">Awaiting verification</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${waiting ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${waiting ? 'text-ember-ink' : ''}`}>
             {waiting}
           </p>
         </div>
         <div>
           <p className="metric-label">Unassigned</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${unowned ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${unowned ? 'text-ember-ink' : ''}`}>
             {unowned}
           </p>
         </div>
@@ -223,5 +223,5 @@ const BADGE: Record<string, string> = {
   expired: 'bg-ember text-graphite',
 };
 const Badge = ({ value }: { value: string }) => (
-  <span className={`rounded-full px-2 py-0.5 text-xs ${BADGE[value] ?? 'bg-bone text-slate-ink'}`}>{value}</span>
+  <span className={`rounded-full px-2 py-0.5 text-xs ${BADGE[value] ?? 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>{value}</span>
 );

@@ -14,6 +14,7 @@ import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
 import { AutoTraderRunner, AutoTraderView } from './auto-trader.tsx';
+import { OverviewView } from './overview.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
@@ -84,13 +85,13 @@ function Login({ mode, onDone, onMode, onBack }: {
           method: 'POST', body: JSON.stringify({ name, email, password }),
         });
         token.set(r.token);
-        location.hash = '/charts';
+        location.hash = '/overview';
       } else {
         const r = await api<{ token: string }>('/auth/login', {
           method: 'POST', body: JSON.stringify({ email, password, as }),
         });
         token.set(r.token);
-        location.hash = as === 'client' ? '/charts' : '/clients';
+        location.hash = as === 'client' ? '/overview' : '/clients';
       }
       onDone();
     } catch (err) {
@@ -107,7 +108,7 @@ function Login({ mode, onDone, onMode, onBack }: {
         <button type="button" onClick={onBack} className="font-mono text-xs text-mist hover:text-vellum">← back</button>
         <div>
           <span className="font-display text-2xl text-vellum">Pantera GP</span>
-          <span className="text-ember"> ///</span>
+          <span className="text-ember-ink"> ///</span>
         </div>
 
         {/* Staff and traders sign in to different places; an account you create is a trader. */}
@@ -136,7 +137,7 @@ function Login({ mode, onDone, onMode, onBack }: {
         {registering && <p className="font-mono text-[11px] text-mist">At least 8 characters.</p>}
 
         {/* Errors read as needs-attention, which is orange here rather than red. */}
-        {error && <p role="alert" className="font-mono text-xs text-ember">{error}</p>}
+        {error && <p role="alert" className="font-mono text-xs text-ember-ink">{error}</p>}
         <button className={`w-full ${btn}`} disabled={busy}>
           {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
         </button>
@@ -144,7 +145,7 @@ function Login({ mode, onDone, onMode, onBack }: {
         <p className="pt-1 text-center font-mono text-xs text-mist">
           {registering ? 'Already have an account? ' : 'No account yet? '}
           <button type="button" onClick={() => { setError(null); onMode(registering ? 'signin' : 'register'); }}
-            className="text-ember hover:underline">
+            className="text-ember-ink hover:underline">
             {registering ? 'Sign in' : 'Create account'}
           </button>
         </p>
@@ -177,6 +178,7 @@ function Shell({ dark, setDark, onLogout }: {
     // at the bottom with the rest of the account.
     ['#/support', 'Support', crm],
     ['#/reports', 'Reports', crm],
+    ['#/overview', 'Overview', trading],
     ['#/charts', 'Charts', true],
     ['#/trade', 'Auto trader', trading],
     ['#/portfolios', 'Portfolios', trading],
@@ -204,7 +206,7 @@ function Shell({ dark, setDark, onLogout }: {
         <div className="relative z-10 px-5 py-5">
           <div className="flex items-baseline gap-1">
             <span className="font-display text-lg text-vellum">Pantera GP</span>
-            <span className="text-ember">///</span>
+            <span className="text-ember-ink">///</span>
           </div>
           <p className="mt-1 flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase">
             <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
@@ -232,7 +234,7 @@ function Shell({ dark, setDark, onLogout }: {
             <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
             <NotificationBell />
             <button onClick={onLogout}
-              className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember">
+              className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember-ink">
               Sign out
             </button>
           </div>
@@ -263,10 +265,11 @@ function Shell({ dark, setDark, onLogout }: {
                 <DocumentsPanel clientId={me.sub} canUpload />
               </div>
             : <Denied />)
+          : hash === '/overview' ? (trading ? <OverviewView /> : <Denied />)
           : hash === '/trade' ? (trading ? <AutoTraderView /> : <Denied />)
           // Settings is for everyone, so it has to be matched before the trader fallback.
           : hash === '/settings' ? <SettingsView me={me} dark={dark} setDark={setDark} />
-          : !crm ? <ChartsView dark={dark} />
+          : !crm ? <OverviewView />
           : clientId ? <ClientWorkspace id={clientId} me={me} />
           : hash === '/tasks' ? <TaskBoard />
           : <ClientList />}

@@ -180,7 +180,7 @@ export function WalletView() {
               {linked.map((w) => (
                 <li key={w.id} className="flex flex-wrap items-center gap-3 py-2">
                   <span className="h-2 w-2 shrink-0 rounded-full bg-up" aria-hidden />
-                  <span className={`text-sm ${mono} text-ember`} title={w.address}>{short(w.address)}</span>
+                  <span className={`text-sm ${mono} text-ember-ink`} title={w.address}>{short(w.address)}</span>
                   <span className="text-xs text-slate-ink">{w.label ?? 'wallet'}</span>
                   <span className={`text-xs text-slate-ink ${mono}`}>
                     linked {new Date(w.linked_at).toLocaleDateString()}
@@ -222,7 +222,7 @@ export function WalletView() {
                       {active.current === w.info.uuid && busy ? busy : (i === 0 ? 'recommended' : 'installed')}
                     </span>
                   </span>
-                  <span className="font-mono text-xs text-ember" aria-hidden>→</span>
+                  <span className="font-mono text-xs text-ember-ink" aria-hidden>→</span>
                 </button>
               </li>
             ))}
@@ -375,7 +375,7 @@ function Mark({ w }: { w: Announced }) {
   }
   return (
     <span aria-hidden
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-sm text-ember">
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-sm text-ember-ink">
       {w.info.name[0] ?? '?'}
     </span>
   );

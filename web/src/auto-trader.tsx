@@ -139,7 +139,7 @@ export function AutoTraderView() {
       <div className={`${card} space-y-3`}>
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="metric-label">Signal log</h2>
-          <span className="rounded-full bg-ember/15 px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-ember uppercase">
+          <span className="rounded-full bg-ember/15 px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-ember-ink uppercase">
             preview
           </span>
           <p className="ml-auto max-w-md text-xs text-slate-ink">

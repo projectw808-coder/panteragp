@@ -14,6 +14,15 @@
 @theme {
   /* Ember orange is the ONLY chromatic colour in the system. */
   --color-ember: #ff7817;
+  /* Ember as TEXT, which is a different job from ember as a fill.
+     #ff7817 on a bone card measures 2.22:1 — the system already knew, which is why a
+     filled chip is black-on-ember rather than ember-on-bone. But ember had crept into text
+     all over the app: client names, links, figures. On the terminal ground it is 6.7:1 and
+     fine; on the light one it was not. Same hue, darkened until it clears 4.5:1 against
+     bone — the darkest light surface, and the one it was worst on (4.76:1; 5.67 on white).
+     Swapped back to the brand value in terminal mode. Fills keep --color-ember, so
+     bg-ember, border-ember and the buttons are untouched and the brand does not move. */
+  --color-ember-ink: #9a4000;
   --color-vellum: #ffffff;
   --color-obsidian: #18181b;
   --color-onyx: #09090b;
@@ -31,8 +40,12 @@
      buttons, badges or anything else. If you are reaching for these outside a number that
      moved, reach for the neutral scale or ember instead.
      Measured against the lightest and darkest surfaces each one lands on. */
-  --color-up: #137638;      /* 4.61:1 on bone, its worst light surface */
-  --color-down: #b91c1c;    /* 5.23:1 on bone */
+  /* Solved against the tinted chip rather than the card. A gain is usually written inside
+     a bg-up/15 pill whose tint is mixed from this same colour, so the ground moves with the
+     text: on bone the old pair measured 3.94:1 and 4.25:1 there. Barely-perceptible shifts
+     — both are within a couple of steps of where they were — that buy the chip 4.6:1. */
+  --color-up: #116a32;      /* 5.65:1 on bone, 4.55:1 inside an up/15 pill */
+  --color-down: #af1b1b;    /* 5.88:1 on bone, 4.58:1 inside a down/15 pill */
 
   --font-display: 'Playfair Display', ui-serif, Georgia, serif;
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -65,8 +78,23 @@
    loss you cannot read is the worst one to get wrong. Same hues, lifted until they clear
    4.5:1. Nothing else in the palette changes — the neutrals already pass both ways. */
 .dark {
-  --color-up: #369258;
-  --color-down: #ce6060;
+  --color-ember-ink: #ff7817;
+  /* Tuned against the chip, not the page: these were set to clear 4.5:1 on obsidian, but
+     a P&L figure is rarely on the page itself — it is on a raised card, or inside an up/15
+     chip whose tint is mixed from this very colour, so lifting the text lifts its own
+     ground with it. Solved against that: same hues, held at saturation so a gain stays
+     green and a loss stays red rather than drifting pastel, and light enough to clear on
+     the raised card (6.1:1) and inside the self-tinted chip (4.8:1), which is the worst
+     case either of them meets. */
+  --color-up: #2cba60;
+  --color-down: #ef7d7d;
+  /* Secondary text has to move with the surface for the same reason the money colours do.
+     slate-ink was tuned to 4.5:1 against a bone card and nobody checked the other side: on
+     the terminal ground it measures 3.5:1, under the 4.5:1 the system asks for, and it is
+     the colour most of the explaining on this platform is written in. Lifted until it
+     clears on the page, on the card, and on the raised squares that sit above the card —
+     avatar tiles and icon chips, at #2f2f31 the lightest ground it lands on. */
+  --color-slate-ink: #96969f;
   --scroll-thumb: rgba(255, 255, 255, 0.16);
   --scroll-thumb-hover: rgba(255, 255, 255, 0.3);
 }
@@ -115,6 +143,11 @@
    wash, and an accent bar that grows down the active item. The tables and forms
    it sits beside stay plain — legibility is their job, not atmosphere. */
 
+/* The rail keeps its dark ground whichever way the app is set, so ember-as-text has to be
+   pinned to the rail rather than to the theme: in light mode the token is the darkened one,
+   which on the rail measured 3.12:1. Same reasoning as the public page's hero. */
+.nav-rail { --color-ember-ink: #ff7817; }
+
 .nav-rail::before {
   /* Scanlines. 3px pitch and 4% white: visible as texture, gone as soon as you
      try to read through it. Behind everything, and never catches a click. */
@@ -157,7 +190,10 @@
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--color-mist) 55%, transparent);
+  /* 75%, not 55%: these are the slot numbers, 10px mono, and at 55% they measured
+     3.02:1 on the rail's ground. They read as decoration but they are how the rail is
+     ordered and how the order gets talked about, so they are text. */
+  color: color-mix(in srgb, var(--color-mist) 80%, transparent);
   transition: color 0.2s;
 }
 .nav-item:hover .nav-num, .nav-item.is-active .nav-num { color: var(--color-ember); }
@@ -197,6 +233,11 @@
    doc says never 0px. The reference wins here because it is what was asked for;
    the product UI is untouched. */
 .landing {
+  /* The public page sets its own grounds and ignores the app's theme, so ember-as-text has
+     to follow the section rather than the toggle: a visitor with terminal mode on would
+     otherwise get the bright ember on the light canvas, which is the 2.22:1 this token
+     exists to avoid. Pinned here and lifted again inside the dark hero. */
+  --color-ember-ink: #ad4800;
   --canvas: #f7f6ff;          /* lavender-white, not pure white */
   --ink: #190501;             /* warm near-black, not the neutral obsidian */
   --ink-soft: #4a3a35;
@@ -204,7 +245,7 @@
   background: var(--canvas);
   color: var(--ink);
 }
-.landing .stage { background: var(--stage); }
+.landing .stage { background: var(--stage); --color-ember-ink: #ff7817; }
 .landing .soft { color: var(--ink-soft); }
 
 /* Display type: sans, medium weight. The reference sets -0.045em, which at these sizes
@@ -225,11 +266,14 @@
   font-weight: 500;
   transition: background-color 0.2s, color 0.2s;
 }
-.landing .btn-line:hover { background: var(--color-ember); color: #fff; }
+/* Black on ember, not white: white on ember measures 2.64:1 and this is the page's main
+   call to action. The reference draws it white; the product UI has always put black on an
+   ember fill for exactly this reason, and at 7.95:1 it also looks like the same brand. */
+.landing .btn-line:hover { background: var(--color-ember); color: var(--color-graphite); }
 .landing .btn-fill {
   border: 1px solid var(--color-ember);
   background: var(--color-ember);
-  color: #fff;
+  color: var(--color-graphite);
   padding: 10px 20px;
   font-weight: 500;
   transition: filter 0.2s;
@@ -431,5 +475,36 @@
   font-variant-numeric: tabular-nums;
 }
 
-.bal-total { font-size: 17px; color: var(--color-ember); }
-.dark .bal-total { color: var(--color-ember); }
+/* Ember as text, so the ink token — the fill token here measured 2.22:1 on the strip's
+   bone ground. One rule now: the token already swaps itself by theme. */
+.bal-total { font-size: 17px; color: var(--color-ember-ink); }
+
+/* ------------------------------------------------ categorical chart colours
+   The design system says ember is the only chromatic colour, and that holds for
+   everything a person acts on. A breakdown chart is the one place it cannot: four
+   slices in four tints of orange is a chart nobody can read.
+
+   So these exist for segments of a whole and for nothing else — never a button, a
+   badge, a status or a number. They are picked to separate by lightness as well as
+   hue, because roughly one man in twelve cannot use the hue difference between the
+   amber and the teal, and a legend that only works in full colour vision is a legend
+   that does not work.
+
+   Measured against the darkest and lightest surfaces each one lands on. */
+:root {
+  /* Light mode. Chart segments are non-text, so the bar is 3:1 under WCAG 1.4.11 — these
+     clear 4.5:1 on bone and on white, which leaves room for the thin slice of a donut.
+     The first pass used the dark-mode values here and they measured 1.9 to 2.8 against a
+     bone card: fine on the terminal, invisible on the light one. */
+  --color-cat-1: #b34f0d;   /* ember, darkened, so the largest slice still reads as the accent */
+  --color-cat-2: #1a6370;   /* teal */
+  --color-cat-3: #5745b8;   /* violet */
+  --color-cat-4: #7d5a0e;   /* amber */
+}
+
+.dark {
+  --color-cat-1: #ff7817;
+  --color-cat-2: #3fa7b8;
+  --color-cat-3: #9b8cf0;
+  --color-cat-4: #d8a33c;
+}

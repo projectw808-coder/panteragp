@@ -55,7 +55,7 @@ export function PortfolioRequests() {
       <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
         <div>
           <p className="metric-label">Waiting on a decision</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${queue.length ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${queue.length ? 'text-ember-ink' : ''}`}>
             {queue.length}
           </p>
         </div>
@@ -109,7 +109,7 @@ export function PortfolioRequests() {
               {list.map((r) => (
                 <tr key={r.id} className="border-t border-pebble dark:border-white/10">
                   <td className="px-4 py-2">
-                    <a className="font-medium text-ember hover:underline" href={`#/clients/${r.client_id}`}>
+                    <a className="font-medium text-ember-ink hover:underline" href={`#/clients/${r.client_id}`}>
                       {r.client_name}
                     </a>
                   </td>
@@ -148,7 +148,7 @@ function Row({ r, onDecide }: {
     <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
-          <a className="text-sm font-medium text-ember hover:underline" href={`#/clients/${r.client_id}`}>
+          <a className="text-sm font-medium text-ember-ink hover:underline" href={`#/clients/${r.client_id}`}>
             {r.client_name}
           </a>
           <p className="text-xs text-obsidian dark:text-vellum">{r.portfolio_name}</p>
@@ -158,7 +158,7 @@ function Row({ r, onDecide }: {
         </div>
         <span className="ml-auto text-right">
           <span className="metric-label block">Asked for</span>
-          <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember">
+          <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
             {money(r.amount, r.currency)}
           </span>
           {/* What is in the pot, so the decision does not need a second screen. */}

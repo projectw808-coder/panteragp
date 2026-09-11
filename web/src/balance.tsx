@@ -151,7 +151,7 @@ export function BalancePanel() {
           ))}
         <div className="ml-auto text-right">
           <dt className="metric-label">Total</dt>
-          <dd className="font-mono text-xl font-medium tabular-nums text-ember">{usd(a.total_usd)}</dd>
+          <dd className="font-mono text-xl font-medium tabular-nums text-ember-ink">{usd(a.total_usd)}</dd>
         </div>
       </dl>
       {!!a.unpriced.length && (

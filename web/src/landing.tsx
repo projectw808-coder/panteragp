@@ -97,7 +97,7 @@ function Stat({ value, suffix = '', label }: { value: number; suffix?: string; l
   const [n, ref] = useCountUp(value);
   return (
     <div ref={ref} className="px-6 py-8">
-      <div className="display text-[40px] text-ember tabular-nums sm:text-[52px]">
+      <div className="display text-[40px] text-ember-ink tabular-nums sm:text-[52px]">
         {n.toLocaleString()}{suffix}
       </div>
       <div className="soft mt-2 font-mono text-[11px] tracking-[0.16em] uppercase">{label}</div>
@@ -106,8 +106,9 @@ function Stat({ value, suffix = '', label }: { value: number; suffix?: string; l
 }
 
 /** Small uppercase mono label above a section — the reference's eyebrow. */
-const Eyebrow = ({ children, onDark = false }: { children: React.ReactNode; onDark?: boolean }) => (
-  <span className={`font-mono text-[11px] tracking-[0.18em] uppercase ${onDark ? 'text-ember' : 'text-ember'}`}>
+// No onDark any more: ember-as-text is a token that the dark hero redefines for itself.
+const Eyebrow = ({ children }: { children: React.ReactNode }) => (
+  <span className="font-mono text-[11px] tracking-[0.18em] text-ember-ink uppercase">
     {children}
   </span>
 );
@@ -122,7 +123,7 @@ function Marquee({ items, reverse = false, onDark = false }: {
 }) {
   const row = items.map((t) => (
     <span key={t} className={`flex items-center gap-8 px-8 font-mono text-xs tracking-[0.14em] ${onDark ? 'text-mist' : 'soft'}`}>
-      {t}<span className="text-ember">/</span>
+      {t}<span className="text-ember-ink">/</span>
     </span>
   ));
   return (
@@ -176,7 +177,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         <nav className="anim-fade sticky top-0 z-30 flex items-center gap-4 border-b border-white/10 bg-[color:var(--stage)]/85 px-8 py-4 backdrop-blur">
           <button onClick={() => go('top')} className="flex items-center gap-2">
             <span className="display text-lg text-vellum">Pantera GP</span>
-            <span className="font-mono text-xs text-ember">///</span>
+            <span className="font-mono text-xs text-ember-ink">///</span>
           </button>
           <div className="ml-8 hidden items-center gap-7 lg:flex">
             {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
@@ -196,14 +197,14 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         <div className="relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
-            <Eyebrow onDark>Automated execution // client system</Eyebrow>
+            <Eyebrow>Automated execution // client system</Eyebrow>
           </div>
           {/* Sans, medium weight, −0.045em: the reference's headline is one tight mass. */}
           <h1 className="display mt-7 text-[42px] text-vellum sm:text-[56px] lg:text-[68px]">
             <span className="anim-rise block" style={{ animationDelay: '200ms' }}>You set the levels.</span>
             <span className="anim-rise block" style={{ animationDelay: '330ms' }}>The engine waits.</span>
           </h1>
-          <p className="anim-rise mt-7 max-w-xl text-base leading-relaxed text-ember/90"
+          <p className="anim-rise mt-7 max-w-xl text-base leading-relaxed text-ember-ink/90"
             style={{ animationDelay: '470ms' }}>
             Rest an order at a price and close the tab. A settlement engine prices every
             instrument continuously and fires your limits, stops and trailing exits the moment
@@ -279,11 +280,11 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           ].map(([n, title, body], i) => (
             <Reveal key={n} delay={i * 90}>
               <div className="row-rule grid gap-5 py-10 transition-colors duration-300 hover:bg-black/[0.03] md:grid-cols-[80px_1fr] md:gap-12">
-                <span className="font-mono text-sm text-ember">{n}</span>
+                <span className="font-mono text-sm text-ember-ink">{n}</span>
                 <div>
                   <h3 className="display flex items-center gap-3 text-[26px] sm:text-[32px]">
                     {title}
-                    <span className="row-arrow font-mono text-lg text-ember" aria-hidden>→</span>
+                    <span className="row-arrow font-mono text-lg text-ember-ink" aria-hidden>→</span>
                   </h3>
                   <p className="soft mt-4 max-w-2xl text-base leading-relaxed">{body}</p>
                 </div>
@@ -300,7 +301,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section id="engine" className="stage scroll-mt-20 border-t border-white/10">
         <div className="mx-auto max-w-[1100px] px-8 py-24">
           <Reveal>
-            <Eyebrow onDark>The engine</Eyebrow>
+            <Eyebrow>The engine</Eyebrow>
             <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
               lines={['Your orders keep working', 'after you close the tab.']} />
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-mist">
@@ -320,7 +321,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               <Reveal key={title} delay={i * 80}>
                 <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
                   <div className="flex items-baseline gap-3">
-                    <span className="font-mono text-xs text-ember">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="font-mono text-xs text-ember-ink">{String(i + 1).padStart(2, '0')}</span>
                     <h3 className="display text-[22px] text-vellum">{title}</h3>
                   </div>
                   <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
@@ -343,7 +344,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
           <Reveal delay={160}>
             <p className="mt-8 max-w-3xl font-mono text-xs leading-relaxed text-mist">
-              <span className="text-ember">NOTE //</span> this automates the orders you place. It
+              <span className="text-ember-ink">NOTE //</span> this automates the orders you place. It
               is not a strategy engine and does not trade on your behalf — nothing here opens a
               position you did not ask for.
             </p>
@@ -391,7 +392,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           ].map(([title, body], i) => (
             <Reveal key={title} delay={i * 90}>
               <div className="border-t border-ember pt-6">
-                <span className="font-mono text-xs text-ember">STEP {String(i + 1).padStart(2, '0')}</span>
+                <span className="font-mono text-xs text-ember-ink">STEP {String(i + 1).padStart(2, '0')}</span>
                 <h3 className="display mt-3 text-[24px]">{title}</h3>
                 <p className="soft mt-3 text-base leading-relaxed">{body}</p>
               </div>
@@ -404,7 +405,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section id="security" className="stage scroll-mt-20">
         <div className="mx-auto max-w-[1100px] px-8 py-24">
           <Reveal>
-            <Eyebrow onDark>Security &amp; audit</Eyebrow>
+            <Eyebrow>Security &amp; audit</Eyebrow>
             <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
               lines={['The database keeps', 'the receipts.']} />
           </Reveal>
@@ -434,7 +435,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         <Reveal>
           <div className="mx-auto max-w-[860px] px-8 py-28 text-center">
-            <Eyebrow onDark>Paper by default</Eyebrow>
+            <Eyebrow>Paper by default</Eyebrow>
             <h2 className="display mt-6 text-[34px] text-vellum sm:text-[44px]">
               Open an account and place your first order
             </h2>
@@ -457,7 +458,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <div>
               <div className="flex items-center gap-2">
                 <span className="display text-lg text-vellum">Pantera GP</span>
-                <span className="font-mono text-xs text-ember">///</span>
+                <span className="font-mono text-xs text-ember-ink">///</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
                 A trading desk and a client system, built as one thing.
@@ -472,7 +473,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                 <ul className="mt-4 space-y-2">
                   {(links as [string, string][]).map(([label, id]) => (
                     <li key={id}>
-                      <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember">
+                      <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">
                         {label}
                       </button>
                     </li>
@@ -483,8 +484,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <div>
               <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">Account</h4>
               <ul className="mt-4 space-y-2">
-                <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember">Open an account</button></li>
-                <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember">Sign in</button></li>
+                <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember-ink">Open an account</button></li>
+                <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember-ink">Sign in</button></li>
               </ul>
             </div>
           </div>
@@ -492,7 +493,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           {/* The one place this is stated. Trading here is on a paper book — no real funds
               move and none can be deposited — and a site that takes account registrations
               has to say so somewhere. It is small and at the foot, but it is not removed. */}
-          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/70">
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
             <span>Paper trading account. No real funds are held, moved or deposited.</span>
             <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
           </div>

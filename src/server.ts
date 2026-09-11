@@ -1017,6 +1017,130 @@ app.get('/clients/:id/wallets', { preHandler: clientScope }, async (req: any) =>
     'SELECT id, address, label, linked_at FROM linked_wallets WHERE client_id = $1 ORDER BY linked_at',
     [req.params.id])).rows);
 
+
+/**
+ * What this client has earned, day by day.
+ *
+ * Every point is summed from something that actually happened and was recorded at the
+ * time: realised P&L on a fill, interest credited into a pot, a staking reward, and money
+ * the client moved in or out. Nothing is modelled and nothing is back-filled — a
+ * performance line on a trading platform is read as a statement of fact, so it is built
+ * only from rows that exist.
+ *
+ * What it is deliberately not is an equity curve. Equity on a past day depends on what the
+ * open positions were worth on that day, and this platform keeps no price history per
+ * client, so drawing one would mean inventing the part nobody recorded. Earnings are the
+ * honest series: it answers "has this made me anything", which is the question the chart is
+ * there for.
+ */
+app.get('/me/performance', { preHandler: trader }, async (req: any) => {
+  const q = z.object({
+    days: z.coerce.number().int().min(1).max(3650).default(30),
+  }).parse(req.query);
+
+  const { rows } = await pool.query<{
+    day: string; realized: number; interest: number; rewards: number; moved_in: number; moved_out: number;
+  }>(`
+    SELECT to_char(d, 'YYYY-MM-DD') AS day,
+           -- Realised P&L is written onto the fill's own timeline entry when it happens.
+           (SELECT coalesce(sum((a.data->>'realized')::numeric), 0) FROM activity_log a
+             WHERE a.client_id = $1 AND a.kind = 'order.filled'
+               AND a.at >= d AND a.at < d + interval '1 day')                       AS realized,
+           (SELECT coalesce(sum(t.amount), 0) FROM portfolio_transactions t
+             WHERE t.client_id = $1 AND t.kind = 'interest'
+               AND t.at >= d AND t.at < d + interval '1 day')                       AS interest,
+           (SELECT coalesce(sum((a.data->>'reward')::numeric), 0) FROM activity_log a
+             WHERE a.client_id = $1 AND a.kind = 'stake' AND a.actor = 'system'
+               AND a.at >= d AND a.at < d + interval '1 day')                       AS rewards,
+           (SELECT coalesce(sum(c.amount), 0) FROM cash_transactions c
+             WHERE c.client_id = $1 AND c.amount > 0 AND c.status IN ('approved','settled')
+               AND c.created_at >= d AND c.created_at < d + interval '1 day')       AS moved_in,
+           (SELECT coalesce(-sum(c.amount), 0) FROM cash_transactions c
+             WHERE c.client_id = $1 AND c.amount < 0 AND c.status IN ('approved','settled')
+               AND c.created_at >= d AND c.created_at < d + interval '1 day')       AS moved_out
+      FROM generate_series(current_date - ($2 || ' days')::interval, current_date, interval '1 day') d
+     ORDER BY day`, [req.principal.sub, q.days - 1]);
+
+  let running = 0;
+  const series = rows.map((r) => {
+    const earned = Number(r.realized) + Number(r.interest) + Number(r.rewards);
+    running = round8(running + earned);
+    return {
+      day: r.day,
+      earned: round8(earned),
+      cumulative: running,
+      moved_in: Number(r.moved_in),
+      moved_out: Number(r.moved_out),
+    };
+  });
+
+  const earned = series.reduce((n, p) => n + p.earned, 0);
+  const best = series.reduce((b, p) => (b === null || p.earned > b.earned ? p : b), null as typeof series[0] | null);
+  const worst = series.reduce((w, p) => (w === null || p.earned < w.earned ? p : w), null as typeof series[0] | null);
+
+  // The percentage is against what the account was worth when the range opened, worked
+  // back from today: what is held now, less what was earned since, less what was paid in
+  // and plus what was taken out. A return quoted against today's balance would flatter a
+  // client who has just deposited.
+  //
+  // Everything is valued in dollars first. Cash moves in whatever currency the client
+  // used, and adding a GBP deposit to a dollar total without converting it is how a
+  // percentage ends up describing nothing — the first version of this did exactly that
+  // and produced a negative opening balance.
+  const a = await demoAccount(req.principal.sub);
+  const [accounts, wallets, pots, stakes, positions] = await Promise.all([
+    pool.query<{ currency: string; balance: number }>(
+      "SELECT currency, balance FROM trading_accounts WHERE client_id = $1 AND mode = 'demo'",
+      [req.principal.sub]),
+    pool.query<{ asset: string; balance: number }>(
+      'SELECT asset, balance FROM wallets WHERE client_id = $1', [req.principal.sub]),
+    pool.query<{ currency: string; balance: number }>(
+      "SELECT currency, balance FROM portfolios WHERE client_id = $1 AND status = 'open'",
+      [req.principal.sub]),
+    pool.query<{ asset: string; balance: number }>(
+      "SELECT asset, (amount + rewards) AS balance FROM stakes WHERE client_id = $1 AND status = 'active'",
+      [req.principal.sub]),
+    pool.query<{ symbol: string; qty: number; avg_price: number }>(
+      'SELECT symbol, qty, avg_price FROM positions WHERE account_id = $1', [a.id]),
+  ]);
+
+  const held = await totalUsd([
+    ...accounts.rows.map((r) => ({ code: r.currency, amount: Number(r.balance) })),
+    ...wallets.rows.map((r) => ({ code: r.asset, amount: Number(r.balance) })),
+    ...pots.rows.map((r) => ({ code: r.currency, amount: Number(r.balance) })),
+    ...stakes.rows.map((r) => ({ code: r.asset, amount: Number(r.balance) })),
+  ]);
+  const openPnl = positions.rows.reduce((n, x) => n + unrealized(x, spot(x.symbol)), 0);
+  const equity = round8(held.usd + openPnl);
+
+  // Flows converted the same way, by currency, rather than summed as if they were all
+  // dollars.
+  const { rows: byCurrency } = await pool.query<{ currency: string; moved: number }>(`
+    SELECT t.currency, coalesce(sum(c.amount), 0) AS moved
+      FROM cash_transactions c JOIN trading_accounts t ON t.id = c.account_id
+     WHERE c.client_id = $1 AND c.status IN ('approved','settled')
+       AND c.created_at >= current_date - ($2 || ' days')::interval
+     GROUP BY t.currency`, [req.principal.sub, q.days - 1]);
+  const moved = await totalUsd(byCurrency.map((r) => ({ code: r.currency, amount: Number(r.moved) })));
+
+  const opening = round8(equity - earned - moved.usd);
+
+  return {
+    days: q.days,
+    series,
+    earned: round8(earned),
+    // Null rather than a number when there was nothing to earn on: a percentage of zero
+    // is not a large return, it is not a return. Null too when something in the mix has
+    // no price source, because the opening figure would be missing a piece.
+    pct: opening > 0 && !held.unpriced.length ? round8(earned / opening) : null,
+    unpriced: held.unpriced,
+    opening,
+    equity,
+    best: best && best.earned > 0 ? best : null,
+    worst: worst && worst.earned < 0 ? worst : null,
+  };
+});
+
 app.get('/account', { preHandler: trader }, async (req) => {
   const a = await demoAccount(req.principal.sub);
   const { rows: pos } = await pool.query<{ symbol: string; qty: number; avg_price: number }>(

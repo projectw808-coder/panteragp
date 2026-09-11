@@ -94,7 +94,7 @@ export function TaskBoard() {
         </div>
         <div>
           <p className="metric-label">Blocked</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${blocked ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${blocked ? 'text-ember-ink' : ''}`}>
             {blocked}
           </p>
         </div>
@@ -272,7 +272,7 @@ function Card({ t, onMove, onDragStart, onDragEnd }: {
         late ? 'border-down/50' : 'border-pebble dark:border-white/10'} ${
         t.status === 'cancelled' ? 'opacity-50' : ''}`}>
       <p className="text-sm leading-snug font-medium">{t.title}</p>
-      <a href={`#/clients/${t.client_id}`} className="mt-1 block text-xs text-ember hover:underline">
+      <a href={`#/clients/${t.client_id}`} className="mt-1 block text-xs text-ember-ink hover:underline">
         {t.client_name}
       </a>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-slate-ink">

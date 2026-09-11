@@ -246,7 +246,7 @@ function StaffAccounts({ meId }: { meId?: string }) {
                   {s.id !== meId && (
                     <button
                       className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${resetting === s.id
-                        ? 'border-ember text-ember'
+                        ? 'border-ember text-ember-ink'
                         : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}
                       onClick={() => setResetting(resetting === s.id ? null : s.id)}>
                       {resetting === s.id ? 'Close' : 'Reset password'}

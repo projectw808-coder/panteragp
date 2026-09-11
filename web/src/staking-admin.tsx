@@ -66,7 +66,7 @@ export function StakingAdmin() {
         {[...byAsset].sort((a, b) => a[0].localeCompare(b[0])).map(([asset, total]) => (
           <div key={asset}>
             <p className="metric-label">{asset} staked</p>
-            <p className="font-mono text-lg leading-tight font-medium tabular-nums text-ember">{num(total)}</p>
+            <p className="font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">{num(total)}</p>
           </div>
         ))}
       </div>
@@ -81,7 +81,7 @@ export function StakingAdmin() {
               ? 'border-pebble bg-bone/50 dark:border-white/10 dark:bg-white/5'
               : 'border-pebble/60 opacity-60 dark:border-white/5'}`}>
             <div className="flex flex-wrap items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember-ink">
                 {p.asset}
               </span>
               <span className="min-w-0">
@@ -97,7 +97,7 @@ export function StakingAdmin() {
               <span className="ml-auto flex items-center gap-6">
                 <span className="text-right">
                   <span className="metric-label block">Rate</span>
-                  <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember">
+                  <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
                     {pct(p.apy)}
                   </span>
                 </span>
@@ -121,7 +121,7 @@ export function StakingAdmin() {
             <div className="mt-3">
               <button onClick={() => { setEditing(editing === p.code ? null : p.code); setAdding(false); }}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${editing === p.code
-                  ? 'border border-ember text-ember hover:bg-ember/10'
+                  ? 'border border-ember text-ember-ink hover:bg-ember/10'
                   : 'bg-ember text-graphite hover:brightness-110'}`}>
                 {editing === p.code ? 'Close' : 'Edit product'}
               </button>
@@ -147,7 +147,7 @@ export function StakingAdmin() {
               {open.map((s) => (
                 <tr key={s.id} className="border-t border-pebble dark:border-white/10">
                   <td className="px-4 py-2">
-                    <a className="font-medium text-ember hover:underline" href={`#/clients/${s.client_id}`}>
+                    <a className="font-medium text-ember-ink hover:underline" href={`#/clients/${s.client_id}`}>
                       {s.client_name}
                     </a>
                   </td>

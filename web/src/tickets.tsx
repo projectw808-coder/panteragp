@@ -72,7 +72,7 @@ export function SupportPanel() {
         </div>
         <div>
           <p className="metric-label">Waiting on you</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${yours.length ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${yours.length ? 'text-ember-ink' : ''}`}>
             {yours.length}
           </p>
         </div>
@@ -105,7 +105,7 @@ export function SupportPanel() {
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md font-mono text-[10px] uppercase ${
                     t.status === 'pending'
-                      ? 'bg-ember/15 text-ember'
+                      ? 'bg-ember/15 text-ember-ink'
                       : 'bg-bone text-slate-ink dark:bg-white/5'}`} aria-hidden>
                     {t.category.slice(0, 3)}
                   </span>
@@ -249,7 +249,7 @@ export function SupportQueue({ role }: { role?: string }) {
       <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
         <div>
           <p className="metric-label">Waiting on us</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${ours.length ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${ours.length ? 'text-ember-ink' : ''}`}>
             {ours.length}
           </p>
         </div>
@@ -265,7 +265,7 @@ export function SupportQueue({ role }: { role?: string }) {
         </div>
         <div>
           <p className="metric-label">High priority</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${urgent ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${urgent ? 'text-ember-ink' : ''}`}>
             {urgent}
           </p>
         </div>
@@ -312,7 +312,7 @@ export function SupportQueue({ role }: { role?: string }) {
                 <tr key={t.id} onClick={() => setOpenId(t.id)}
                   className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
                   <td className="px-3 py-2 font-medium">{t.subject}</td>
-                  <td className="px-3 py-2 text-ember">{t.client_name}</td>
+                  <td className="px-3 py-2 text-ember-ink">{t.client_name}</td>
                   <td className="px-3 py-2 text-slate-ink">{t.category}</td>
                   <td className={`px-3 py-2 ${PRIORITY[t.priority] ?? ''}`}>{t.priority}</td>
                   <td className="px-3 py-2"><Badge status={t.status} /></td>

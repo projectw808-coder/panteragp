@@ -22,14 +22,14 @@ const pretty = (s: string) => s.replace(/_/g, ' ');
 
 const SEVERITY: Record<string, string> = {
   high: 'bg-ember text-graphite',
-  medium: 'bg-ember/15 text-ember',
+  medium: 'bg-ember/15 text-ember-ink',
   low: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 const chip = 'rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase';
 const STATUS: Record<string, string> = {
   approved: `${chip} bg-up/15 text-up`,
   rejected: `${chip} bg-down/15 text-down`,
-  pending: `${chip} bg-ember/15 text-ember`,
+  pending: `${chip} bg-ember/15 text-ember-ink`,
 };
 
 /** Documents are behind auth, so fetch as a blob and hand the viewer an object URL. */
@@ -94,7 +94,7 @@ export function ComplianceView({ role }: { role?: string }) {
       <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
         <div>
           <p className="metric-label">Waiting for review</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${docs.length ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${docs.length ? 'text-ember-ink' : ''}`}>
             {docs.length}
           </p>
         </div>
@@ -110,7 +110,7 @@ export function ComplianceView({ role }: { role?: string }) {
         </div>
         <div>
           <p className="metric-label">High severity</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${high ? 'text-ember' : ''}`}>
+          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${high ? 'text-ember-ink' : ''}`}>
             {high}
           </p>
         </div>
@@ -128,7 +128,8 @@ export function ComplianceView({ role }: { role?: string }) {
               : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
             {t.label}
             <span className={`rounded-full px-1.5 font-mono tabular-nums ${tab === t.id
-              ? 'bg-graphite/15' : 'bg-black/10 dark:bg-white/10'}`}>
+              ? 'bg-graphite/15'
+              : 'bg-black/10 text-obsidian dark:bg-white/10 dark:text-vellum'}`}>
               {t.count}
             </span>
           </button>
@@ -148,7 +149,7 @@ export function ComplianceView({ role }: { role?: string }) {
                   &#9636;
                 </span>
                 <div className="min-w-48">
-                  <a className="text-sm font-medium text-ember hover:underline" href={`#/clients/${d.client_id}`}>
+                  <a className="text-sm font-medium text-ember-ink hover:underline" href={`#/clients/${d.client_id}`}>
                     {d.client_name}
                   </a>
                   <p className="text-xs text-obsidian dark:text-vellum">{pretty(d.kind)}</p>
@@ -231,7 +232,7 @@ export function FlagList({ rows, review, onDone, showClient = false }: {
           <div className="min-w-0">
             <p className="text-sm font-medium">{pretty(f.rule)}</p>
             {showClient && (
-              <a className="text-xs text-ember hover:underline" href={`#/clients/${f.client_id}`}>{f.client_name}</a>
+              <a className="text-xs text-ember-ink hover:underline" href={`#/clients/${f.client_id}`}>{f.client_name}</a>
             )}
             <p className={`text-xs text-slate-ink ${mono}`}>
               {when(f.raised_at)}
@@ -364,7 +365,7 @@ export function ReportsView() {
             className={`rounded-lg border p-3 text-left transition-colors ${open === r.name
               ? 'border-ember bg-ember/5'
               : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
-            <span className={`block text-sm font-medium ${open === r.name ? 'text-ember' : ''}`}>
+            <span className={`block text-sm font-medium ${open === r.name ? 'text-ember-ink' : ''}`}>
               {r.title}
             </span>
             <span className="mt-0.5 block text-xs text-slate-ink">{r.blurb}</span>
@@ -419,7 +420,7 @@ export function ReportsView() {
                   <button onClick={() => toggle(c)}
                     className="flex items-center gap-1 transition-colors hover:text-obsidian dark:hover:text-vellum">
                     {pretty(c)}
-                    <span className={`font-mono text-[10px] ${sort?.col === c ? 'text-ember' : 'opacity-0'}`}
+                    <span className={`font-mono text-[10px] ${sort?.col === c ? 'text-ember-ink' : 'opacity-0'}`}
                       aria-hidden>
                       {sort?.col === c && sort.desc ? '▼' : '▲'}
                     </span>
@@ -536,7 +537,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="metric-label">Identity</h2>
           <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-            done === REQUIRED.length ? 'bg-up/15 text-up' : 'bg-ember/15 text-ember'}`}>
+            done === REQUIRED.length ? 'bg-up/15 text-up' : 'bg-ember/15 text-ember-ink'}`}>
             {done} of {REQUIRED.length} approved
           </span>
         </div>
@@ -547,7 +548,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
               <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-mono text-[11px] ${
                 c.state === 'approved' ? 'bg-up/15 text-up'
                   : c.state === 'rejected' ? 'bg-down/15 text-down'
-                  : c.state === 'pending' ? 'bg-ember/15 text-ember'
+                  : c.state === 'pending' ? 'bg-ember/15 text-ember-ink'
                   : 'bg-bone text-slate-ink dark:bg-white/10'}`} aria-hidden>
                 {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : '•'}
               </span>
@@ -590,7 +591,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
               over ? 'border-ember bg-ember/5' : 'border-pebble hover:border-ember/60 dark:border-white/15'}`}>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
               onChange={(e) => choose(e.target.files?.[0] ?? null)} />
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-ember" aria-hidden>↑</span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-ember-ink" aria-hidden>↑</span>
             <span className="min-w-0">
               <span className="block text-sm font-medium text-obsidian dark:text-vellum">
                 {file ? file.name : 'Drop a file here, or choose one'}

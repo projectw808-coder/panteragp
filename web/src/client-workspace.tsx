@@ -169,7 +169,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
           <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
           {/* Contact details are read aloud off this screen, so they are set at the full
               ink rather than the muted grey the rest of the metadata uses. */}
-          <p className="mt-2 font-mono text-sm text-ember">{c.email}</p>
+          <p className="mt-2 font-mono text-sm text-ember-ink">{c.email}</p>
           <p className="font-mono text-sm text-obsidian dark:text-vellum">
             {c.phone ?? 'no phone'}
             <span className="text-slate-ink"> · </span>{c.country ?? '—'}
@@ -196,7 +196,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
           <Stat label="Since" value={new Date(c.created_at).toLocaleDateString()} />
         </dl>
 
-        <button className="rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember hover:bg-ember hover:text-graphite"
+        <button className="rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite"
           onClick={() => setEditing((v) => !v)}>{editing ? 'Done' : 'Edit'}</button>
       </div>
 

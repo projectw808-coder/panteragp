@@ -77,7 +77,7 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
         <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
           <div>
             <p className="metric-label">Set aside</p>
-            <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember">
+            <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember-ink">
               {usd(total)}
             </p>
           </div>
@@ -94,7 +94,7 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
           {!!waiting.length && (
             <div>
               <p className="metric-label">Awaiting a decision</p>
-              <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember">
+              <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember-ink">
                 {waiting.length}
               </p>
             </div>
@@ -132,7 +132,7 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
                 <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
                   r.status === 'approved' ? 'bg-up/15 text-up'
                     : r.status === 'declined' ? 'bg-down/15 text-down'
-                    : 'bg-ember/15 text-ember'}`}>
+                    : 'bg-ember/15 text-ember-ink'}`}>
                   {r.status === 'pending' ? 'with the desk' : r.status}
                 </span>
                 {r.decision_note && (
@@ -176,7 +176,7 @@ function FeatureToggle({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => 
         } finally { setBusy(false); }
       }}
       className={`rounded-md border px-2.5 py-1 transition-colors ${p.featured
-        ? 'border-ember text-ember'
+        ? 'border-ember text-ember-ink'
         : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
       {p.featured ? '★ on your balance' : '☆ show on balance'}
     </button>
@@ -198,7 +198,7 @@ function History({ p }: { p: Portfolio }) {
           <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] uppercase ${
             m.kind === 'interest' ? 'bg-up/15 text-up'
               : m.kind === 'contribution' ? 'bg-bone text-slate-ink dark:bg-white/10'
-              : 'bg-ember/15 text-ember'}`}>
+              : 'bg-ember/15 text-ember-ink'}`}>
             {m.kind === 'contribution' ? 'paid in' : m.kind === 'withdrawal' ? 'taken out' : 'interest'}
           </span>
           <span className={`font-mono tabular-nums ${Number(m.amount) < 0 ? 'text-down' : 'text-up'}`}>
@@ -255,7 +255,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   return (
     <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="shrink-0 text-ember"><PotArt code={p.type_code} size={32} /></span>
+        <span className="shrink-0 text-ember-ink"><PotArt code={p.type_code} size={32} /></span>
         <span className="min-w-0">
           <span className="block text-sm font-medium">{p.name}</span>
           <span className="block text-xs text-slate-ink">{p.type_name}</span>
@@ -264,7 +264,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         <span className="ml-auto flex items-center gap-6">
           <span className="text-right">
             <span className="metric-label block">Return</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember">
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
               {p.indicative_rate === null ? '—' : pct(p.indicative_rate)}
             </span>
             {p.rate_override !== null && (
@@ -288,7 +288,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
 
       {/* Money already asked for, so a second request is made knowing about the first. */}
       {Number(p.requested) > 0 && (
-        <p className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-2.5 py-1.5 text-xs text-ember">
+        <p className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-2.5 py-1.5 text-xs text-ember-ink">
           {money(p.requested, p.currency)} is with the desk waiting on a decision.
         </p>
       )}
@@ -326,7 +326,7 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
-              ? 'border border-ember text-ember hover:bg-ember/10'
+              ? 'border border-ember text-ember-ink hover:bg-ember/10'
               : 'bg-ember text-graphite hover:brightness-110'}`}>
             {rate ? 'Close' : 'Change return'}
           </button>
@@ -473,7 +473,7 @@ function NewPortfolio({ types, currencies, on, onDone }: {
             return (
               <label key={t.code}
                 className={`flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border p-3 text-center transition-colors ${on
-                  ? 'border-ember bg-ember/10 text-ember'
+                  ? 'border-ember bg-ember/10 text-ember-ink'
                   : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
                 <input type="radio" name="type_code" value={t.code} checked={on} className="sr-only"
                   onChange={() => setType(t.code)} />

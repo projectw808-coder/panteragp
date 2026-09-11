@@ -44,7 +44,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
         className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
         <td className="px-4 py-2">
           <span className="flex items-center gap-2">
-            <span className={`font-mono text-xs text-ember transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+            <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
               aria-hidden>›</span>
             <span className="font-medium">{c.name}</span>
           </span>
@@ -96,7 +96,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
                   </>
                 )}
                 <a href={`#/clients/${c.id}`}
-                  className="mt-5 inline-block rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember hover:bg-ember hover:text-graphite">
+                  className="mt-5 inline-block rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite">
                   Open the full record →
                 </a>
               </div>
