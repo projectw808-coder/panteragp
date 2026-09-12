@@ -423,6 +423,131 @@
   .bar { animation: none; }
 }
 
+/* ------------------------------------------------- product-surface materials
+   The public page has had a motion vocabulary since it was built; the product
+   never did, beyond a hover rule. This is that vocabulary carried inward, on the
+   same terms: one easing curve, movement measured in a few pixels, no drop
+   shadow anywhere, and ember on the frame rather than the panel.
+
+   It is all opt-in by class, because the thing that makes a dense readout feel
+   expensive is restraint — a screen where everything moves is a screen nobody
+   can read. The rule of thumb applied here: motion on arrival and on intent
+   (hover, focus), never on refresh. A figure that re-animates every fifteen
+   seconds is a figure you cannot check. */
+
+/* Arrival. Panels come up in sequence rather than all at once, which is what
+   separates "loaded" from "presented". --i is the position in the run; the step
+   is small because eight cards at 90ms is a wait, not a flourish. */
+@keyframes enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.enter {
+  animation: enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+/* Intent. A one-pixel rise and the hairline warming: the panel acknowledges the
+   cursor without leaving the grid. Shadowless, so it still obeys the system. */
+.lift {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s;
+  will-change: transform;
+}
+.lift:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-ember) 40%, transparent);
+}
+
+/* The specular sweep. One pass across a filled ember control on hover — the
+   single most "expensive-looking" gesture available, and the easiest to ruin by
+   repeating it. It runs on intent only, never on a loop. */
+@keyframes sheen {
+  from { transform: translateX(-120%) skewX(-18deg); }
+  to   { transform: translateX(320%) skewX(-18deg); }
+}
+.sheen { position: relative; overflow: hidden; }
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: translateX(-120%) skewX(-18deg);
+  pointer-events: none;
+}
+.sheen:hover::after { animation: sheen 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Waiting. A shimmering block is an honest "this figure is coming"; the em dash
+   it replaces reads as "this figure is zero", which is a different statement and
+   the wrong one to make about somebody's balance. */
+@keyframes shimmer {
+  from { background-position: -180% 0; }
+  to   { background-position: 180% 0; }
+}
+.skeleton {
+  border-radius: var(--radius-sm);
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-slate-ink) 12%, transparent) 0%,
+    color-mix(in srgb, var(--color-slate-ink) 22%, transparent) 50%,
+    color-mix(in srgb, var(--color-slate-ink) 12%, transparent) 100%);
+  background-size: 180% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  color: transparent;
+  user-select: none;
+}
+
+/* A line that draws itself once, on mount. The chart is already inline SVG, so
+   this needs no library — just a dash pattern as long as the path.
+
+   Both ends of the keyframe are written out rather than leaning on a single `to`, which
+   would take its start from whatever the element's base stroke-dashoffset happens to be.
+   That is a real dependency — the reduced-motion block below sets exactly that property to
+   0 — and an animation whose start silently becomes its end draws instantly, which is
+   indistinguishable from no animation at all. Stating both ends removes the question. */
+@keyframes draw {
+  from { stroke-dashoffset: var(--len, 2000); }
+  to   { stroke-dashoffset: 0; }
+}
+.draw {
+  stroke-dasharray: var(--len, 2000);
+  animation: draw 1.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* The area under it fills in behind the line rather than with it. */
+@keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.wipe { animation: wipe 1.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Material. Flat fills at this size read as plastic; a trace of grain gives the
+   surface something to catch. Two per cent, generated rather than fetched, and
+   sitting above the panel but under every pointer. */
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Focus has to stay loud — it is the only affordance a keyboard gets — but it
+   can at least be the brand's own ring rather than the browser's. */
+.ring:focus-visible {
+  outline: 2px solid var(--color-ember);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter, .draw, .wipe { animation: none; }
+  .draw { stroke-dashoffset: 0; }
+  .lift { transition: border-color 0.25s; }
+  .lift:hover { transform: none; }
+  .sheen:hover::after { animation: none; }
+  /* The shimmer stops, but the block stays — it is load-bearing, not decoration:
+     without it there is nothing to say the figure has not arrived. */
+  .skeleton { animation: none; }
+}
+
 /* --------------------------------------------------------------- scrollbars
    Two syntaxes for the same thing: the standard properties, and the WebKit
    pseudo-elements that Safari still needs. Both are set because neither covers

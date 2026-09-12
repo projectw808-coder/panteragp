@@ -327,7 +327,9 @@ export const field = 'rounded-md border border-pebble bg-vellum px-3 py-2 text-s
 export const input = `w-full ${field}`;
 
 // Primary action: filled ember with black text, mono label — the spec's "act on this".
-export const btn = 'rounded-md bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
+// sheen: one specular pass across the fill on hover. It is on the primary action only —
+// the whole effect of a gesture like this comes from it being rare.
+export const btn = 'sheen ring rounded-md bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
 // Secondary: bone fill, no colour. Same shape rules.
 export const btnGhost = 'rounded-md border border-pebble bg-bone px-4 py-2 font-mono text-sm font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-vellum/5 dark:text-vellum dark:hover:bg-vellum/10';
 
