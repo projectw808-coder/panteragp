@@ -61,16 +61,28 @@ function tick() {
   const price = prices[symbol];
   if (!price) return;
   const side: Line['side'] = Math.random() > 0.5 ? 'buy' : 'sell';
+
+  // Size by notional, not by unit count. Taking 0.1–2 units of everything is what produced
+  // a log holding two units of bitcoin next to two units of a coin worth a thousandth of a
+  // cent, and results computed off the unit price then rounded away to 0.00 on anything
+  // cheap — most of the table saying nothing happened. A desk sizes a position in money, so
+  // this picks the money first and divides by the price to get the quantity.
+  const notional = 2_000 + Math.random() * 18_000;
+  const qty = notional / price;
+
   lines = [{
     id: ++seq,
     symbol, side,
-    qty: Number((Math.random() * 2 + 0.1).toFixed(2)),
+    // Quantity carries the precision the size actually needs: fractions of a coin priced in
+    // thousands, whole units of one priced in cents.
+    qty: Number(qty.toPrecision(4)),
     price,
     at: Date.now(),
-    // A spread of outcomes either side of nothing. A shape, not a forecast — and it is
-    // never summed anywhere, because a running total on invented trades is exactly the
-    // number somebody would mistake for their own.
-    pnl: Number(((Math.random() - 0.45) * price * 0.004).toFixed(2)),
+    // A spread of outcomes either side of nothing, proportional to the size taken — which
+    // is what makes a result on a cheap instrument as legible as one on an expensive one.
+    // Still a shape rather than a forecast, and still never summed anywhere: a running
+    // total on invented trades is exactly the number somebody would mistake for their own.
+    pnl: Number((notional * (Math.random() - 0.45) * 0.01).toFixed(2)),
   }, ...lines].slice(0, MAX);
   emit();
 }

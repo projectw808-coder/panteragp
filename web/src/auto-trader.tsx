@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { alertBox, card, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { price, result, tone } from './format.ts';
@@ -111,31 +111,19 @@ export function AutoTraderView() {
           </span>
         </div>
 
-        <dl className="flex flex-wrap items-center gap-x-10 gap-y-3 border-t border-pebble pt-4 dark:border-white/10">
-          <div>
-            <dt className="metric-label">Signals shown</dt>
-            <dd className="font-mono text-xl leading-tight font-medium tabular-nums">{lines.length}</dd>
-          </div>
-          <div>
-            <dt className="metric-label">Direction</dt>
-            <dd className="font-mono text-xl leading-tight font-medium tabular-nums">
-              <span className="text-up">{buys}</span>
-              <span className="text-slate-ink"> / </span>
-              <span className="text-down">{lines.length - buys}</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="metric-label">Last signal</dt>
-            <dd className="font-mono text-xl leading-tight font-medium tabular-nums">
-              {last ? clock(last.at) : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="metric-label">Instrument</dt>
-            <dd className="font-mono text-xl leading-tight font-medium">{last?.symbol ?? '—'}</dd>
-          </div>
-        </dl>
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile i={0} label="Signals shown" icon="≡" value={String(lines.length)}
+          note={on ? 'in this session' : 'engine is off'} />
+        <Direction i={1} buys={buys} sells={lines.length - buys} />
+        <Tile i={2} label="Last signal" icon="◷" value={last ? clock(last.at) : '—'}
+          note={last ? ago(last.at) : 'nothing yet'} />
+        <Tile i={3} label="Instrument" icon="◈" value={last?.symbol ?? '—'}
+          note={last ? `${last.side} at ${price(last.price)}` : ''} />
+      </div>
+
+      <Activity lines={lines} on={!!on} />
 
       <div className={`${card} space-y-3`}>
         <div className="flex flex-wrap items-center gap-3">
@@ -203,6 +191,133 @@ export function AutoTraderView() {
 
         {error && <p role="alert" className={alertBox}>{error}</p>}
       </div>
+    </div>
+  );
+}
+
+/** How long ago, in the plainest words that are still accurate. */
+function ago(t: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (secs < 5) return 'just now';
+  if (secs < 60) return `${secs}s ago`;
+  return `${Math.round(secs / 60)}m ago`;
+}
+
+/** One figure, framed the way the Overview frames its own. */
+function Tile({ label, icon, value, note, i }: {
+  label: string; icon: string; value: string; note?: string; i: number;
+}) {
+  return (
+    <div className={`${card} tile lift grain enter`} style={{ '--i': i } as CSSProperties}>
+      <span className="tile-corner" aria-hidden />
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-ember-ink" aria-hidden>{icon}</span>
+        <span className="metric-label">{label}</span>
+      </div>
+      <p className="mt-2 truncate font-mono text-[22px] leading-none font-medium tabular-nums">{value}</p>
+      {note && <p className="mt-2 truncate text-xs text-slate-ink">{note}</p>}
+    </div>
+  );
+}
+
+/**
+ * Which way the strategy has been leaning, as a proportion rather than two numbers with a
+ * slash between them. "15 / 25" makes you do the arithmetic; a bar has already done it.
+ */
+function Direction({ buys, sells, i }: { buys: number; sells: number; i: number }) {
+  const total = buys + sells;
+  const share = total ? (buys / total) * 100 : 50;
+  return (
+    <div className={`${card} tile lift grain enter`} style={{ '--i': i } as CSSProperties}>
+      <span className="tile-corner" aria-hidden />
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-ember-ink" aria-hidden>⇄</span>
+        <span className="metric-label">Direction</span>
+      </div>
+      <p className="mt-2 flex items-baseline gap-1.5 font-mono text-[22px] leading-none font-medium tabular-nums">
+        <span className="text-up">{buys}</span>
+        <span className="text-sm text-slate-ink">buy</span>
+        <span className="ml-auto text-down">{sells}</span>
+        <span className="text-sm text-slate-ink">sell</span>
+      </p>
+      <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+        <div className="bg-up transition-[width] duration-500 ease-out" style={{ width: `${share}%` }} />
+        <div className="flex-1 bg-down" />
+      </div>
+      <p className="mt-2 text-xs text-slate-ink">
+        {total === 0 ? 'nothing yet' : `${Math.round(share)}% long`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * What the engine has been doing, minute by minute — split by side.
+ *
+ * The first version of this charted signal rate alone, which was a chart of a constant: the
+ * engine fires on a fixed interval, so every bar stood at the same height and the panel
+ * showed a wall of orange that said nothing. Splitting each column into the buys and the
+ * sells gives it something that actually varies, and makes the colour mean what it means
+ * everywhere else on the page.
+ *
+ * Still a count of signals and never a running total of their results. Summing invented P&L
+ * into a curve would draw the one figure here somebody could mistake for money they had
+ * made — this panel is labelled a preview precisely so that never happens, and a chart is
+ * far more persuasive than a label.
+ */
+function Activity({ lines, on }: { lines: Line[]; on: boolean }) {
+  const buckets = useMemo(() => {
+    const size = 8_000;
+    const now = Date.now();
+    const out = Array.from({ length: 22 }, () => ({ buy: 0, sell: 0 }));
+    for (const l of lines) {
+      const slot = out.length - 1 - Math.floor((now - l.at) / size);
+      if (slot >= 0 && slot < out.length) out[slot]![l.side]++;
+    }
+    return out;
+  }, [lines]);
+
+  const peak = Math.max(1, ...buckets.map((b) => b.buy + b.sell));
+
+  return (
+    <div className={`${card} grain enter`} style={{ '--i': 4 } as CSSProperties}>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="metric-label">Activity</h2>
+        <span className="font-mono text-[11px] text-slate-ink">signals over the last three minutes</span>
+        <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tracking-wide uppercase">
+          <span className="flex items-center gap-1.5 text-slate-ink">
+            <span className="inline-block h-2 w-2 rounded-sm bg-up" aria-hidden /> buy
+          </span>
+          <span className="flex items-center gap-1.5 text-slate-ink">
+            <span className="inline-block h-2 w-2 rounded-sm bg-down" aria-hidden /> sell
+          </span>
+        </span>
+      </div>
+
+      <div className="mt-3 flex h-16 items-end gap-[3px]" aria-hidden>
+        {buckets.map((b, i) => {
+          const total = b.buy + b.sell;
+          return (
+            <div key={i} className="flex flex-1 flex-col justify-end gap-[2px]"
+              style={{ height: total ? `${Math.max(10, (total / peak) * 100)}%` : '3px' }}>
+              {total === 0
+                ? <div className="flex-1 rounded-sm bg-slate-ink/15" />
+                : (
+                  <>
+                    {b.sell > 0 && <div className="rounded-sm bg-down" style={{ flexGrow: b.sell }} />}
+                    {b.buy > 0 && <div className="rounded-sm bg-up" style={{ flexGrow: b.buy }} />}
+                  </>
+                )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-xs text-slate-ink">
+        {on
+          ? 'Counts of signals and which way they went — not a total of what they returned.'
+          : 'The engine is off, so nothing is firing.'}
+      </p>
     </div>
   );
 }
