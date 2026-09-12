@@ -189,12 +189,16 @@ function Login({ mode, onDone, onMode, onBack }: {
             </p>
           </div>
 
-          {/* Staff and traders sign in to different places; an account you create is a trader. */}
+          {/* Staff and traders sign in to different places; an account you create is a trader.
+
+              Set like the field labels it sits between, not like a button: this chooses which
+              kind of account is signing in, so it labels the form rather than acting on it —
+              and EMAIL and PASSWORD are two lines below in exactly this voice. */}
           {!registering && (
             <div className="flex gap-1 rounded-full bg-vellum/5 p-1">
               {(['staff', 'client'] as const).map((k) => (
                 <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
-                  className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-xs transition-colors ${as === k
+                  className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${as === k
                     ? 'bg-ember font-medium text-graphite'
                     : 'text-mist hover:text-vellum'}`}>
                   {k === 'staff' ? 'Staff' : 'Trader'}
