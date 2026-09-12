@@ -525,11 +525,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             </ul>
           </div>
 
-          {/* The one place this is stated. Trading here is on a paper book — no real funds
-              move and none can be deposited — and a site that takes account registrations
-              has to say so somewhere. It is small and at the foot, but it is not removed. */}
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
-            <span>Paper trading account. No real funds are held, moved or deposited.</span>
             <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
           </div>
         </div>
