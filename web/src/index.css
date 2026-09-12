@@ -308,6 +308,15 @@
 }
 
 /* Square outline buttons, 8px 16px, exactly as the reference draws them. */
+/* The page's actions speak in the same voice as the marks inside the product: mono,
+   uppercase, tracked open. Sentence case at 14px read like body text that happened to have
+   a border round it — the tracking is what makes a label look struck rather than typed. */
+.landing .btn-line,
+.landing .btn-fill {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
 .landing .btn-line {
   border: 1px solid var(--color-ember);
   color: var(--color-ember);

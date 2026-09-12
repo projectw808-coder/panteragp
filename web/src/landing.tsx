@@ -179,19 +179,23 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <span className="display text-lg text-vellum">Pantera GP</span>
             <span className="font-mono text-xs text-ember-ink">///</span>
           </button>
-          <div className="ml-8 hidden items-center gap-7 lg:flex">
+          {/* Set like the marks inside the product rather than like small grey body text.
+              Contrast was never the problem — mist reads 7.82:1 on this ground — it was
+              12px at almost no tracking, which looks faint whatever colour it is. */}
+          <div className="ml-8 hidden items-center gap-8 lg:flex">
             {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
               <button key={id} onClick={() => go(id)}
-                className="font-mono text-xs tracking-wide text-mist transition-colors hover:text-vellum">
+                className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-pebble uppercase transition-colors hover:text-ember-ink">
                 {label}
               </button>
             ))}
           </div>
-          <div className="ml-auto flex items-center gap-3">
-            <button onClick={onSignIn} className="font-mono text-sm text-mist transition-colors hover:text-vellum">
+          <div className="ml-auto flex items-center gap-4">
+            <button onClick={onSignIn}
+              className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-vellum uppercase transition-colors hover:text-ember-ink">
               Sign in
             </button>
-            <button onClick={onRegister} className="btn-fill font-mono text-sm">Open an account</button>
+            <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
           </div>
         </nav>
 
@@ -211,8 +215,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             they trigger — server-side, with the client record and audit trail attached.
           </p>
           <div className="anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
-            <button onClick={onRegister} className="btn-line font-mono text-sm">Open an account</button>
-            <button onClick={onSignIn} className="btn-fill font-mono text-sm">Sign in to the desk</button>
+            <button onClick={onRegister} className="btn-line font-mono">Open an account</button>
+            <button onClick={onSignIn} className="btn-fill font-mono">Sign in to the desk</button>
           </div>
         </div>
 
@@ -445,8 +449,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               login.
             </p>
             <div className="mt-10 flex flex-wrap justify-center gap-3">
-              <button onClick={onRegister} className="btn-line font-mono text-sm">Open an account</button>
-              <button onClick={onSignIn} className="btn-fill font-mono text-sm">Sign in</button>
+              <button onClick={onRegister} className="btn-line font-mono">Open an account</button>
+              <button onClick={onSignIn} className="btn-fill font-mono">Sign in</button>
             </div>
           </div>
         </Reveal>
@@ -461,12 +465,27 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                 <span className="font-mono text-xs text-ember-ink">///</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
-                A trading desk and a client system, built as one thing.
+                A trading desk and a client system, built as one thing. Orders rest with the
+                engine rather than in an open tab, and every fill, decision and document is
+                written down against the account it belongs to.
               </p>
+
+              {/* Two real figures, not a row of numbers chosen to look substantial. The
+                  instrument count is the list this page is built from; the order types are
+                  the OrderType union in src/trading.ts — market, limit, stop, stop-limit
+                  and trailing stop. Take profit is a field on an order, not a sixth type. */}
+              <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3">
+                {[[String(MARKETS.length), 'instruments'], ['5', 'order types']].map(([n, label]) => (
+                  <div key={label}>
+                    <dt className="font-mono text-lg text-vellum tabular-nums">{n}</dt>
+                    <dd className="mt-0.5 font-mono text-[10px] tracking-[0.16em] text-mist uppercase">{label}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
             {[
-              ['Platform', [['Capabilities', 'platform'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
-              ['Trust', [['Security & audit', 'security']]],
+              ['Platform', [['Capabilities', 'platform'], ['The engine', 'engine'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
+              ['Trust', [['Security & audit', 'security'], ['Back to top', 'top']]],
             ].map(([heading, links]) => (
               <div key={heading as string}>
                 <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
@@ -487,7 +506,23 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                 <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember-ink">Open an account</button></li>
                 <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember-ink">Sign in</button></li>
               </ul>
+              <p className="mt-4 max-w-[22ch] text-xs leading-relaxed text-mist/80">
+                Name, email and a password. You land in the terminal signed in, with nothing
+                to configure first.
+              </p>
             </div>
+          </div>
+
+          {/* What the engine actually takes, listed once. The marquee shows these drifting
+              past at the top of the page, where they read as texture rather than as a
+              specification; here they sit still long enough to be read. */}
+          <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+            <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">What the engine takes</h4>
+            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+              {CAPABILITIES.map((c) => (
+                <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-mist">{c}</li>
+              ))}
+            </ul>
           </div>
 
           {/* The one place this is stated. Trading here is on a paper book — no real funds
