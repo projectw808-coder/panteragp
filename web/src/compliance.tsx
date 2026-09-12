@@ -476,6 +476,21 @@ const IDENTITY = ['id_front', 'id_back', 'proof_of_address', 'selfie'];
 const ADDITIONAL = ['bank_statement', 'source_of_funds', 'tax_document', 'other'];
 const REQUIRED = ['id_front', 'proof_of_address'];
 
+/**
+ * Why you would send each of the additional kinds.
+ *
+ * The select lists them by name and nothing else, which answers "what can I send" and
+ * leaves "why would I" to a support ticket. Most of these are asked for eventually;
+ * sending one before it is asked for is the difference between a withdrawal that clears
+ * and one that waits a day on an email.
+ */
+const WHY: Record<string, string> = {
+  bank_statement: 'Where funds are coming from, and where they go back to.',
+  source_of_funds: 'Asked for on larger deposits. Sending it early saves the wait.',
+  tax_document: 'A residency or tax reference, where your jurisdiction needs one.',
+  other: 'Anything the desk has asked you for by name.',
+};
+
 export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canUpload: boolean }) {
   const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
   const [kind, setKind] = useState('id_front');
@@ -622,6 +637,35 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
           </div>
 
           {error && <p role="alert" className={alertBox}>{error}</p>}
+
+          {/* What else you can send, and why. Picking one sets the type and opens the file
+              picker, so the whole thing is one click rather than a dropdown somebody has
+              to find and then remember to set. */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h3 className="section-title">What else you can send</h3>
+              <span className="text-xs text-slate-ink">
+                none of these are required — they answer questions before the desk has to ask
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {ADDITIONAL.map((k) => (
+                <button key={k} type="button"
+                  onClick={() => { setKind(k); fileRef.current?.click(); }}
+                  className={`${card} tile lift grain focus-ring text-left`}>
+                  <span className="tile-corner" aria-hidden />
+                  <span className="flex items-center gap-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[11px] font-medium text-ember-ink" aria-hidden>
+                      {pretty(k).split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="block truncate text-sm font-medium capitalize">{pretty(k)}</span>
+                  </span>
+                  <span className="mt-2 block text-xs text-slate-ink">{WHY[k]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

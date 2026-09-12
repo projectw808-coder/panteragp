@@ -365,12 +365,12 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading
-            ? <div className="mx-auto max-w-3xl space-y-4"><PageTitle>Portfolios</PageTitle><PortfoliosPanel /></div>
+            ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div>
             : <Denied />)
           : hash === '/requests' ? (crm ? <PortfolioRequests /> : <Denied />)
           : hash === '/staking' ? (crm ? <StakingAdmin />
             : trading
-              ? <div className="mx-auto max-w-3xl space-y-4"><PageTitle>Staking</PageTitle><StakingPanel /></div>
+              ? <div className="mx-auto max-w-3xl"><StakingPanel /></div>
               : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)

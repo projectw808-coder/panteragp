@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { alertBox, btn, card, field } from './App.tsx';
+import { alertBox, btn, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { PotArt } from './portfolio-art.tsx';
 import type { Currency } from './wallet.tsx';
@@ -67,9 +67,9 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        {/* As on Staking: only when embedded in a client record, where nothing above
-            names the section. */}
-        {clientId && <h3 className="section-title">Portfolios</h3>}
+        {/* As on Staking: the title shares the row with the action, and steps down to a
+            section heading when this is embedded in a client record. */}
+        {clientId ? <h3 className="section-title">Portfolios</h3> : <PageTitle>Portfolios</PageTitle>}
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New portfolio'}
         </button>

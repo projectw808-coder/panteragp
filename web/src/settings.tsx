@@ -37,12 +37,14 @@ export function SettingsView({ me, dark, setDark }: {
           <p className="metric-label">Theme</p>
           {/* The one control that belongs in a header: it changes the thing you are
               looking at while you look at it. */}
+          {/* Set like the switcher on the sign-in card, because it does the same job:
+              two words in the platform's own voice, the chosen one lit. */}
           <div role="group" aria-label="Colour theme"
-            className="mt-0.5 flex gap-1 rounded-full bg-bone p-0.5 dark:bg-white/10">
+            className="mt-1.5 flex gap-1 rounded-full bg-bone p-1 dark:bg-white/10">
             {([['Light', false], ['Dark', true]] as const).map(([label, on]) => (
               <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on}
-                className={`rounded-full px-3 py-0.5 font-mono text-[11px] transition-colors ${dark === on
-                  ? 'bg-ember text-graphite'
+                className={`focus-ring rounded-full px-4 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${dark === on
+                  ? 'bg-ember font-medium text-graphite'
                   : 'text-slate-ink hover:text-obsidian dark:text-mist dark:hover:text-vellum'}`}>
                 {label}
               </button>

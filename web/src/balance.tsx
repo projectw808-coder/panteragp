@@ -29,7 +29,20 @@ export type Accounts = {
 
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const amount = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
+/**
+ * A held balance, to one decimal.
+ *
+ * Eight decimals is what the database stores and it is the wrong thing to print: it made
+ * "5,001.47268904 USD" of a cash balance and wrapped the strip. One decimal is enough to
+ * read a balance at a glance, which is all this strip is for.
+ *
+ * Below 1 it falls back to significant digits, because a wallet holding 0.00043 BTC
+ * rounded to one decimal reads "0" — a balance of nothing, which is a different and untrue
+ * claim. Same reasoning as price() in format.ts.
+ */
+const amount = (n: number) => Math.abs(Number(n)) >= 1
+  ? Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 })
+  : Number(n).toLocaleString(undefined, { maximumSignificantDigits: 4 });
 
 export function held(a: Accounts) {
   const by = new Map<string, number>();

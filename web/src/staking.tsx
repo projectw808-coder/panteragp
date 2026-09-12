@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { alertBox, btn, card, field } from './App.tsx';
+import { alertBox, btn, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
 
@@ -47,9 +47,10 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        {/* Only when embedded in a client record: the client's own page has a title above
-            this already, and the same word twice reads as a mistake. */}
-        {clientId && <h3 className="section-title">Staking</h3>}
+        {/* The page title lives here rather than above the panel, so it shares a row with
+            the action instead of sitting on a line of its own with the button adrift
+            beneath it. Embedded in a client record it steps down to a section heading. */}
+        {clientId ? <h3 className="section-title">Staking</h3> : <PageTitle>Staking</PageTitle>}
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'Stake crypto'}
         </button>
