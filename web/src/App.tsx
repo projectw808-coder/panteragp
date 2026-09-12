@@ -67,6 +67,7 @@ function Login({ mode, onDone, onMode, onBack }: {
   onBack: () => void;
 }) {
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [as, setAs] = useState<'staff' | 'client'>('staff');
@@ -82,7 +83,7 @@ function Login({ mode, onDone, onMode, onBack }: {
       if (registering) {
         // Registration signs you straight in — the password was just proven.
         const r = await api<{ token: string }>('/auth/register', {
-          method: 'POST', body: JSON.stringify({ name, email, password }),
+          method: 'POST', body: JSON.stringify({ name, email, password, phone: phone.trim() || undefined }),
         });
         token.set(r.token);
         location.hash = '/overview';
@@ -211,11 +212,23 @@ function Login({ mode, onDone, onMode, onBack }: {
               the field, which leaves somebody checking a half-typed form with no idea which
               box is which — and leaves a screen reader with nothing at all. */}
           {registering && (
-            <label className="block">
-              <span className="metric-label mb-1.5 block">Full name</span>
-              <input className={input} required maxLength={200} autoComplete="name"
-                value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
+            <>
+              <label className="block">
+                <span className="metric-label mb-1.5 block">Full name</span>
+                <input className={input} required maxLength={200} autoComplete="name"
+                  value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              {/* Optional, and said so: the desk asks for a number eventually, and taking it
+                  here saves asking twice. A missing one is no reason to refuse an account. */}
+              <label className="block">
+                <span className="metric-label mb-1.5 block">Telephone number</span>
+                <input className={input} type="tel" maxLength={40} autoComplete="tel"
+                  value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <span className="mt-1.5 block font-mono text-[11px] text-mist">
+                  Optional. It is how we reach you about your account.
+                </span>
+              </label>
+            </>
           )}
           <label className="block">
             <span className="metric-label mb-1.5 block">Email</span>
@@ -410,11 +423,11 @@ const Person = () => (
  */
 function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) => void }) {
   return (
-    <div role="group" aria-label="Colour theme" className="mt-4 flex gap-1 rounded-full bg-white/10 p-0.5">
+    <div role="group" aria-label="Colour theme" className="mt-4 flex gap-1 rounded-full bg-white/10 p-1">
       {([['Light', false], ['Dark', true]] as const).map(([label, on]) => (
         <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on}
-          className={`flex-1 rounded-full px-2 py-1 font-mono text-[11px] transition-colors ${dark === on
-            ? 'bg-ember text-graphite'
+          className={`focus-ring flex-1 rounded-full px-2 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${dark === on
+            ? 'bg-ember font-medium text-graphite'
             : 'text-mist hover:text-vellum'}`}>
           {label}
         </button>

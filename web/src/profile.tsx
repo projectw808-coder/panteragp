@@ -24,6 +24,24 @@ type Profile = {
 const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
 
+/**
+ * The record's own fields, in the order the form asks for them.
+ *
+ * Only these five: tier, verification and the email are the desk's, and counting them
+ * would make the ring say a client had work to do that they cannot do.
+ */
+const FIELDS = [
+  { key: 'name', label: 'your name' },
+  { key: 'phone', label: 'a phone number' },
+  { key: 'date_of_birth', label: 'your date of birth' },
+  { key: 'country', label: 'your country' },
+  { key: 'address', label: 'your address' },
+] as const;
+
+const RING = 2 * Math.PI * 44;
+const missing = (p: Profile) => FIELDS.filter((f) => !String(p[f.key] ?? '').trim());
+const filled = (p: Profile) => FIELDS.length - missing(p).length;
+
 const VERIFICATION: Record<string, string> = {
   approved: 'chip-up text-up',
   pending: 'bg-ember/15 text-ember-ink',
@@ -43,7 +61,7 @@ export function ProfileView() {
     <div className="stagger mx-auto max-w-3xl space-y-4">
       <PageTitle>Profile</PageTitle>
 
-      <div className={`${card} flex flex-wrap items-center gap-5`}>
+      <div className={`${card} grain flex flex-wrap items-center gap-5`}>
         <Avatar p={p} onChanged={me.reload} />
         <div className="min-w-0">
           <h2 className="font-display text-[22px] leading-tight tracking-tight">{p.name}</h2>
@@ -51,8 +69,9 @@ export function ProfileView() {
           <p className={`text-xs text-slate-ink ${mono}`}>
             Client since {new Date(p.created_at).toLocaleDateString()}
           </p>
+          <Completeness p={p} />
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2 self-start">
           <span className="rounded-full bg-bone px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase dark:bg-white/10">
             {p.tier}
           </span>
@@ -63,20 +82,90 @@ export function ProfileView() {
         </div>
       </div>
 
+      <Held p={p} />
+
       <div className={`${card} space-y-3`}>
         <h2 className="section-title">Balance</h2>
         <BalancePanel />
       </div>
 
       <Details p={p} onSaved={me.reload} />
-
-      <p className="px-1 text-xs text-slate-ink">
-        Your email is the login, so it is changed by the desk rather than here — open a
-        support ticket and we will do it with you. Tier and verification are ours to set.
-      </p>
     </div>
   );
 }
+
+/**
+ * How much of the record is on file, and what is left.
+ *
+ * The ring around the photo counts it; this says which fields it is counting, because a
+ * ring at four fifths with nothing naming the last fifth is a puzzle rather than a
+ * prompt. Named only while something is missing.
+ */
+function Completeness({ p }: { p: Profile }) {
+  const gaps = missing(p);
+  if (!gaps.length) return null;
+
+  return (
+    <p className="mt-2 text-xs text-slate-ink">
+      <span className="font-mono tabular-nums text-obsidian dark:text-vellum">
+        {filled(p)} of {FIELDS.length}
+      </span>
+      {' '}details on file — {list(gaps.map((f) => f.label))} still to add, below.
+    </p>
+  );
+}
+
+/** "a, b and c", because "a, b, c" reads like a column and this is a sentence. */
+const list = (xs: string[]) =>
+  xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+
+/**
+ * The half the desk holds.
+ *
+ * This was a footnote under the form saying the email, the tier and the verification are
+ * ours to set. It is the first question people arrive with — "what do you have on me" —
+ * so it is shown as the record it is, in the place Staking puts what is on offer, rather
+ * than as small print under a form about something else.
+ */
+function Held({ p }: { p: Profile }) {
+  const verified = p.kyc_status === 'approved';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="section-title">Held by the desk</h2>
+        <span className="text-xs text-slate-ink">
+          ours to set — raise a ticket and we will change it with you
+        </span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card label="Sign-in email" value={<span className={`text-sm break-all ${mono}`}>{p.email}</span>}
+          note="It is how you sign in, so it is changed with us rather than here." />
+        <Card label="Tier" value={<span className="text-base font-medium capitalize">{p.tier}</span>}
+          note="Sets your commission and what the desk can agree with you." />
+        <Card label="Verification"
+          value={
+            <span className={`text-base font-medium capitalize ${verified ? 'text-up' : 'text-ember-ink'}`}>
+              {p.kyc_status === 'none' ? 'Not started' : p.kyc_status}
+            </span>
+          }
+          note={verified
+            ? 'Both required documents accepted.'
+            : 'Send your identification under Documents and we will review it.'} />
+      </div>
+    </div>
+  );
+}
+
+const Card = ({ label, value, note }: { label: string; value: React.ReactNode; note: string }) => (
+  <div className={`${card} tile grain relative`}>
+    <span className="tile-corner" aria-hidden />
+    <p className="metric-label">{label}</p>
+    <p className="mt-2">{value}</p>
+    <p className="mt-2 text-xs text-slate-ink">{note}</p>
+  </div>
+);
 
 /**
  * The photo, and changing it.
@@ -133,6 +222,15 @@ function Avatar({ p, onChanged }: { p: Profile; onChanged: () => void }) {
 
   return (
     <div className="shrink-0">
+      {/* The ring that Staking draws around a term is drawn here around the photo, for the
+          one thing this page can count: how much of the record is on file. */}
+      <span className="relative block h-[92px] w-[92px] p-1.5">
+        <svg viewBox="0 0 92 92" className="absolute inset-0 h-[92px] w-[92px]" aria-hidden>
+          <circle cx="46" cy="46" r="44" fill="none" strokeWidth="3" className="stroke-slate-ink/20" />
+          <circle className="ring-draw text-ember" cx="46" cy="46" r="44" fill="none" strokeWidth="3"
+            stroke="currentColor" strokeLinecap="round" transform="rotate(-90 46 46)"
+            strokeDasharray={RING} strokeDashoffset={RING * (1 - filled(p) / FIELDS.length)} />
+        </svg>
       <label className="group relative block h-20 w-20 cursor-pointer" title="Change your photo">
         <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
@@ -148,6 +246,7 @@ function Avatar({ p, onChanged }: { p: Profile; onChanged: () => void }) {
           {busy ? '…' : src ? 'change' : 'add photo'}
         </span>
       </label>
+      </span>
       {src && !busy && (
         <button type="button" onClick={remove}
           className="mt-1.5 block w-20 text-center font-mono text-[10px] tracking-wide text-slate-ink uppercase hover:text-down">

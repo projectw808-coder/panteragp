@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { alertBox, btn, card, field, PageTitle } from './App.tsx';
+import { alertBox, btn, btnGhost, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { PotArt } from './portfolio-art.tsx';
 import type { Currency } from './wallet.tsx';
@@ -67,12 +67,9 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        {/* As on Staking: the title shares the row with the action, and steps down to a
-            section heading when this is embedded in a client record. */}
+        {/* As on Staking: steps down to a section heading when embedded in a client
+            record, where something above already names the page. */}
         {clientId ? <h3 className="section-title">Portfolios</h3> : <PageTitle>Portfolios</PageTitle>}
-        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : 'New portfolio'}
-        </button>
       </div>
 
       {!!open.length && (
@@ -110,6 +107,7 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
 
       {adding && (
         <NewPortfolio types={types.data ?? []} currencies={currencies.data ?? []} on={on}
+          onCancel={() => setAdding(false)}
           onDone={() => { setAdding(false); reload(); }} />
       )}
 
@@ -438,8 +436,8 @@ function SetRate({ p, on, onDone, onError }: {
   );
 }
 
-function NewPortfolio({ types, currencies, on, onDone }: {
-  types: PortfolioType[]; currencies: Currency[]; on: On; onDone: () => void;
+function NewPortfolio({ types, currencies, on, onCancel, onDone }: {
+  types: PortfolioType[]; currencies: Currency[]; on: On; onCancel: () => void; onDone: () => void;
 }) {
   const [type, setType] = useState('retirement');
   const [error, setError] = useState<string | null>(null);
@@ -509,7 +507,10 @@ function NewPortfolio({ types, currencies, on, onDone }: {
           <input name="target_date" type="date" className={field} /></label>
       </div>
       {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
-      <button className={btn} disabled={busy}>{busy ? 'Opening…' : 'Open portfolio'}</button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={btn} disabled={busy}>{busy ? 'Opening…' : 'Open portfolio'}</button>
+        <button type="button" onClick={onCancel} className={btnGhost}>Cancel</button>
+      </div>
     </form>
   );
 }

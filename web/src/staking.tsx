@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { alertBox, btn, card, field, PageTitle } from './App.tsx';
+import { alertBox, btn, btnGhost, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
 
@@ -48,16 +48,13 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         {/* The page title lives here rather than above the panel, so it shares a row with
-            the action instead of sitting on a line of its own with the button adrift
-            beneath it. Embedded in a client record it steps down to a section heading. */}
+            what follows it. Embedded in a client record it steps down to a heading. */}
         {clientId ? <h3 className="section-title">Staking</h3> : <PageTitle>Staking</PageTitle>}
-        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : 'Stake crypto'}
-        </button>
       </div>
 
       {adding && (
         <NewStake products={products.data ?? []} on={on}
+          onCancel={() => setAdding(false)}
           onDone={() => { setAdding(false); reload(); }} />
       )}
 
@@ -243,7 +240,9 @@ function SetRate({ s, on, onDone, onError }: {
  * next to it because it is what the rate costs — showing one without the other would be
  * selling the yield and hiding the term.
  */
-function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDone: () => void }) {
+function NewStake({ products, on, onCancel, onDone }: {
+  products: Product[]; on: On; onCancel: () => void; onDone: () => void;
+}) {
   const [code, setCode] = useState(products[0]?.code ?? '');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -319,6 +318,7 @@ function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDon
           </span>
         </label>
         <button className={btn} disabled={busy || !chosen}>{busy ? 'Staking…' : 'Stake'}</button>
+        <button type="button" onClick={onCancel} className={btnGhost}>Cancel</button>
       </div>
       {chosen && (
         <p className="text-xs text-slate-ink">

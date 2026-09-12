@@ -17,6 +17,22 @@ type Staff = { id: string; name: string };
 const CATEGORIES = ['account', 'funding', 'trading', 'kyc', 'technical', 'other'] as const;
 const when = (iso: string) => new Date(iso).toLocaleString();
 
+/**
+ * What each category is for, in the reader's words rather than ours.
+ *
+ * "kyc" is an industry initialism and names nothing to the person choosing it; the rest
+ * are one-word column values that say what a ticket is filed under and not what belongs
+ * in it. The stored value is unchanged — this is only how it is read aloud.
+ */
+const ABOUT: Record<string, { name: string; note: string }> = {
+  account: { name: 'Account', note: 'Your email, your sign-in, closing the account.' },
+  funding: { name: 'Funding', note: 'A deposit that has not landed, a withdrawal still waiting.' },
+  trading: { name: 'Trading', note: 'A position, a rate, a portfolio or a stake.' },
+  kyc: { name: 'Verification', note: 'A document rejected, or one that will not upload.' },
+  technical: { name: 'Technical', note: 'Something on the platform is not doing what it should.' },
+  other: { name: 'Something else', note: 'Anything at all. It reaches the desk the same way.' },
+};
+
 const STATUS: Record<string, string> = {
   open: 'bg-ember text-graphite',
   pending: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
@@ -44,6 +60,7 @@ export function SupportPanel() {
   const tickets = useApi<Ticket[]>('/tickets');
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [about, setAbout] = useState<string>('other');
 
   if (openId) {
     return <TicketThread id={openId} staff={false} onBack={() => { setOpenId(null); tickets.reload(); }} />;
@@ -54,6 +71,8 @@ export function SupportPanel() {
   const yours = rows.filter((t) => t.status === 'pending');
   const done = rows.filter((t) => t.status === 'resolved' || t.status === 'closed');
 
+  const raise = (category: string) => { setAbout(category); setAdding(true); };
+
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -63,30 +82,11 @@ export function SupportPanel() {
         </button>
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
-        <div>
-          <p className="metric-label">Open with us</p>
-          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
-            {live.length - yours.length}
-          </p>
-        </div>
-        <div>
-          <p className="metric-label">Waiting on you</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${yours.length ? 'text-ember-ink' : ''}`}>
-            {yours.length}
-          </p>
-        </div>
-        <div>
-          <p className="metric-label">Answered</p>
-          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{done.length}</p>
-        </div>
-        <p className="ml-auto max-w-xs text-xs text-slate-ink">
-          Raise a ticket for anything that needs looking at. We answer in the thread, and
-          you will get a notification when we do.
-        </p>
-      </div>
+      <Turn live={live.length} yours={yours.length} done={done.length} />
 
-      {adding && <NewTicket onDone={() => { setAdding(false); tickets.reload(); }} />}
+      {adding && (
+        <NewTicket about={about} onDone={() => { setAdding(false); tickets.reload(); }} />
+      )}
 
       {rows.length === 0 && !adding ? (
         <div className={`${card} py-10 text-center`}>
@@ -97,45 +97,165 @@ export function SupportPanel() {
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {rows.map((t) => (
-            <li key={t.id}>
-              <button onClick={() => setOpenId(t.id)}
-                className="block w-full rounded-lg border border-pebble bg-bone/50 p-4 text-left transition-colors hover:border-ember/60 dark:border-white/10 dark:bg-white/5">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md font-mono text-[10px] uppercase ${
+        <div className={`${card} space-y-3`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="section-title">Your threads</h2>
+            <span className="ml-auto text-xs text-slate-ink">most recently answered first</span>
+          </div>
+
+          <ul className="space-y-2">
+            {rows.map((t) => (
+              <li key={t.id}>
+                {/* The one waiting on you is lifted out of the list rather than told apart
+                    by a status word: "pending" is the desk's word for it and means nothing
+                    to the person it is waiting on. */}
+                <button onClick={() => setOpenId(t.id)}
+                  className={`lift focus-ring block w-full rounded-lg p-4 text-left transition-colors ${
                     t.status === 'pending'
-                      ? 'bg-ember/15 text-ember-ink'
-                      : 'bg-bone text-slate-ink dark:bg-white/5'}`} aria-hidden>
-                    {t.category.slice(0, 3)}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{t.subject}</span>
-                    <span className={`block text-xs text-slate-ink ${mono}`}>
-                      {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
+                      ? 'border border-ember/45 bg-ember/[0.06]'
+                      : 'border border-pebble bg-bone/50 hover:border-ember/60 dark:border-white/10 dark:bg-white/5'}`}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[10px] tracking-wide uppercase ${
+                      t.status === 'pending'
+                        ? 'bg-ember/15 text-ember-ink'
+                        : 'bg-bone text-slate-ink dark:bg-white/5'}`} aria-hidden>
+                      {t.category.slice(0, 3)}
                     </span>
-                  </span>
-                  <span className="ml-auto flex items-center gap-3">
-                    {/* Whose turn it is, said in words. "Pending" is our word for it and
-                        means nothing to the person waiting. */}
-                    <span className="hidden text-xs text-slate-ink sm:inline">
-                      {t.status === 'open' ? 'With us'
-                        : t.status === 'pending' ? 'Waiting on you'
-                        : ''}
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{t.subject}</span>
+                      <span className={`block text-xs text-slate-ink ${mono}`}>
+                        {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
+                      </span>
                     </span>
-                    <Badge status={t.status} />
-                  </span>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
+                    <span className="ml-auto flex items-center gap-3">
+                      {/* Whose turn it is, said in words. */}
+                      <span className={`hidden text-xs sm:inline ${
+                        t.status === 'pending' ? 'text-ember-ink' : 'text-slate-ink'}`}>
+                        {t.status === 'open' ? 'With us'
+                          : t.status === 'pending' ? 'Waiting on you'
+                          : ''}
+                      </span>
+                      <Badge status={t.status} />
+                    </span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
+
+      {!adding && <Shelf onPick={raise} />}
     </div>
   );
 }
 
-function NewTicket({ onDone }: { onDone: () => void }) {
+/**
+ * Whose turn it is, as one ring.
+ *
+ * The three figures were a flat strip, which said what the numbers were and nothing about
+ * how they relate. They are one quantity split two ways — the live threads, and which of
+ * them the reader is holding up — so they are drawn that way: one ring, an ember arc for
+ * yours and a grey one for ours. Answered sits beside it as a count, because it is a
+ * different thing and does not belong in the same circle.
+ */
+function Turn({ live, yours, done }: { live: number; yours: number; done: number }) {
+  const C = 163.36;                       // 2πr at r = 26
+  const mine = live - yours;
+  const share = live ? mine / live : 0;
+
+  return (
+    <div className={`${card} flex flex-wrap items-center gap-6`}>
+      <span className="relative h-[62px] w-[62px] shrink-0" aria-hidden>
+        <svg width="62" height="62" viewBox="0 0 62 62">
+          <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5"
+            className="stroke-slate-ink/20" />
+          {live > 0 && (
+            <>
+              <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5" stroke="currentColor"
+                className="text-slate-ink" transform="rotate(-90 31 31)"
+                strokeDasharray={C} strokeDashoffset={C * (1 - share)} />
+              <circle className="ring-draw text-ember" cx="31" cy="31" r="26" fill="none" strokeWidth="5"
+                stroke="currentColor" transform={`rotate(${share * 360 - 90} 31 31)`}
+                strokeDasharray={C} strokeDashoffset={C * share} />
+            </>
+          )}
+        </svg>
+        <span className="absolute inset-0 grid place-items-center font-mono text-sm font-medium tabular-nums">
+          {live}
+        </span>
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <h2 className="section-title">Open threads</h2>
+        <p className="mt-2 max-w-md text-xs text-slate-ink">
+          {live === 0
+            ? 'Nothing open. Raise a ticket for anything that needs looking at — we answer in the thread and you get a notification when we do.'
+            : yours === 0
+              ? 'All of them are with us. You will get a notification when we answer.'
+              : `${yours === live ? 'All' : yours} of them ${yours === 1 ? 'is' : 'are'} back with you — we have answered and are waiting on your reply.`}
+        </p>
+      </div>
+
+      <dl className="w-full space-y-2.5 sm:w-56">
+        <Split tone="bg-slate-ink" label="With us" n={mine} />
+        <Split tone="bg-ember" label="Waiting on you" n={yours} ember={yours > 0} />
+        <Split tone="bg-slate-ink/20" label="Answered" n={done} quiet />
+      </dl>
+    </div>
+  );
+}
+
+const Split = ({ tone, label, n, ember, quiet }: {
+  tone: string; label: string; n: number; ember?: boolean; quiet?: boolean;
+}) => (
+  <div className="flex items-center gap-2.5">
+    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone}`} aria-hidden />
+    <dt className={`text-sm ${quiet ? 'text-slate-ink' : 'font-medium'}`}>{label}</dt>
+    <dd className={`ml-auto font-mono text-base font-medium tabular-nums ${
+      ember ? 'text-ember-ink' : quiet ? 'text-slate-ink' : ''}`}>
+      {n}
+    </dd>
+  </div>
+);
+
+/**
+ * What a ticket can be about, and what belongs in each.
+ *
+ * The categories existed only inside the new-ticket dropdown, which answers "what are my
+ * options" to somebody already filling the form and nothing to somebody deciding whether
+ * this page is the right place at all. Picking one opens the form with it already set.
+ */
+function Shelf({ onPick }: { onPick: (category: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="section-title">What we can help with</h2>
+        <span className="text-xs text-slate-ink">
+          anything that does not fit goes under the last one
+        </span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {CATEGORIES.map((c) => (
+          <button key={c} type="button" onClick={() => onPick(c)}
+            className={`${card} tile lift grain focus-ring text-left`}>
+            <span className="tile-corner" aria-hidden />
+            <span className="flex items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] tracking-wide text-ember-ink uppercase" aria-hidden>
+                {c.slice(0, 3)}
+              </span>
+              <span className="block truncate text-sm font-medium">{ABOUT[c].name}</span>
+            </span>
+            <span className="mt-2 block text-xs text-slate-ink">{ABOUT[c].note}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NewTicket({ about, onDone }: { about: string; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -163,8 +283,10 @@ function NewTicket({ onDone }: { onDone: () => void }) {
         </label>
         <label className="block">
           <span className="metric-label">About</span>
-          <select name="category" className={`${field} mt-1 w-full`} defaultValue="other">
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {/* Keyed on the picked category so choosing another tile from the shelf while the
+              form is open moves the select with it — a defaultValue alone would not. */}
+          <select key={about} name="category" className={`${field} mt-1 w-full`} defaultValue={about}>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{ABOUT[c].name}</option>)}
           </select>
         </label>
       </div>
