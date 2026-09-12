@@ -725,24 +725,37 @@
 }
 
 /* ------------------------------------------------------------ autofill
-   Chrome paints a filled field with its own pale wash and its own ink, and neither is
-   settable — background-color is simply ignored on :-webkit-autofill. On a dark card the
-   result is two pale blue boxes that read as a broken control rather than a filled one.
+   Chrome paints a saved field with its own pale wash and its own ink, and neither is
+   settable: background-color is ignored on :-webkit-autofill, and so is background-clip,
+   because the wash is not the element's background at all — it is a layer the browser
+   paints over the control. An earlier attempt here clipped the background to the glyphs
+   and restated the ink, which left white text sitting on the pale wash: less readable
+   than what Chrome does on its own.
 
-   Clipping the background to the glyphs is the way out: the UA still paints its wash, but
-   only behind the text, where the text then covers it. -webkit-text-fill-color restates
-   the ink, since colour is overridden too. */
+   A large inset box-shadow is the one thing that covers that layer, because it paints
+   above it. This system forbids drop shadows and permits exactly one inset hairline; this
+   is the second sanctioned use, and it is not decoration — it is a fill, standing in for a
+   background-color the browser will not honour. Spread is far larger than any field so the
+   colour reaches every corner whatever the control's size.
+
+   The colours are the same tokens the field already uses, so a saved login looks exactly
+   like a typed one. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-  -webkit-background-clip: text;
-  background-clip: text;
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px var(--color-vellum) inset;
   -webkit-text-fill-color: var(--color-obsidian);
   caret-color: var(--color-obsidian);
+  /* Chrome re-applies its wash on interaction; a transition it never finishes keeps the
+     inset fill on screen instead of letting the yellow flash back in. */
+  transition: background-color 100000s ease-in-out 0s;
 }
 .dark input:-webkit-autofill,
 .dark input:-webkit-autofill:hover,
-.dark input:-webkit-autofill:focus {
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px var(--color-onyx) inset;
   -webkit-text-fill-color: var(--color-vellum);
   caret-color: var(--color-vellum);
 }
@@ -757,10 +770,19 @@ input:-webkit-autofill:focus {
   border-color: rgb(255 255 255 / 0.15);
   color: var(--color-vellum);
 }
+.auth-screen input {
+  /* The rest of this screen — labels, the button, the footnote — is mono. A sans value in
+     the field was the one thing set in a different voice. */
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0;
+}
 .auth-screen input::placeholder { color: var(--color-mist); }
 .auth-screen input:-webkit-autofill,
 .auth-screen input:-webkit-autofill:hover,
-.auth-screen input:-webkit-autofill:focus {
+.auth-screen input:-webkit-autofill:focus,
+.auth-screen input:-webkit-autofill:active {
+  box-shadow: 0 0 0 1000px var(--color-onyx) inset;
   -webkit-text-fill-color: var(--color-vellum);
   caret-color: var(--color-vellum);
 }
