@@ -381,7 +381,12 @@ export function ChartsView({ dark }: { dark: boolean }) {
           <Watchlist onPick={(s) => setAt(0, s)} />
         </div>
 
-      <div className={`grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'grid-cols-2'} ${count === 4 ? 'grid-rows-2' : ''}`}>
+      {/* The panels sequence in. Safe against lightweight-charts' autoSize, which sizes from
+          a ResizeObserver on the border box: a translate does not change that box, so the
+          chart measures the same width mid-animation as at rest. Nothing here re-runs on a
+          price tick — the series is updated in place — so this is arrival only, which is the
+          whole rule. Changing the 1/2/4 count does remount and replay it, and should. */}
+      <div className={`stagger grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'grid-cols-2'} ${count === 4 ? 'grid-rows-2' : ''}`}>
         {symbols.slice(0, count).map((s, i) => (
           <ChartPanel key={i} symbol={s} onSymbol={(v) => setAt(i, v)}
             instruments={instruments.data ?? []} dark={dark} />
