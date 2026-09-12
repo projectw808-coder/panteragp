@@ -153,7 +153,7 @@ function NewTicket({ onDone }: { onDone: () => void }) {
         setError((err as Error).message);
       } finally { setBusy(false); }
     }}>
-      <h3 className="metric-label">New ticket</h3>
+      <h3 className="section-title">New ticket</h3>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
         <label className="block">

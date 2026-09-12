@@ -446,7 +446,7 @@ function TradingTerms({ id, c, onChanged }: { id: string; c: Person; onChanged: 
   return (
     <form onSubmit={save} className={`${card} space-y-3`}>
       <div>
-        <h3 className="metric-label">Trading terms</h3>
+        <h3 className="section-title">Trading terms</h3>
         <p className="mt-1 text-xs text-slate-ink">
           In basis points — 25 is 0.25%. Empty means the desk default. Applied to every fill
           from the moment you save, and shown to the client on their profile.
@@ -481,7 +481,7 @@ function Trading({ id, c, h, admin, onChanged }: {
   return (
     <div className="space-y-4">
       {admin && <TradingTerms id={id} c={c} onChanged={onChanged} />}
-      <h3 className="metric-label">Open positions</h3>
+      <h3 className="section-title">Open positions</h3>
       <Table head={['Symbol', 'Qty', 'Entry', 'Price', 'Open P&L']}>
         {h.positions.map((p) => (
           <Tr key={p.symbol}>

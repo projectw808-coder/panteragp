@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { alertBox, btn, card, field } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
@@ -47,7 +47,9 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h3 className="metric-label">{clientId ? 'Staking' : 'Your staking'}</h3>
+        {/* Only when embedded in a client record: the client's own page has a title above
+            this already, and the same word twice reads as a mistake. */}
+        {clientId && <h3 className="section-title">Staking</h3>}
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'Stake crypto'}
         </button>
@@ -263,7 +265,7 @@ function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDon
   return (
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
-        <h3 className="metric-label">Choose a product</h3>
+        <h3 className="section-title">Choose a product</h3>
         <div role="radiogroup" aria-label="Staking product"
           className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {products.map((p) => {
@@ -444,44 +446,79 @@ function TermRing({ s }: { s: Stake }) {
   );
 }
 
-/** What can be staked, so the page has something to say before anything is. */
+/**
+ * What can be staked, grouped by how long it is locked for.
+ *
+ * Term is the decision. Rate follows from it — a longer lock pays more, that is the whole
+ * trade — so one list sorted by rate buries the thing being chosen under the thing being
+ * compared. The groups come out of the data rather than a fixed 180/60/30: whatever terms
+ * the desk has products on, longest first, with flexible last, because it is the absence of
+ * a term rather than the shortest one.
+ */
 function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }) {
-  const best = [...products].sort((a, b) => Number(b.apy) - Number(a.apy));
-  // Every bar is read against the best rate on the shelf, so the widths compare products
-  // with each other rather than against an invented ceiling.
+  // Bars are read against the best rate on the WHOLE shelf, not the best in the group, so a
+  // 30-day product cannot look like the 180-day one by topping a short row.
   const topRate = Math.max(...products.map((x) => Number(x.apy)), 0.0001);
+
+  const groups = useMemo(() => {
+    const by = new Map<number, Product[]>();
+    for (const product of products) {
+      const days = Number(product.lock_days) || 0;
+      by.set(days, [...(by.get(days) ?? []), product]);
+    }
+    return [...by.entries()]
+      .sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : b[0] - a[0]))
+      .map(([days, list]) => ({
+        days,
+        list: [...list].sort((a, b) => Number(b.apy) - Number(a.apy)),
+      }));
+  }, [products]);
+
   return (
-    <div className="enter" style={{ '--i': 6 } as CSSProperties}>
-      <h4 className="metric-label mb-2">What you can stake</h4>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {best.map((product) => (
-          <button key={product.code} type="button" onClick={onPick}
-            className={`${card} tile lift grain focus-ring text-left`}>
-            <span className="tile-corner" aria-hidden />
-            <span className="flex items-center gap-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] font-medium text-ember-ink">
-                {product.asset}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium">{product.name}</span>
-                <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
-                  {term(product.lock_days)}
+    <div className="enter space-y-5" style={{ '--i': 6 } as CSSProperties}>
+      <h4 className="section-title">What you can stake</h4>
+
+      {groups.map((group) => (
+        <div key={group.days}>
+          <div className="mb-2 flex flex-wrap items-baseline gap-3">
+            <span className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">
+              {term(group.days)}
+            </span>
+            <span className="text-xs text-slate-ink">
+              {group.days === 0
+                ? 'unstake whenever you like — the lower rate is the price of that'
+                : `locked for ${group.days} days, paid daily in the asset staked`}
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {group.list.map((product) => (
+              <button key={product.code} type="button" onClick={onPick}
+                className={`${card} tile lift grain focus-ring text-left`}>
+                <span className="tile-corner" aria-hidden />
+                <span className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] font-medium text-ember-ink">
+                    {product.asset}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{product.name}</span>
+                  </span>
+                  <span className="ml-auto font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
+                    {pct(product.apy)}
+                  </span>
                 </span>
-              </span>
-              <span className="ml-auto font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
-                {pct(product.apy)}
-              </span>
-            </span>
-            <span className="mt-2 block text-xs text-slate-ink">
-              {product.description || `From ${num(product.min_amount)} ${product.asset}.`}
-            </span>
-            <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
-              <span className="bar-x block h-[3px] rounded-full bg-ember"
-                style={{ width: `${(Number(product.apy) / topRate) * 100}%` }} />
-            </span>
-          </button>
-        ))}
-      </div>
+                <span className="mt-2 block text-xs text-slate-ink">
+                  {product.description || `From ${num(product.min_amount)} ${product.asset}.`}
+                </span>
+                <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+                  <span className="bar-x block h-[3px] rounded-full bg-ember"
+                    style={{ width: `${(Number(product.apy) / topRate) * 100}%` }} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

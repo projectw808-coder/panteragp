@@ -147,7 +147,7 @@ export function TaskBoard() {
               className={`${card} min-h-48 space-y-2 transition-colors ${
                 over === col.status ? 'border-ember bg-ember/5' : ''}`}>
               <div className="flex items-baseline gap-2">
-                <h2 className="metric-label">{col.title}</h2>
+                <h2 className="section-title">{col.title}</h2>
                 <span className="ml-auto font-mono text-xs tabular-nums text-slate-ink">{cards.length}</span>
               </div>
               {cards.length === 0 && <p className="text-xs text-slate-ink">{col.note}</p>}
@@ -212,7 +212,7 @@ function NewTask({ staff, meId, onDone }: {
   return (
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
-        <h2 className="metric-label">New task</h2>
+        <h2 className="section-title">New task</h2>
         <p className="mt-1 text-xs text-slate-ink">
           It lands on the assignee's board, tells them, and goes on the client's timeline.
         </p>

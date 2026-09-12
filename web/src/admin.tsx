@@ -117,7 +117,7 @@ export function AdminView() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <div className={`${card} space-y-3`}>
-          <h2 className="metric-label">Pipeline</h2>
+          <h2 className="section-title">Pipeline</h2>
           {o?.pipeline.map((p) => (
             <a key={p.stage} href={`#/clients`}
               className="flex items-center gap-3 rounded-md px-1 py-0.5 text-sm transition-colors hover:bg-bone dark:hover:bg-white/5">
@@ -133,7 +133,7 @@ export function AdminView() {
         </div>
 
         <div className={`${card} space-y-3`}>
-          <h2 className="metric-label">Trading &amp; funds</h2>
+          <h2 className="section-title">Trading &amp; funds</h2>
           <p className="text-xs text-slate-ink">
             Client balances are net of withdrawals already debited but not yet paid out.
           </p>
@@ -158,7 +158,7 @@ export function AdminView() {
 
       <div className={`${card} space-y-2`}>
         <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="metric-label">Everything happening, everywhere</h2>
+          <h2 className="section-title">Everything happening, everywhere</h2>
           <span className="ml-auto font-mono text-[11px] text-slate-ink">
             {activity.data?.length ?? 0} most recent
           </span>
@@ -190,7 +190,7 @@ export function AdminView() {
       </div>
 
       <div className={`${card} space-y-3`}>
-        <h2 className="metric-label">System configuration</h2>
+        <h2 className="section-title">System configuration</h2>
         <p className="text-xs text-slate-ink">
           Read-only. These are code constants, not settings — changing a threshold is a
           deploy, which is also what makes it auditable.
@@ -276,7 +276,7 @@ function AddFunds() {
   return (
     <form onSubmit={submit} className={`${card} space-y-3`}>
       <div>
-        <h2 className="metric-label">Add funds to a client</h2>
+        <h2 className="section-title">Add funds to a client</h2>
         <p className="mt-1 text-xs text-slate-ink">
           Accounts open with nothing in them. Crypto lands in the client's wallet, currencies
           in their cash account. Audited, and written to their timeline.
@@ -347,7 +347,7 @@ function Metrics({ days }: { days: Day[] }) {
   return (
     <div className={`${card} space-y-4`}>
       <div className="flex flex-wrap items-baseline gap-3">
-        <h2 className="metric-label">Metrics · last 14 days</h2>
+        <h2 className="section-title">Metrics · last 14 days</h2>
         <span className="ml-auto font-mono text-[11px] text-slate-ink">
           {days.length ? `${days[0].day} → ${days[days.length - 1].day}` : ''}
         </span>

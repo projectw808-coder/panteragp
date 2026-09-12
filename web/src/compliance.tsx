@@ -535,7 +535,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
     <div className="space-y-4">
       <div className={`${card} space-y-4`}>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="metric-label">Identity</h2>
+          <h2 className="section-title">Identity</h2>
           <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
             done === REQUIRED.length ? 'chip-up text-up' : 'bg-ember/15 text-ember-ink'}`}>
             {done} of {REQUIRED.length} approved
@@ -567,7 +567,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
       </div>
 
       <div className={`${card} space-y-3`}>
-        <h2 className="metric-label">Additional documents</h2>
+        <h2 className="section-title">Additional documents</h2>
         <p className="text-sm text-obsidian dark:text-vellum">
           Anything else the desk has asked for.
         </p>
@@ -579,7 +579,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
 
       {canUpload && (
         <div className={`${card} space-y-3`}>
-          <h2 className="metric-label">Upload</h2>
+          <h2 className="section-title">Upload</h2>
 
           {/* A drop target that is also a file picker: dragging is the fast path and the
               click is the one that works on a phone and with a keyboard. */}

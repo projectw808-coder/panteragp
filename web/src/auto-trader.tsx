@@ -131,7 +131,7 @@ export function AutoTraderView() {
 
       <div className={`${card} space-y-3`}>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="metric-label">Signal log</h2>
+          <h2 className="section-title">Signal log</h2>
           <span className="rounded-full bg-ember/15 px-2.5 py-0.5 font-mono text-[11px] tracking-wide text-ember-ink uppercase">
             preview
           </span>
@@ -286,7 +286,7 @@ function Activity({ lines, on }: { lines: Line[]; on: boolean }) {
   return (
     <div className={`${card} grain enter`} style={{ '--i': 4 } as CSSProperties}>
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="metric-label">Activity</h2>
+        <h2 className="section-title">Activity</h2>
         <span className="font-mono text-[11px] text-slate-ink">signals over the last three minutes</span>
         <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tracking-wide uppercase">
           <span className="flex items-center gap-1.5 text-slate-ink">

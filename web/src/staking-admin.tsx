@@ -74,7 +74,7 @@ export function StakingAdmin() {
       {adding && <ProductForm onDone={() => { setAdding(false); reload(); }} />}
 
       <div className="space-y-2">
-        <h2 className="metric-label">Products</h2>
+        <h2 className="section-title">Products</h2>
         {rows.map((p) => (
           <div key={p.code}
             className={`rounded-lg border p-4 ${p.active
@@ -136,7 +136,7 @@ export function StakingAdmin() {
       </div>
 
       <div className="space-y-2">
-        <h2 className="metric-label">Open stakes</h2>
+        <h2 className="section-title">Open stakes</h2>
         <div className={tableCard}>
           <table className="w-full text-sm">
             <thead className={thead}>
@@ -225,7 +225,7 @@ function ProductForm({ product, onDone }: { product?: Product; onDone: () => voi
 
   return (
     <form onSubmit={submit} className={`${card} mt-3 space-y-3`}>
-      <h3 className="metric-label">{editing ? `Edit ${product.code}` : 'New product'}</h3>
+      <h3 className="section-title">{editing ? `Edit ${product.code}` : 'New product'}</h3>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {!editing && (

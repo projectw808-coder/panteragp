@@ -64,7 +64,7 @@ export function ProfileView() {
       </div>
 
       <div className={`${card} space-y-3`}>
-        <h2 className="metric-label">Balance</h2>
+        <h2 className="section-title">Balance</h2>
         <BalancePanel />
       </div>
 
@@ -189,7 +189,7 @@ function Details({ p, onSaved }: { p: Profile; onSaved: () => void }) {
   return (
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
-        <h2 className="metric-label">Personal details</h2>
+        <h2 className="section-title">Personal details</h2>
         <p className="mt-1 text-xs text-slate-ink">
           Keep these matching your identification — a mismatch is the usual reason a
           verification stalls. Leave a box empty to remove what is in it.

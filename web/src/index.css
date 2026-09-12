@@ -450,6 +450,36 @@
   border-top: 1px solid color-mix(in srgb, var(--color-ember) 60%, transparent);
 }
 
+/* A section heading is not a metric label, and they had been the same thing.
+   metric-label is for the word above a figure — STAKED, RATE, BALANCE: 10px, slate ink,
+   deliberately quiet so the number beside it carries. Thirty-six headings across fourteen
+   files were borrowing it, which set every "Signal log" and "Your staking" in the voice of
+   a form label and left the pages looking unauthored.
+
+   This is the heading: the same mono and the same uppercase, but a step larger, wider in
+   the tracking, on the primary ink rather than the muted one, and carrying a short ember
+   tick. No trailing rule — a heading sits inline in a flex row as often as it sits alone
+   here, and a rule that grows would eat the row it shares. */
+.section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-obsidian);
+}
+.dark .section-title { color: var(--color-vellum); }
+.section-title::before {
+  content: '';
+  flex: none;
+  width: 2px;
+  height: 11px;
+  background: var(--color-ember);
+}
+
 .metric-label {
   font-family: var(--font-mono);
   font-size: 10px;

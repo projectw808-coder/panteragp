@@ -89,7 +89,7 @@ export function OverviewView() {
       <div className={`${card} grain enter space-y-4`} style={{ '--i': 5 } as CSSProperties}>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0">
-            <h2 className="metric-label">Earnings</h2>
+            <h2 className="section-title">Earnings</h2>
             {perf.data ? (
               <p className="mt-1 flex flex-wrap items-baseline gap-2">
                 <span className={`font-mono text-2xl leading-none font-medium tabular-nums ${
@@ -296,7 +296,7 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
 
   return (
     <div className={`${card} space-y-4`}>
-      <h2 className="metric-label">Allocation</h2>
+      <h2 className="section-title">Allocation</h2>
 
       {total === 0 ? (
         <p className="py-10 text-center text-sm text-slate-ink">
@@ -365,7 +365,7 @@ function Breakdown({ perf, openPnl }: { perf?: Performance | null; openPnl: numb
 
   return (
     <div className={`${card} space-y-4`}>
-      <h2 className="metric-label">Result</h2>
+      <h2 className="section-title">Result</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {cell('Earned', perf ? signed(perf.earned) : '—',
           'Trading, interest and rewards', perf && perf.earned < 0 ? 'down' : 'up')}

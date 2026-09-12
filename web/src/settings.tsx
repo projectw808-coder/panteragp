@@ -319,7 +319,7 @@ export function ResetPassword({ path, who, onDone }: { path: string; who: string
 const Section = ({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) => (
   <section className={`${card} space-y-4`}>
     <div>
-      <h2 className="metric-label">{title}</h2>
+      <h2 className="section-title">{title}</h2>
       {note && <p className="mt-1.5 max-w-2xl text-xs text-slate-ink">{note}</p>}
     </div>
     {children}

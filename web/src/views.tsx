@@ -177,7 +177,7 @@ function NewClient({ onDone }: { onDone: () => void }) {
   return (
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
-        <h2 className="metric-label">New client</h2>
+        <h2 className="section-title">New client</h2>
         <p className="mt-1 text-xs text-slate-ink">
           A name and an email is enough to start. Everything else can follow, and they can
           fill in their own details once they have a login.

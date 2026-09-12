@@ -168,7 +168,7 @@ export function WalletView() {
 
       <div className={`${card} space-y-4`}>
         <div>
-          <h2 className="metric-label">Your wallets</h2>
+          <h2 className="section-title">Your wallets</h2>
           <p className="mt-1 text-xs text-slate-ink">
             Addresses you have proved are yours.
           </p>
@@ -198,7 +198,7 @@ export function WalletView() {
 
       <div className={`${card} space-y-4`}>
         <div>
-          <h2 className="metric-label">Choose a wallet</h2>
+          <h2 className="section-title">Choose a wallet</h2>
           <p className="mt-1 text-xs text-slate-ink">
             {providers.length
               ? 'Found in this browser. Pick the one holding the address you want to link.'
@@ -231,7 +231,7 @@ export function WalletView() {
 
         {!!missing.length && (
           <div>
-            <h3 className="metric-label">Not installed</h3>
+            <h3 className="section-title">Not installed</h3>
             <ul className="mt-2 flex flex-wrap gap-2">
               {missing.map((k) => (
                 <li key={k.rdns}>
@@ -249,7 +249,7 @@ export function WalletView() {
       </div>
 
       <div className={`${card} space-y-2`}>
-        <h2 className="metric-label">What linking does</h2>
+        <h2 className="section-title">What linking does</h2>
         <ul className="space-y-1 text-xs text-slate-ink">
           <li>You sign a short message. It costs no gas and moves nothing.</li>
           <li>We never hold your keys and cannot spend from your wallet.</li>

@@ -67,7 +67,9 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h3 className="metric-label">{clientId ? 'Portfolios' : 'Your portfolios'}</h3>
+        {/* As on Staking: only when embedded in a client record, where nothing above
+            names the section. */}
+        {clientId && <h3 className="section-title">Portfolios</h3>}
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
           {adding ? 'Cancel' : 'New portfolio'}
         </button>
@@ -120,9 +122,16 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
         </p>
       )}
 
+      {/* What else could be opened. The page used to end with the pots you already have,
+          which says nothing to somebody deciding whether to open another — the same gap
+          Staking had before its product shelf. */}
+      {!adding && !!types.data?.length && (
+        <Shelf types={types.data} onPick={() => setAdding(true)} />
+      )}
+
       {!clientId && !!(requests.data ?? []).length && (
         <div className={`${card} space-y-3`}>
-          <h3 className="metric-label">Your requests</h3>
+          <h3 className="section-title">Your requests</h3>
           <ul className="divide-y divide-pebble dark:divide-white/10">
             {requests.data!.slice(0, 8).map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
@@ -462,7 +471,7 @@ function NewPortfolio({ types, currencies, on, onDone }: {
   return (
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
-        <h3 className="metric-label">What is it for?</h3>
+        <h3 className="section-title">What is it for?</h3>
         {/* A radiogroup, not a listbox: these are six things with pictures, and the picture
             is most of what tells them apart. Kept as real radios underneath so arrow keys
             move between them and a screen reader reads it as one choice. */}
@@ -502,5 +511,59 @@ function NewPortfolio({ types, currencies, on, onDone }: {
       {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
       <button className={btn} disabled={busy}>{busy ? 'Opening…' : 'Open portfolio'}</button>
     </form>
+  );
+}
+
+/**
+ * The kinds of pot that can be opened, with the return each indicates.
+ *
+ * Indicative, and it says so: the rate on a pot is agreed per client, so a type's number is
+ * where that conversation starts rather than a promise. Bars are read against the best
+ * indicative rate on the shelf, so they compare the types with each other.
+ */
+function Shelf({ types, onPick }: { types: PortfolioType[]; onPick: () => void }) {
+  const priced = types.filter((t) => t.indicative_rate !== null);
+  const topRate = Math.max(...priced.map((t) => Number(t.indicative_rate)), 0.0001);
+  const order = [...types].sort(
+    (a, b) => Number(b.indicative_rate ?? 0) - Number(a.indicative_rate ?? 0));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h3 className="section-title">What you can open</h3>
+        <span className="text-xs text-slate-ink">
+          indicative annual returns — the rate on a pot is agreed with the desk
+        </span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {order.map((t) => (
+          <button key={t.code} type="button" onClick={onPick}
+            className={`${card} tile lift grain focus-ring text-left`}>
+            <span className="tile-corner" aria-hidden />
+            <span className="flex items-center gap-2.5">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 text-ember-ink">
+                <PotArt code={t.code} size={20} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{t.name}</span>
+              </span>
+              <span className="font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
+                {t.indicative_rate === null ? '—' : pct(t.indicative_rate)}
+              </span>
+            </span>
+            {t.description && (
+              <span className="mt-2 block text-xs text-slate-ink">{t.description}</span>
+            )}
+            {t.indicative_rate !== null && (
+              <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+                <span className="bar-x block h-[3px] rounded-full bg-ember"
+                  style={{ width: `${(Number(t.indicative_rate) / topRate) * 100}%` }} />
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
