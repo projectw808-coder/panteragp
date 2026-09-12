@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { alertBox, btn, card, field } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { useCountUp } from './count-up.ts';
 
 /**
  * Staking: locking crypto for a term and earning a yield in the same asset.
@@ -27,6 +28,9 @@ const pct = (n: number) => `${Number((n * 100).toFixed(2))}%`;
 const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
 const day = (d: string) => new Date(d).toLocaleDateString();
 const term = (days: number) => (days === 0 ? 'Flexible' : `${days} days`);
+// Rewards are paid in the asset. This is only for the dollar totals above the list.
+const usd = (n: number) =>
+  '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type On = { client_id?: string };
 
@@ -54,13 +58,22 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
           onDone={() => { setAdding(false); reload(); }} />
       )}
 
+      {!!active.length && <Totals stakes={active} />}
+
       {active.map((s) => <StakeCard key={s.id} s={s} on={on} onDone={reload} />)}
+
       {!active.length && !adding && (
         <p className="text-sm text-slate-ink">
           {clientId
             ? 'Nothing staked. Staking here does it on the client’s behalf, and is recorded that way.'
             : 'Nothing staked yet. Put crypto you are not trading to work and it earns daily.'}
         </p>
+      )}
+
+      {/* What is on offer, shown whether or not anything is staked. A page whose entire
+          content is "nothing yet" says nothing about what could be done instead. */}
+      {!adding && !!products.data?.length && (
+        <Shelf products={products.data} onPick={() => setAdding(true)} />
       )}
 
       {!!closed.length && (
@@ -105,12 +118,13 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember-ink">
           {s.asset}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">{s.product_name}</span>
           <span className="block text-xs text-slate-ink">
             {term(s.lock_days)}
             {s.unlocks_at && ` · ${s.locked ? 'unlocks' : 'unlocked'} ${day(s.unlocks_at)}`}
           </span>
+          <Lock s={s} />
         </span>
 
         <span className="ml-auto flex items-center gap-6">
@@ -314,5 +328,132 @@ function NewStake({ products, on, onDone }: { products: Product[]; on: On; onDon
       )}
       {error && <p role="alert" className={alertBox}>{error}</p>}
     </form>
+  );
+}
+
+/**
+ * What the whole position comes to.
+ *
+ * Rewards are paid in the asset, so turning them into dollars needs the asset's price —
+ * which is usd_value / amount, and exists only where the stake could be priced at all. One
+ * that could not is counted in the figures it can be and named in the note rather than
+ * quietly dropped: a total that leaves something out without saying so is worse than one
+ * that admits the gap.
+ */
+function Totals({ stakes }: { stakes: Stake[] }) {
+  const priced = stakes.filter((s) => s.usd_value !== null && Number(s.amount) > 0);
+  const unpriced = stakes.filter((s) => s.usd_value === null);
+
+  const staked = priced.reduce((n, s) => n + Number(s.usd_value), 0);
+  const earned = priced.reduce(
+    (n, s) => n + Number(s.rewards) * (Number(s.usd_value) / Number(s.amount)), 0);
+  // Weighted by size: an average of the rates themselves would let a token position at a
+  // headline rate speak as loudly as the bulk of the money.
+  const rate = staked > 0
+    ? priced.reduce((n, s) => n + Number(s.apy) * Number(s.usd_value), 0) / staked
+    : 0;
+  const locked = stakes.filter((s) => s.locked).length;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Figure i={0} icon="◈" label="Staked" value={staked} format={usd}
+        note={unpriced.length
+          ? `${unpriced.length} not priced`
+          : `across ${stakes.length} position${stakes.length === 1 ? '' : 's'}`} />
+      <Figure i={1} icon="↗" label="Earned so far" value={earned} format={usd} tone="up"
+        note="paid in the asset, credited daily" />
+      <Figure i={2} icon="~" label="Average rate" value={rate * 100}
+        format={(n) => `${n.toFixed(2)}%`} note="weighted by size" />
+      <Figure i={3} icon="⊘" label="Locked" value={locked}
+        format={(n) => String(Math.round(n))}
+        note={locked ? 'cannot be unstaked yet' : 'all of it can be unstaked'} />
+    </div>
+  );
+}
+
+function Figure({ icon, label, value, format, note, tone, i }: {
+  icon: string; label: string; value: number; format: (n: number) => string;
+  note?: string; tone?: 'up'; i: number;
+}) {
+  const shown = useCountUp(value);
+  return (
+    <div className={`${card} tile lift grain enter`} style={{ '--i': i } as CSSProperties}>
+      <span className="tile-corner" aria-hidden />
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-ember-ink" aria-hidden>{icon}</span>
+        <span className="metric-label">{label}</span>
+      </div>
+      {shown === null
+        ? <span className="skeleton mt-2 block h-[22px] w-28" aria-label={`${label} loading`} />
+        : (
+          <p className={`mt-2 font-mono text-[22px] leading-none font-medium tabular-nums ${
+            tone === 'up' ? 'text-up' : ''}`}>
+            {format(shown)}
+          </p>
+        )}
+      {note && <p className="mt-2 truncate text-xs text-slate-ink">{note}</p>}
+    </div>
+  );
+}
+
+/**
+ * How far through its term a locked stake is.
+ *
+ * Nothing at all for a flexible one: there is no term to be part-way through, and a bar
+ * sitting at zero would suggest there is.
+ */
+function Lock({ s }: { s: Stake }) {
+  if (!s.unlocks_at || !s.lock_days) return null;
+  const start = new Date(s.staked_at).getTime();
+  const end = new Date(s.unlocks_at).getTime();
+  if (!(end > start)) return null;
+  const done = Math.min(1, Math.max(0, (Date.now() - start) / (end - start)));
+  const daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86_400_000));
+
+  return (
+    <span className="mt-2 block max-w-xs">
+      <span className="flex h-1 overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+        <span className="bg-ember transition-[width] duration-700 ease-out"
+          style={{ width: `${done * 100}%` }} />
+      </span>
+      <span className="mt-1 block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
+        {s.locked ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} to go` : 'term complete'}
+      </span>
+    </span>
+  );
+}
+
+/** What can be staked, so the page has something to say before anything is. */
+function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }) {
+  const best = [...products].sort((a, b) => Number(b.apy) - Number(a.apy));
+  return (
+    <div className="enter" style={{ '--i': 6 } as CSSProperties}>
+      <h4 className="metric-label mb-2">What you can stake</h4>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {best.map((product) => (
+          <button key={product.code} type="button" onClick={onPick}
+            className={`${card} tile lift grain focus-ring text-left`}>
+            <span className="tile-corner" aria-hidden />
+            <span className="flex items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] font-medium text-ember-ink">
+                {product.asset}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{product.name}</span>
+                <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
+                  {term(product.lock_days)}
+                </span>
+              </span>
+              <span className="ml-auto font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
+                {pct(product.apy)}
+              </span>
+            </span>
+            <span className="mt-2 block text-xs text-slate-ink">
+              {product.description || `From ${num(product.min_amount)} ${product.asset}.`}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

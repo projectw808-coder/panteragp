@@ -86,8 +86,6 @@ export function OverviewView() {
           note={a ? `${a.leverage}× on ${usd(exposure)} exposure` : ''} />
       </div>
 
-      <PositionsRow positions={held} pnl={openPnl} />
-
       <div className={`${card} grain enter space-y-4`} style={{ '--i': 5 } as CSSProperties}>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0">
@@ -382,51 +380,3 @@ function Breakdown({ perf, openPnl }: { perf?: Performance | null; openPnl: numb
   );
 }
 
-/** Open positions, collapsed to a line that opens in place. */
-function PositionsRow({ positions, pnl }: { positions: Position[]; pnl: number }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className={`${card} p-0`}>
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left">
-        <span className="font-mono text-sm text-ember-ink" aria-hidden>⊙</span>
-        <span className="text-sm font-medium">Open positions</span>
-        <span className="rounded-full bg-bone px-2 py-0.5 font-mono text-[11px] tabular-nums dark:bg-white/10">
-          {positions.length}
-        </span>
-        <span className={`ml-auto font-mono text-sm tabular-nums ${pnl < 0 ? 'text-down' : 'text-up'}`}>
-          {signed(pnl)}
-        </span>
-        <span className={`font-mono text-xs text-slate-ink transition-transform duration-200 ${
-          open ? 'rotate-90' : ''}`} aria-hidden>›</span>
-      </button>
-
-      {open && (
-        positions.length === 0 ? (
-          <p className="border-t border-pebble px-4 py-4 text-sm text-slate-ink dark:border-white/10">
-            Nothing open.
-          </p>
-        ) : (
-          <ul className="divide-y divide-pebble border-t border-pebble dark:divide-white/10 dark:border-white/10">
-            {positions.map((p) => (
-              <li key={p.symbol} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
-                <span className="font-medium">{p.symbol}</span>
-                <span className="font-mono text-xs tabular-nums text-slate-ink">
-                  {p.qty} @ {Number(p.avg_price).toLocaleString()}
-                </span>
-                <span className="font-mono text-xs tabular-nums text-slate-ink">
-                  now {Number(p.price).toLocaleString()}
-                </span>
-                <span className={`ml-auto font-mono tabular-nums ${
-                  Number(p.unrealized) < 0 ? 'text-down' : 'text-up'}`}>
-                  {signed(Number(p.unrealized))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )
-      )}
-    </div>
-  );
-}
