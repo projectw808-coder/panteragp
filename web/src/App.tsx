@@ -103,104 +103,162 @@ function Login({ mode, onDone, onMode, onBack }: {
 
   return (
     // Sign-in is the one full-bleed dark surface in the app: it is chrome, not data.
-    // auth-screen pins ember-as-text to the dark value, because this ground stays dark
-    // whichever way the theme is set — the same reason the rail and the public hero do it.
-    <div className="auth-screen grid h-full place-items-center bg-obsidian">
-      {/* Roomier than the app's own panels on purpose. This is the one screen a visitor
-          reads rather than works in, and the brief the design follows treats auth as the
-          restrained surface: space where it is earned, density where it is needed. */}
-      <form onSubmit={submit}
-        className="glow stagger relative w-[25rem] max-w-[calc(100vw-2rem)] space-y-5 overflow-hidden rounded-xl bg-onyx p-8 [box-shadow:var(--shadow-inset-dark)]">
-        <button type="button" onClick={onBack}
-          className="focus-ring rounded-full font-mono text-xs text-mist transition-colors hover:text-vellum">
-          ← back
-        </button>
+    // auth-screen pins every theme-swapping ink to its dark value, because this ground
+    // stays dark whichever way the theme is set.
+    //
+    // Two columns, not a card floating in the middle of a black page. A centred box is
+    // what a form looks like when nobody decided what the screen was for; the platforms
+    // this is measured against give the left half to who they are and the right half to
+    // the one thing being asked. It also means the brand is doing the reassuring, so the
+    // form can stay short.
+    <div className="auth-screen grid h-full grid-cols-1 bg-obsidian lg:grid-cols-[1.05fr_1fr]">
 
-        <div>
-          <p>
-            <span className="font-display text-[26px] text-vellum">Pantera GP</span>
+      {/* ---------------------------------------------------------- the brand half */}
+      <aside className="relative hidden overflow-hidden border-r border-white/10 bg-onyx p-12 lg:flex lg:flex-col lg:justify-between">
+        {/* The same bar motif as the public hero, at a fraction of the contrast: this is a
+            room the form sits in, not something to read. */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2">
+          <div className="absolute inset-0 bg-[radial-gradient(70%_120%_at_50%_100%,rgba(255,120,23,0.16),transparent_72%)]" />
+          <div className="absolute inset-x-0 bottom-0 flex h-full items-end gap-1.5 px-8">
+            {[24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58].map((h, i) => (
+              <div key={i} className="anim-grow flex-1 bg-[linear-gradient(to_top,rgba(255,120,23,0.28),transparent)]"
+                style={{ height: `${h}%`, animationDelay: `${240 + i * 55}ms` }} />
+            ))}
+          </div>
+        </div>
+
+        <div className="relative">
+          <button type="button" onClick={onBack}
+            className="focus-ring rounded-full font-mono text-xs text-mist transition-colors hover:text-vellum">
+            ← back
+          </button>
+          <p className="mt-10">
+            <span className="font-display text-[30px] text-vellum">Pantera GP</span>
             <span className="font-mono text-sm text-ember-ink"> ///</span>
           </p>
-          {/* Says what the screen is for. The wordmark alone left the form to explain itself. */}
-          <h1 className="mt-3 text-lg font-medium text-vellum">
-            {registering ? 'Open an account' : 'Sign in to the desk'}
-          </h1>
-          <p className="mt-1 text-sm text-mist">
-            {registering
-              ? 'A trading account, opened in a minute. Verification comes after.'
-              : 'Your positions, portfolios and record, exactly as you left them.'}
+          <p className="mt-5 max-w-sm text-[15px] leading-relaxed text-mist">
+            Rest an order at a price and close the tab. The engine prices every instrument
+            continuously and fires your limits, stops and trailing exits the moment they
+            trigger — server-side, with the record attached.
           </p>
         </div>
 
-        {/* Staff and traders sign in to different places; an account you create is a trader. */}
-        {!registering && (
-          <div className="flex gap-1 rounded-full bg-vellum/5 p-1">
-            {(['staff', 'client'] as const).map((k) => (
-              <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
-                className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-xs transition-colors ${as === k
-                  ? 'bg-ember font-medium text-graphite'
-                  : 'text-mist hover:text-vellum'}`}>
-                {k === 'staff' ? 'Staff' : 'Trader'}
-              </button>
-            ))}
+        {/* Three facts, not three adjectives. Each one is something the platform does. */}
+        <dl className="relative grid gap-5">
+          {[
+            ['Server-side execution', 'Your levels are held and fired by the engine, not by an open tab.'],
+            ['A record of everything', 'Every order, decision and document is written down and attributable.'],
+            ['Segregated client records', 'Positions, portfolios and cash are held against your account alone.'],
+          ].map(([term, detail]) => (
+            <div key={term} className="flex gap-3">
+              <span aria-hidden className="mt-1.5 h-px w-6 shrink-0 bg-ember" />
+              <div>
+                <dt className="text-sm font-medium text-vellum">{term}</dt>
+                <dd className="mt-0.5 text-[13px] leading-relaxed text-mist">{detail}</dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </aside>
+
+      {/* ----------------------------------------------------------- the form half */}
+      <main className="grid place-items-center overflow-y-auto px-6 py-10">
+        <form onSubmit={submit} className="stagger w-full max-w-[22rem] space-y-5">
+
+          {/* The brand column is hidden below lg, so the small screen gets its own header
+              rather than a form that begins with no explanation of where it is. */}
+          <div className="lg:hidden">
+            <button type="button" onClick={onBack}
+              className="focus-ring rounded-full font-mono text-xs text-mist transition-colors hover:text-vellum">
+              ← back
+            </button>
+            <p className="mt-6">
+              <span className="font-display text-[26px] text-vellum">Pantera GP</span>
+              <span className="font-mono text-sm text-ember-ink"> ///</span>
+            </p>
           </div>
-        )}
 
-        {/* Labels, not placeholders. A placeholder is gone the moment there is a value in
-            the field, which leaves somebody checking a half-typed form with no idea which
-            box is which — and leaves a screen reader with nothing at all. */}
-        {registering && (
-          <label className="block">
-            <span className="metric-label mb-1.5 block">Full name</span>
-            <input className={input} required maxLength={200} autoComplete="name"
-              value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-        )}
-        <label className="block">
-          <span className="metric-label mb-1.5 block">Email</span>
-          <input className={input} type="email" required autoComplete="username"
-            value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="block">
-          <span className="metric-label mb-1.5 block">Password</span>
-          <input className={input} type="password" required
-            // Only on the way in. On sign-in a length rule cannot help — the password is
-            // whatever it already is — and can only block somebody with an older, shorter one.
-            minLength={registering ? 8 : undefined}
-            autoComplete={registering ? 'new-password' : 'current-password'}
-            value={password} onChange={(e) => setPassword(e.target.value)} />
-          {registering && (
-            <span className="mt-1.5 block font-mono text-[11px] text-mist">At least 8 characters.</span>
+          <div>
+            <h1 className="text-xl font-medium text-vellum">
+              {registering ? 'Open an account' : 'Sign in to the desk'}
+            </h1>
+            <p className="mt-1.5 text-sm text-mist">
+              {registering
+                ? 'A trading account, opened in a minute. Verification comes after.'
+                : 'Your positions, portfolios and record, exactly as you left them.'}
+            </p>
+          </div>
+
+          {/* Staff and traders sign in to different places; an account you create is a trader. */}
+          {!registering && (
+            <div className="flex gap-1 rounded-full bg-vellum/5 p-1">
+              {(['staff', 'client'] as const).map((k) => (
+                <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
+                  className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-xs transition-colors ${as === k
+                    ? 'bg-ember font-medium text-graphite'
+                    : 'text-mist hover:text-vellum'}`}>
+                  {k === 'staff' ? 'Staff' : 'Trader'}
+                </button>
+              ))}
+            </div>
           )}
-        </label>
 
-        {/* Errors read as needs-attention, which is orange here rather than red. */}
-        {error && <p role="alert" className="font-mono text-xs text-ember-ink">{error}</p>}
+          {/* Labels, not placeholders. A placeholder is gone the moment there is a value in
+              the field, which leaves somebody checking a half-typed form with no idea which
+              box is which — and leaves a screen reader with nothing at all. */}
+          {registering && (
+            <label className="block">
+              <span className="metric-label mb-1.5 block">Full name</span>
+              <input className={input} required maxLength={200} autoComplete="name"
+                value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          )}
+          <label className="block">
+            <span className="metric-label mb-1.5 block">Email</span>
+            <input className={input} type="email" required autoComplete="username"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="metric-label mb-1.5 block">Password</span>
+            <input className={input} type="password" required
+              // Only on the way in. On sign-in a length rule cannot help — the password is
+              // whatever it already is — and can only block somebody with an older, shorter one.
+              minLength={registering ? 8 : undefined}
+              autoComplete={registering ? 'new-password' : 'current-password'}
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+            {registering && (
+              <span className="mt-1.5 block font-mono text-[11px] text-mist">At least 8 characters.</span>
+            )}
+          </label>
 
-        <button className={`w-full ${btn}`} disabled={busy}>
-          {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
-        </button>
+          {/* Errors read as needs-attention, which is orange here rather than red. */}
+          {error && <p role="alert" className="font-mono text-xs text-ember-ink">{error}</p>}
 
-        {/* What a person is actually weighing on this screen is whether to trust it. Said
-            plainly and once, at the size of a footnote — a badge would be decoration. */}
-        <p className="flex items-center gap-2 border-t border-white/10 pt-4 font-mono text-[11px] text-mist">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor"
-            strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden
-            className="shrink-0">
-            <rect x="4" y="9" width="12" height="8" rx="1.5" />
-            <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
-          </svg>
-          Encrypted in transit. Every action on your account is recorded.
-        </p>
-
-        <p className="text-center font-mono text-xs text-mist">
-          {registering ? 'Already have an account? ' : 'No account yet? '}
-          <button type="button" onClick={() => { setError(null); onMode(registering ? 'signin' : 'register'); }}
-            className="focus-ring rounded-full text-ember-ink hover:underline">
-            {registering ? 'Sign in' : 'Create account'}
+          <button className={`w-full ${btn}`} disabled={busy}>
+            {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
           </button>
-        </p>
-      </form>
+
+          <p className="font-mono text-xs text-mist">
+            {registering ? 'Already have an account? ' : 'No account yet? '}
+            <button type="button" onClick={() => { setError(null); onMode(registering ? 'signin' : 'register'); }}
+              className="focus-ring rounded-full text-ember-ink hover:underline">
+              {registering ? 'Sign in' : 'Create account'}
+            </button>
+          </p>
+
+          {/* What a person is actually weighing on this screen is whether to trust it. Said
+              plainly and once, at the size of a footnote — a badge would be decoration. */}
+          <p className="flex items-center gap-2 border-t border-white/10 pt-5 font-mono text-[11px] text-mist">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+              strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+              className="shrink-0">
+              <rect x="4" y="9" width="12" height="8" rx="1.5" />
+              <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+            </svg>
+            Encrypted in transit. Every action on your account is recorded.
+          </p>
+        </form>
+      </main>
     </div>
   );
 }
