@@ -218,15 +218,12 @@ function Login({ mode, onDone, onMode, onBack }: {
                 <input className={input} required maxLength={200} autoComplete="name"
                   value={name} onChange={(e) => setName(e.target.value)} />
               </label>
-              {/* Optional, and said so: the desk asks for a number eventually, and taking it
-                  here saves asking twice. A missing one is no reason to refuse an account. */}
+              {/* Not required: the desk asks for a number eventually, and taking it here
+                  saves asking twice. A missing one is no reason to refuse an account. */}
               <label className="block">
                 <span className="metric-label mb-1.5 block">Telephone number</span>
                 <input className={input} type="tel" maxLength={40} autoComplete="tel"
                   value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <span className="mt-1.5 block font-mono text-[11px] text-mist">
-                  Optional. It is how we reach you about your account.
-                </span>
               </label>
             </>
           )}
