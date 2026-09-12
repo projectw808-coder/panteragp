@@ -186,7 +186,22 @@
    token is the darkened one, which measured 3.12:1 on the rail and 2.94:1 on the sign-in
    card — where one of the three things written in it is the error message. Same reasoning
    as the public page's hero. */
-.nav-rail, .auth-screen { --color-ember-ink: #ff7817; }
+/* Surfaces that keep a dark ground whichever way the theme is set: the rail, the sign-in
+   card, and the public page's hero. Every token that swaps by theme has to be pinned to
+   its dark value on them, or it resolves to the light one on a near-black surface.
+
+   Listed together because this has now caught three separate inks one at a time — ember as
+   text on the rail at 3.12:1, ember on the sign-in card at 2.94:1, and the field labels
+   here at 3.5:1. One rule naming the whole set is the fix for the class of bug; pinning
+   them one at a time as each is noticed is how the fourth one ships. */
+.nav-rail,
+.auth-screen,
+.landing .stage {
+  --color-ember-ink: #ff7817;
+  --color-slate-ink: #96969f;
+  --color-up: #2cba60;
+  --color-down: #ef7d7d;
+}
 
 .nav-rail::before {
   /* Scanlines. 3px pitch and 4% white: visible as texture, gone as soon as you
@@ -287,7 +302,7 @@
   background: var(--canvas);
   color: var(--ink);
 }
-.landing .stage { background: var(--stage); --color-ember-ink: #ff7817; }
+.landing .stage { background: var(--stage); }
 .landing .soft { color: var(--ink-soft); }
 
 /* Display type: sans, medium weight. The reference sets -0.045em, which at these sizes
@@ -587,7 +602,12 @@
 
 /* Focus has to stay loud — it is the only affordance a keyboard gets — but it
    can at least be the brand's own ring rather than the browser's. */
-.ring:focus-visible {
+/* focus-ring, not "ring": Tailwind owns "ring" as a utility that paints a 1px
+   box-shadow. A custom class of the same name does not replace it, it joins it — so
+   every button using this carried a permanent outline, unfocused, drawn with the one
+   property the system forbids. Named out of the collision rather than fought with
+   !important, because the next person to write .ring would hit it all over again. */
+.focus-ring:focus-visible {
   outline: 2px solid var(--color-ember);
   outline-offset: 2px;
   /* No border-radius here. It used to set radius-sm, which at (0,2,0) out-weighed the
@@ -702,6 +722,47 @@
 @media (prefers-reduced-motion: reduce) {
   .tick-up, .tick-down { animation: none; }
   /* The glow is light, not movement, so it stays. */
+}
+
+/* ------------------------------------------------------------ autofill
+   Chrome paints a filled field with its own pale wash and its own ink, and neither is
+   settable — background-color is simply ignored on :-webkit-autofill. On a dark card the
+   result is two pale blue boxes that read as a broken control rather than a filled one.
+
+   Clipping the background to the glyphs is the way out: the UA still paints its wash, but
+   only behind the text, where the text then covers it. -webkit-text-fill-color restates
+   the ink, since colour is overridden too. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: var(--color-obsidian);
+  caret-color: var(--color-obsidian);
+}
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-vellum);
+  caret-color: var(--color-vellum);
+}
+
+/* ------------------------------------------------------- the sign-in card
+   This surface keeps its dark ground whichever way the theme is set, so its fields cannot
+   use the theme-following field style: in light mode that resolves to a white input sitting
+   on a near-black card. Scoped here rather than given a second class in the markup, so the
+   shared field style stays the single definition of what an input looks like. */
+.auth-screen input {
+  background: var(--color-onyx);
+  border-color: rgb(255 255 255 / 0.15);
+  color: var(--color-vellum);
+}
+.auth-screen input::placeholder { color: var(--color-mist); }
+.auth-screen input:-webkit-autofill,
+.auth-screen input:-webkit-autofill:hover,
+.auth-screen input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-vellum);
+  caret-color: var(--color-vellum);
 }
 
 /* --------------------------------------------------------------- scrollbars

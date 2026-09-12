@@ -106,48 +106,97 @@ function Login({ mode, onDone, onMode, onBack }: {
     // auth-screen pins ember-as-text to the dark value, because this ground stays dark
     // whichever way the theme is set — the same reason the rail and the public hero do it.
     <div className="auth-screen grid h-full place-items-center bg-obsidian">
-      <form onSubmit={submit} className="w-80 space-y-3 rounded-xl bg-onyx p-6 [box-shadow:var(--shadow-inset-dark)]">
-        <button type="button" onClick={onBack} className="font-mono text-xs text-mist hover:text-vellum">← back</button>
+      {/* Roomier than the app's own panels on purpose. This is the one screen a visitor
+          reads rather than works in, and the brief the design follows treats auth as the
+          restrained surface: space where it is earned, density where it is needed. */}
+      <form onSubmit={submit}
+        className="glow stagger relative w-[25rem] max-w-[calc(100vw-2rem)] space-y-5 overflow-hidden rounded-xl bg-onyx p-8 [box-shadow:var(--shadow-inset-dark)]">
+        <button type="button" onClick={onBack}
+          className="focus-ring rounded-full font-mono text-xs text-mist transition-colors hover:text-vellum">
+          ← back
+        </button>
+
         <div>
-          <span className="font-display text-2xl text-vellum">Pantera GP</span>
-          <span className="text-ember-ink"> ///</span>
+          <p>
+            <span className="font-display text-[26px] text-vellum">Pantera GP</span>
+            <span className="font-mono text-sm text-ember-ink"> ///</span>
+          </p>
+          {/* Says what the screen is for. The wordmark alone left the form to explain itself. */}
+          <h1 className="mt-3 text-lg font-medium text-vellum">
+            {registering ? 'Open an account' : 'Sign in to the desk'}
+          </h1>
+          <p className="mt-1 text-sm text-mist">
+            {registering
+              ? 'A trading account, opened in a minute. Verification comes after.'
+              : 'Your positions, portfolios and record, exactly as you left them.'}
+          </p>
         </div>
 
         {/* Staff and traders sign in to different places; an account you create is a trader. */}
         {!registering && (
-          <div className="flex gap-1 text-sm">
+          <div className="flex gap-1 rounded-full bg-vellum/5 p-1">
             {(['staff', 'client'] as const).map((k) => (
               <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
-                className={`flex-1 rounded-full px-2 py-1 font-mono text-xs ${as === k
-                  ? 'bg-ember text-graphite'
-                  : 'bg-vellum/10 text-mist hover:text-vellum'}`}>
+                className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-xs transition-colors ${as === k
+                  ? 'bg-ember font-medium text-graphite'
+                  : 'text-mist hover:text-vellum'}`}>
                 {k === 'staff' ? 'Staff' : 'Trader'}
               </button>
             ))}
           </div>
         )}
 
+        {/* Labels, not placeholders. A placeholder is gone the moment there is a value in
+            the field, which leaves somebody checking a half-typed form with no idea which
+            box is which — and leaves a screen reader with nothing at all. */}
         {registering && (
-          <input className={input} placeholder="Full name" required maxLength={200}
-            autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="block">
+            <span className="metric-label mb-1.5 block">Full name</span>
+            <input className={input} required maxLength={200} autoComplete="name"
+              value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
         )}
-        <input className={input} type="email" placeholder="Email" required autoComplete="username"
-          value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className={input} type="password" placeholder="Password" required minLength={8}
-          autoComplete={registering ? 'new-password' : 'current-password'}
-          value={password} onChange={(e) => setPassword(e.target.value)} />
-        {registering && <p className="font-mono text-[11px] text-mist">At least 8 characters.</p>}
+        <label className="block">
+          <span className="metric-label mb-1.5 block">Email</span>
+          <input className={input} type="email" required autoComplete="username"
+            value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="metric-label mb-1.5 block">Password</span>
+          <input className={input} type="password" required
+            // Only on the way in. On sign-in a length rule cannot help — the password is
+            // whatever it already is — and can only block somebody with an older, shorter one.
+            minLength={registering ? 8 : undefined}
+            autoComplete={registering ? 'new-password' : 'current-password'}
+            value={password} onChange={(e) => setPassword(e.target.value)} />
+          {registering && (
+            <span className="mt-1.5 block font-mono text-[11px] text-mist">At least 8 characters.</span>
+          )}
+        </label>
 
         {/* Errors read as needs-attention, which is orange here rather than red. */}
         {error && <p role="alert" className="font-mono text-xs text-ember-ink">{error}</p>}
+
         <button className={`w-full ${btn}`} disabled={busy}>
           {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
         </button>
 
-        <p className="pt-1 text-center font-mono text-xs text-mist">
+        {/* What a person is actually weighing on this screen is whether to trust it. Said
+            plainly and once, at the size of a footnote — a badge would be decoration. */}
+        <p className="flex items-center gap-2 border-t border-white/10 pt-4 font-mono text-[11px] text-mist">
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+            strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+            className="shrink-0">
+            <rect x="4" y="9" width="12" height="8" rx="1.5" />
+            <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+          </svg>
+          Encrypted in transit. Every action on your account is recorded.
+        </p>
+
+        <p className="text-center font-mono text-xs text-mist">
           {registering ? 'Already have an account? ' : 'No account yet? '}
           <button type="button" onClick={() => { setError(null); onMode(registering ? 'signin' : 'register'); }}
-            className="text-ember-ink hover:underline">
+            className="focus-ring rounded-full text-ember-ink hover:underline">
             {registering ? 'Sign in' : 'Create account'}
           </button>
         </p>
@@ -329,7 +378,7 @@ export const input = `w-full ${field}`;
 // Primary action: filled ember with black text, mono label — the spec's "act on this".
 // sheen: one specular pass across the fill on hover. It is on the primary action only —
 // the whole effect of a gesture like this comes from it being rare.
-export const btn = 'sheen ring rounded-full bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
+export const btn = 'sheen focus-ring rounded-full bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
 // Secondary: bone fill, no colour. Same shape rules.
 export const btnGhost = 'rounded-full border border-pebble bg-bone px-4 py-2 font-mono text-sm font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-vellum/5 dark:text-vellum dark:hover:bg-vellum/10';
 
