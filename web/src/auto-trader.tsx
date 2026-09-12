@@ -75,8 +75,12 @@ export function AutoTraderView() {
   const last = lines[0];
   const buys = lines.filter((l) => l.side === 'buy').length;
 
+  // 6xl rather than the 5xl the other client pages use — which is also what the desk's own
+  // dense screens already use, so this is the app agreeing with itself rather than an
+  // exception. Four tiles, a chart and a six-column log is the most crowded thing a client
+  // sees, and it wants the room.
   return (
-    <div className="stagger mx-auto max-w-5xl space-y-4">
+    <div className="stagger mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Auto trader</PageTitle>
         <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${

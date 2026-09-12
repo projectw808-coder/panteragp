@@ -878,18 +878,29 @@ input:-webkit-autofill:active {
    Measured against the darkest and lightest surfaces each one lands on. */
 :root {
   /* Light mode. Chart segments are non-text, so the bar is 3:1 under WCAG 1.4.11 — these
-     clear 4.5:1 on bone and on white, which leaves room for the thin slice of a donut.
-     The first pass used the dark-mode values here and they measured 1.9 to 2.8 against a
-     bone card: fine on the terminal, invisible on the light one. */
-  --color-cat-1: #b34f0d;   /* ember, darkened, so the largest slice still reads as the accent */
+     hold 4.5:1 on bone and on white instead, which leaves room for the thin slice of a
+     donut. The first pass used the dark-mode values here and they measured 1.9 to 2.8
+     against a bone card: fine on the terminal, invisible on the light one.
+
+     The four are also kept apart from each other, not just from the ground: a donut of
+     four slices nobody can tell apart is legible and useless. The closest pair is ember
+     and amber, at 52 in RGB distance — they are neighbours in hue, and there is only so
+     far apart two warm colours can sit while both still clear the ground. Anything added
+     here is held to at least that; the steel that replaced the violet sits at 69. */
+  --color-cat-1: #af4d0d;   /* ember, darkened, so the largest slice still reads as the accent */
   --color-cat-2: #1a6370;   /* teal */
-  --color-cat-3: #5745b8;   /* violet */
+  /* Was a violet. It was the one hue in the system with no relationship to anything else
+     in it — ember, its darkened self, a teal and an amber can all sit in the same room; a
+     purple reads as a colour from another palette that wandered in. This is a steel blue:
+     far enough from the teal beside it to tell apart in a donut, nowhere near ember or
+     amber, and it clears the same 4.5:1 on bone and on white the rest of the set does. */
+  --color-cat-3: #376bae;   /* steel blue */
   --color-cat-4: #7d5a0e;   /* amber */
 }
 
 .dark {
   --color-cat-1: #ff7817;
   --color-cat-2: #3fa7b8;
-  --color-cat-3: #9b8cf0;
+  --color-cat-3: #7d9ede;
   --color-cat-4: #d8a33c;
 }
