@@ -65,7 +65,7 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
   const earned = open.reduce((n, p) => n + Number(p.earned ?? 0), 0);
 
   return (
-    <div className="space-y-4">
+    <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="metric-label">{clientId ? 'Portfolios' : 'Your portfolios'}</h3>
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>

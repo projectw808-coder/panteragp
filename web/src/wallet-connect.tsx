@@ -163,7 +163,7 @@ export function WalletView() {
   const linked = wallets.data ?? [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="stagger mx-auto max-w-3xl space-y-4">
       <PageTitle>Connect wallet</PageTitle>
 
       <div className={`${card} space-y-4`}>

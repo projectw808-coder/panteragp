@@ -75,7 +75,7 @@ export function AutoTraderView() {
   const buys = lines.filter((l) => l.side === 'buy').length;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="stagger mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Auto trader</PageTitle>
         <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${

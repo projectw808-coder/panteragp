@@ -21,7 +21,7 @@ export function SettingsView({ me, dark, setDark }: {
   const staff = me?.kind === 'staff';
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="stagger mx-auto max-w-3xl space-y-4">
       <PageTitle>Settings</PageTitle>
 
       <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>

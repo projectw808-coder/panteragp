@@ -41,7 +41,7 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
   const closed = stakes.data?.filter((s) => s.status !== 'active') ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="metric-label">{clientId ? 'Staking' : 'Your staking'}</h3>
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>

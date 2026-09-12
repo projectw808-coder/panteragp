@@ -447,6 +447,24 @@
   animation-delay: calc(var(--i, 0) * 55ms);
 }
 
+/* The same arrival, applied to a container's own children rather than hung on each one
+   by hand. A page says .stagger once and its panels sequence themselves, which means the
+   order stays right when a panel is added, removed or reordered — a hand-numbered run goes
+   wrong the first time somebody inserts a card in the middle and does not renumber.
+
+   Enumerated rather than computed because CSS cannot read an element's index into calc().
+   Eight is past the point where a screen has too many top-level panels anyway; beyond it
+   everything holds the last delay rather than drifting further and further out. */
+.stagger > * { animation: enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.stagger > :nth-child(1) { animation-delay: 0ms; }
+.stagger > :nth-child(2) { animation-delay: 55ms; }
+.stagger > :nth-child(3) { animation-delay: 110ms; }
+.stagger > :nth-child(4) { animation-delay: 165ms; }
+.stagger > :nth-child(5) { animation-delay: 220ms; }
+.stagger > :nth-child(6) { animation-delay: 275ms; }
+.stagger > :nth-child(7) { animation-delay: 330ms; }
+.stagger > :nth-child(n+8) { animation-delay: 385ms; }
+
 /* Intent. A one-pixel rise and the hairline warming: the panel acknowledges the
    cursor without leaving the grid. Shadowless, so it still obeys the system. */
 .lift {
@@ -538,7 +556,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .enter, .draw, .wipe { animation: none; }
+  .enter, .draw, .wipe, .stagger > * { animation: none; }
   .draw { stroke-dashoffset: 0; }
   .lift { transition: border-color 0.25s; }
   .lift:hover { transform: none; }

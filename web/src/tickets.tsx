@@ -55,7 +55,7 @@ export function SupportPanel() {
   const done = rows.filter((t) => t.status === 'resolved' || t.status === 'closed');
 
   return (
-    <div className="space-y-4">
+    <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Support</PageTitle>
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
@@ -236,7 +236,7 @@ export function SupportQueue({ role }: { role?: string }) {
   const waiting = [...ours].sort((a, b) => +new Date(a.updated_at) - +new Date(b.updated_at))[0];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="stagger mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Support</PageTitle>
         {!canReply && (

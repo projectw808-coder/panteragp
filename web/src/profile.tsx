@@ -40,7 +40,7 @@ export function ProfileView() {
   if (!p) return <p className="text-sm text-slate-ink">Loading…</p>;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="stagger mx-auto max-w-3xl space-y-4">
       <PageTitle>Profile</PageTitle>
 
       <div className={`${card} flex flex-wrap items-center gap-5`}>
