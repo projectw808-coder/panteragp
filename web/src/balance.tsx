@@ -92,7 +92,9 @@ export function BalanceBar() {
 
   return (
     <div className="glow grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
-      <span className="metric-label">Balance</span>
+      {/* Marked, not whispered: metric-label is the voice for the word above a figure, and
+          this one names the whole strip. The ember tick is what says so everywhere else. */}
+      <span className="section-title mr-1">Balance</span>
       {rows.length === 0
         ? <span className="text-sm text-slate-ink">Nothing yet.</span>
         : rows.map(([code, n]) => (

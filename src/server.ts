@@ -243,8 +243,9 @@ app.post('/auth/register', async (req, reply) => {
     password: z.string().min(8).max(200),
     // Optional: the desk asks for it eventually, and somebody who gives it at sign-up
     // should not be asked again. Not required — a missing phone is no reason to refuse
-    // an account, and the profile form takes it later.
-    phone: z.string().trim().min(1).max(40).optional(),
+    // an account, and the profile form takes it later. An empty string is a missing
+    // phone, not a bad one: rejecting it would fail a registration over a blank box.
+    phone: z.string().trim().max(40).optional(),
   }).safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const b = body.data;
@@ -254,7 +255,7 @@ app.post('/auth/register', async (req, reply) => {
     return await tx('self-registration', async (c) => {
       const { rows } = await c.query(
         `INSERT INTO clients (email, name, password_hash, phone) VALUES ($1,$2,$3,$4) RETURNING id, email, name`,
-        [email, b.name, await hashPassword(b.password), b.phone ?? null]);
+        [email, b.name, await hashPassword(b.password), b.phone || null]);
       await logActivity(c, {
         client_id: rows[0].id, kind: 'note', actor: rows[0].id,
         summary: 'Account created by the client',
