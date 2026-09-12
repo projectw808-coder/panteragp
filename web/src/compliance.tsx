@@ -27,8 +27,8 @@ const SEVERITY: Record<string, string> = {
 };
 const chip = 'rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase';
 const STATUS: Record<string, string> = {
-  approved: `${chip} bg-up/15 text-up`,
-  rejected: `${chip} bg-down/15 text-down`,
+  approved: `${chip} chip-up text-up`,
+  rejected: `${chip} chip-down text-down`,
   pending: `${chip} bg-ember/15 text-ember-ink`,
 };
 
@@ -537,7 +537,7 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="metric-label">Identity</h2>
           <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-            done === REQUIRED.length ? 'bg-up/15 text-up' : 'bg-ember/15 text-ember-ink'}`}>
+            done === REQUIRED.length ? 'chip-up text-up' : 'bg-ember/15 text-ember-ink'}`}>
             {done} of {REQUIRED.length} approved
           </span>
         </div>
@@ -546,8 +546,8 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
           {checklist.map((c) => (
             <li key={c.kind} className="flex flex-wrap items-center gap-3">
               <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-mono text-[11px] ${
-                c.state === 'approved' ? 'bg-up/15 text-up'
-                  : c.state === 'rejected' ? 'bg-down/15 text-down'
+                c.state === 'approved' ? 'chip-up text-up'
+                  : c.state === 'rejected' ? 'chip-down text-down'
                   : c.state === 'pending' ? 'bg-ember/15 text-ember-ink'
                   : 'bg-bone text-slate-ink dark:bg-white/10'}`} aria-hidden>
                 {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : '•'}

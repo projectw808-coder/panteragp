@@ -153,7 +153,7 @@ export function OverviewView() {
 /** A slowly pulsing dot beside a heading, for figures that move on their own. */
 export function LiveBadge() {
   return (
-    <span className="flex items-center gap-2 rounded-full bg-up/15 px-2.5 py-0.5">
+    <span className="flex items-center gap-2 rounded-full chip-up px-2.5 py-0.5">
       <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-up" aria-hidden />
       <span className="font-mono text-[10px] tracking-[0.16em] text-up uppercase">Live</span>
     </span>

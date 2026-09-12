@@ -130,8 +130,8 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
                 <span className="text-slate-ink">from {r.portfolio_name}</span>
                 <span className="font-mono text-xs text-slate-ink">{day(r.created_at)}</span>
                 <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-                  r.status === 'approved' ? 'bg-up/15 text-up'
-                    : r.status === 'declined' ? 'bg-down/15 text-down'
+                  r.status === 'approved' ? 'chip-up text-up'
+                    : r.status === 'declined' ? 'chip-down text-down'
                     : 'bg-ember/15 text-ember-ink'}`}>
                   {r.status === 'pending' ? 'with the desk' : r.status}
                 </span>
@@ -196,7 +196,7 @@ function History({ p }: { p: Portfolio }) {
       {list.slice(0, 20).map((m) => (
         <li key={m.id} className="flex flex-wrap items-center gap-3 py-1.5">
           <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] uppercase ${
-            m.kind === 'interest' ? 'bg-up/15 text-up'
+            m.kind === 'interest' ? 'chip-up text-up'
               : m.kind === 'contribution' ? 'bg-bone text-slate-ink dark:bg-white/10'
               : 'bg-ember/15 text-ember-ink'}`}>
             {m.kind === 'contribution' ? 'paid in' : m.kind === 'withdrawal' ? 'taken out' : 'interest'}

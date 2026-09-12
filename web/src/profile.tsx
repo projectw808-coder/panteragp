@@ -25,10 +25,10 @@ const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
 
 const VERIFICATION: Record<string, string> = {
-  approved: 'bg-up/15 text-up',
+  approved: 'chip-up text-up',
   pending: 'bg-ember/15 text-ember-ink',
-  rejected: 'bg-down/15 text-down',
-  expired: 'bg-down/15 text-down',
+  rejected: 'chip-down text-down',
+  expired: 'chip-down text-down',
   none: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
 };
 

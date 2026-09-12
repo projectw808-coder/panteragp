@@ -84,7 +84,7 @@ export function AutoTraderView() {
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Auto trader</PageTitle>
         <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-          on ? 'bg-up/15 text-up' : 'bg-bone text-slate-ink dark:bg-white/10'}`}>
+          on ? 'chip-up text-up' : 'bg-bone text-slate-ink dark:bg-white/10'}`}>
           {on ? 'running' : 'stopped'}
         </span>
       </div>
@@ -175,7 +175,7 @@ export function AutoTraderView() {
                     className="signal-in border-b border-pebble transition-colors last:border-0 hover:bg-ember/5 dark:border-white/10">
                     <td className="px-2 py-1.5">
                       <span className={`inline-block w-11 rounded-full px-1.5 py-0.5 text-center font-mono text-[10px] font-medium uppercase ${
-                        l.side === 'buy' ? 'bg-up/15 text-up' : 'bg-down/15 text-down'}`}>
+                        l.side === 'buy' ? 'chip-up text-up' : 'chip-down text-down'}`}>
                         {l.side}
                       </span>
                     </td>

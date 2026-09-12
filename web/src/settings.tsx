@@ -238,7 +238,7 @@ function StaffAccounts({ meId }: { meId?: string }) {
                 <td className="px-4 py-2 text-xs capitalize">{s.role}</td>
                 <td className="px-4 py-2">
                   <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-                    s.active ? 'bg-up/15 text-up' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+                    s.active ? 'chip-up text-up' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
                     {s.active ? 'active' : 'off'}
                   </span>
                 </td>

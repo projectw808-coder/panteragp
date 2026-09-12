@@ -40,28 +40,17 @@
      buttons, badges or anything else. If you are reaching for these outside a number that
      moved, reach for the neutral scale or ember instead.
      Measured against the lightest and darkest surfaces each one lands on. */
-  /* Solved against the tinted chip rather than the card. A gain is usually written inside
-     a bg-up/15 pill whose tint is mixed from this same colour, so the ground moves with the
-     text: on bone the old pair measured 3.94:1 and 4.25:1 there. Barely-perceptible shifts
-     — both are within a couple of steps of where they were — that buy the chip 4.6:1. */
-  --color-up: #116a32;      /* 5.65:1 on bone, 4.55:1 inside an up/15 pill */
-  --color-down: #af1b1b;    /* 5.88:1 on bone, 4.58:1 inside a down/15 pill */
+  /* Solved against the tinted chip rather than the card, because a gain is usually written
+     inside one and the chip's ground is mixed from this same colour — so the ground moves
+     with the text. On the light theme that tint darkens the ground slightly, which helps;
+     it is the dark theme where it worked against itself (see .chip-down). */
+  --color-up: #116a32;      /* 5.65:1 on bone, 4.6:1 inside a chip */
+  --color-down: #af1b1b;    /* 5.88:1 on bone, 4.6:1 inside a chip */
 
   --font-display: 'Playfair Display', ui-serif, Georgia, serif;
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Motion, as named pairs rather than numbers scattered through the file. Speed carries
-     hierarchy: feedback you should not notice, transitions you should barely notice, and
-     first-impression moments slow enough that the craft is actually perceivable.
-
-     The curve is the system's existing one and deliberately stays. It is an expo-out —
-     leaves fast, decelerates hard, never overshoots — and it is already on every animation
-     that has shipped. Swapping it for a marginally different expo-out would restyle motion
-     the whole app over, for a difference nobody could name.
-
-     --ease-exit is new: things leaving should not take as long as things arriving, because
-     nobody is waiting to admire an element on its way out. */
   /* The curve is the system's existing one and deliberately stays: an expo-out that leaves
      fast, decelerates hard and never overshoots, already on every animation that has
      shipped. --ease-exit is new — things leaving should not take as long as things
@@ -117,15 +106,18 @@
    4.5:1. Nothing else in the palette changes — the neutrals already pass both ways. */
 .dark {
   --color-ember-ink: #ff7817;
-  /* Tuned against the chip, not the page: these were set to clear 4.5:1 on obsidian, but
-     a P&L figure is rarely on the page itself — it is on a raised card, or inside an up/15
-     chip whose tint is mixed from this very colour, so lifting the text lifts its own
-     ground with it. Solved against that: same hues, held at saturation so a gain stays
-     green and a loss stays red rather than drifting pastel, and light enough to clear on
-     the raised card (6.1:1) and inside the self-tinted chip (4.8:1), which is the worst
-     case either of them meets. */
+  /* The loss colour was a salmon, and the reason is worth writing down: pure #ff0000
+     reaches only 3.88:1 against the raised card, so NO fully saturated red can clear 4.5:1
+     there. Lightness is the only way up, and lightness is what turns a red pink. Chasing a
+     redder red by adjusting the red was never going to work.
+
+     What was actually wrong was the ground. The chips these sit in tinted themselves 15%
+     toward the colour, which on a dark theme lightens the ground beneath its own text — so
+     the text had to get lighter still to escape. The chips are darker wells now (see
+     .chip-up / .chip-down), and with the ground moving the right way the colour can be a
+     proper red: 4.74:1 on the card, 5.26:1 in the chip. */
   --color-up: #2cba60;
-  --color-down: #ef7d7d;
+  --color-down: #ff4d4f;
   /* Secondary text has to move with the surface for the same reason the money colours do.
      slate-ink was tuned to 4.5:1 against a bone card and nobody checked the other side: on
      the terminal ground it measures 3.5:1, under the 4.5:1 the system asks for, and it is
@@ -804,6 +796,19 @@ input:-webkit-autofill:active {
   .signal-in { animation: none; }
 }
 
+/* ------------------------------------------------------------------ chips
+   A status chip used to be the colour at 15% behind the colour at full strength. On the
+   light theme that darkens the ground slightly and is fine. On the dark one it lightens it,
+   so the chip pushes its own text towards the ground and the only way out is a paler text
+   colour — which is how the loss colour became a salmon.
+
+   Here the dark chip is a darker well instead: the ground moves away from the text rather
+   than towards it, and the colour is free to be saturated. */
+.chip-up, .chip-down { border-radius: 9999px; }
+.chip-up { background: color-mix(in srgb, var(--color-up) 14%, transparent); }
+.chip-down { background: color-mix(in srgb, var(--color-down) 14%, transparent); }
+.dark .chip-up, .dark .chip-down { background: rgb(0 0 0 / 0.28); }
+
 /* --------------------------------------------------------------- scrollbars
    Two syntaxes for the same thing: the standard properties, and the WebKit
    pseudo-elements that Safari still needs. Both are set because neither covers
@@ -889,18 +894,21 @@ input:-webkit-autofill:active {
      here is held to at least that; the steel that replaced the violet sits at 69. */
   --color-cat-1: #af4d0d;   /* ember, darkened, so the largest slice still reads as the accent */
   --color-cat-2: #1a6370;   /* teal */
-  /* Was a violet. It was the one hue in the system with no relationship to anything else
-     in it — ember, its darkened self, a teal and an amber can all sit in the same room; a
-     purple reads as a colour from another palette that wandered in. This is a steel blue:
-     far enough from the teal beside it to tell apart in a donut, nowhere near ember or
-     amber, and it clears the same 4.5:1 on bone and on white the rest of the set does. */
-  --color-cat-3: #376bae;   /* steel blue */
+  /* Was a violet, then briefly a steel blue — which measured as a blue and still read as
+     a lavender, because #7d9ede at that lightness is a periwinkle whatever the hue angle
+     says. Measuring separation from the teal answered the wrong question; the question was
+     whether a person would call it purple.
+
+     So it leaves the blue family altogether. A warm stone cannot be mistaken for a purple,
+     sits 76 from its nearest neighbour where the blue managed 52, and suits a system whose
+     first rule is that ember is the only chromatic colour better than a fourth hue did. */
+  --color-cat-3: #766759;   /* warm stone */
   --color-cat-4: #7d5a0e;   /* amber */
 }
 
 .dark {
   --color-cat-1: #ff7817;
   --color-cat-2: #3fa7b8;
-  --color-cat-3: #7d9ede;
+  --color-cat-3: #907e6d;
   --color-cat-4: #d8a33c;
 }

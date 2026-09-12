@@ -118,7 +118,7 @@ export function PortfolioRequests() {
                   <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{when(r.created_at)}</td>
                   <td className="px-4 py-2">
                     <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] uppercase ${
-                      r.status === 'approved' ? 'bg-up/15 text-up' : 'bg-down/15 text-down'}`}>
+                      r.status === 'approved' ? 'chip-up text-up' : 'chip-down text-down'}`}>
                       {r.status}
                     </span>
                   </td>
