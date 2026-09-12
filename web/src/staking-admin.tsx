@@ -120,7 +120,7 @@ export function StakingAdmin() {
 
             <div className="mt-3">
               <button onClick={() => { setEditing(editing === p.code ? null : p.code); setAdding(false); }}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${editing === p.code
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${editing === p.code
                   ? 'border border-ember text-ember-ink hover:bg-ember/10'
                   : 'bg-ember text-graphite hover:brightness-110'}`}>
                 {editing === p.code ? 'Close' : 'Edit product'}

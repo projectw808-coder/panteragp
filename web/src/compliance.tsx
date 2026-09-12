@@ -123,7 +123,7 @@ export function ComplianceView({ role }: { role?: string }) {
       <div role="tablist" aria-label="Compliance queues" className="flex flex-wrap gap-1 text-xs">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 rounded-md px-3 py-1.5 transition-colors ${tab === t.id
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${tab === t.id
               ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
             {t.label}
@@ -159,7 +159,7 @@ export function ComplianceView({ role }: { role?: string }) {
                   </p>
                 </div>
                 <button onClick={() => openDocument(d.id)}
-                  className="rounded-md border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                  className="rounded-full border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
                   View document
                 </button>
                 {review
@@ -207,9 +207,9 @@ function Decide({ id, onDone }: { id: number; onDone: () => void }) {
       {/* Approving is the primary action here, so it takes the ember fill; rejecting is
           the secondary one and takes the neutral. Neither is red or green. */}
       <button disabled={busy} onClick={() => send('approved')}
-        className="rounded-md bg-ember px-3 py-1 text-xs font-medium text-graphite transition-colors hover:brightness-110 disabled:opacity-50">Approve</button>
+        className="rounded-full bg-ember px-3 py-1 text-xs font-medium text-graphite transition-colors hover:brightness-110 disabled:opacity-50">Approve</button>
       <button disabled={busy} onClick={() => send('rejected')}
-        className="rounded-md border border-pebble px-3 py-1 text-xs font-medium text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum">Reject</button>
+        className="rounded-full border border-pebble px-3 py-1 text-xs font-medium text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum">Reject</button>
     </div>
   );
 }
@@ -243,11 +243,11 @@ export function FlagList({ rows, review, onDone, showClient = false }: {
           {review && (
             <div className="ml-auto flex gap-2 text-xs">
               <button onClick={() => decide(f.id, 'cleared')}
-                className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
                 Clear
               </button>
               <button onClick={() => decide(f.id, 'escalated')}
-                className="rounded-md bg-ember px-2.5 py-1 font-medium text-graphite transition-colors hover:brightness-110">
+                className="rounded-full bg-ember px-2.5 py-1 font-medium text-graphite transition-colors hover:brightness-110">
                 Escalate
               </button>
             </div>
@@ -351,7 +351,7 @@ export function ReportsView() {
         <div className="ml-auto flex flex-wrap gap-2">
           <button className={btn} onClick={() => download(open)}>Export CSV</button>
           <button
-            className="rounded-md border border-pebble px-4 py-2 font-mono text-sm text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
+            className="rounded-full border border-pebble px-4 py-2 font-mono text-sm text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
             onClick={() => window.print()}>
             Print
           </button>
@@ -402,7 +402,7 @@ export function ReportsView() {
           value={q} onChange={(e) => setQ(e.target.value)} />
         {sort && (
           <button onClick={() => setSort(null)}
-            className="rounded-md border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+            className="rounded-full border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
             Clear sort
           </button>
         )}
@@ -663,7 +663,7 @@ function DocRow({ d }: { d: Doc }) {
   return (
     <li className="flex flex-wrap items-center gap-3 py-2.5">
       <button type="button" onClick={open} title="Open the document"
-        className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md border border-pebble bg-bone transition-colors hover:border-ember dark:border-white/10 dark:bg-white/5">
+        className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-pebble bg-bone transition-colors hover:border-ember dark:border-white/10 dark:bg-white/5">
         {src
           ? <img src={src} alt="" className="h-full w-full object-cover" />
           : <span className="font-mono text-[10px] text-slate-ink" aria-hidden>PDF</span>}

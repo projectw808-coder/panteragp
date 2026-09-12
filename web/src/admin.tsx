@@ -84,7 +84,7 @@ export function AdminView() {
           updated {new Date(at).toLocaleTimeString()}
         </span>
         <button onClick={refresh}
-          className="ml-auto rounded-md border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          className="ml-auto rounded-full border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
           Refresh
         </button>
       </div>

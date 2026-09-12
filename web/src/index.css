@@ -69,7 +69,11 @@
   --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 0.6, 1);
 
-  /* Buttons, inputs and tags take md; cards and panels lg..xl; chips are pills.
+  /* Inputs and tags take md; cards and panels lg..xl; chips and BUTTONS are pills.
+     Buttons took md until the flagship brief called for full-pill primary actions and
+     that was accepted — the rule changed, so this changed with it rather than leaving a
+     comment that describes a system nobody is following any more. Inputs stay on md: a
+     pill text field reads as a search box, and most of these are not.
      0px corners are never used on an interactive or content surface. */
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -586,7 +590,10 @@
 .ring:focus-visible {
   outline: 2px solid var(--color-ember);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  /* No border-radius here. It used to set radius-sm, which at (0,2,0) out-weighed the
+     element's own rounded-* class and snapped the control to a 4px rectangle for exactly
+     as long as it held focus — most visible now that the primary action is a pill, but it
+     was wrong before that too. An outline already follows the element's own radius. */
 }
 
 @media (prefers-reduced-motion: reduce) {

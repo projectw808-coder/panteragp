@@ -74,7 +74,7 @@ export function PortfolioRequests() {
       <div role="tablist" aria-label="Request status" className="flex flex-wrap gap-1 text-xs">
         {['pending', 'approved', 'declined', 'all'].map((s) => (
           <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
-            className={`rounded-md px-3 py-1.5 capitalize transition-colors ${status === s
+            className={`rounded-full px-3 py-1.5 capitalize transition-colors ${status === s
               ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
             {s}
@@ -175,11 +175,11 @@ function Row({ r, onDecide }: {
           maxLength={400} placeholder="Note for the client (optional)"
           value={note} onChange={(e) => setNote(e.target.value)} />
         <button disabled={busy} onClick={() => go('approved')}
-          className="rounded-md bg-ember px-3 py-1.5 text-sm font-medium text-graphite transition-colors hover:brightness-110 disabled:opacity-50">
+          className="rounded-full bg-ember px-3 py-1.5 text-sm font-medium text-graphite transition-colors hover:brightness-110 disabled:opacity-50">
           Approve
         </button>
         <button disabled={busy} onClick={() => go('declined')}
-          className="rounded-md border border-pebble px-3 py-1.5 text-sm font-medium text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum">
+          className="rounded-full border border-pebble px-3 py-1.5 text-sm font-medium text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum">
           Decline
         </button>
       </div>

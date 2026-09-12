@@ -279,7 +279,7 @@ export function SupportQueue({ role }: { role?: string }) {
         {FILTERS.map((f) => (
           <button key={f.id} role="tab" aria-selected={status === f.id} onClick={() => setStatus(f.id)}
             title={f.note}
-            className={`rounded-md px-3 py-1.5 transition-colors ${status === f.id
+            className={`rounded-full px-3 py-1.5 transition-colors ${status === f.id
               ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
             {f.label}

@@ -118,7 +118,7 @@ function Login({ mode, onDone, onMode, onBack }: {
           <div className="flex gap-1 text-sm">
             {(['staff', 'client'] as const).map((k) => (
               <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
-                className={`flex-1 rounded-md px-2 py-1 font-mono text-xs ${as === k
+                className={`flex-1 rounded-full px-2 py-1 font-mono text-xs ${as === k
                   ? 'bg-ember text-graphite'
                   : 'bg-vellum/10 text-mist hover:text-vellum'}`}>
                 {k === 'staff' ? 'Staff' : 'Trader'}
@@ -329,9 +329,9 @@ export const input = `w-full ${field}`;
 // Primary action: filled ember with black text, mono label — the spec's "act on this".
 // sheen: one specular pass across the fill on hover. It is on the primary action only —
 // the whole effect of a gesture like this comes from it being rare.
-export const btn = 'sheen ring rounded-md bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
+export const btn = 'sheen ring rounded-full bg-ember px-4 py-2 font-mono text-sm font-medium text-graphite hover:brightness-95 disabled:opacity-50';
 // Secondary: bone fill, no colour. Same shape rules.
-export const btnGhost = 'rounded-md border border-pebble bg-bone px-4 py-2 font-mono text-sm font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-vellum/5 dark:text-vellum dark:hover:bg-vellum/10';
+export const btnGhost = 'rounded-full border border-pebble bg-bone px-4 py-2 font-mono text-sm font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-vellum/5 dark:text-vellum dark:hover:bg-vellum/10';
 
 // Panels of grouped metadata: bone on the white canvas, so the tonal step does the work
 // a shadow would have done.

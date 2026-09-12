@@ -232,7 +232,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
         <span className="mx-1 flex gap-1">
           {[...OVERLAYS, ...PANELS].map((i) => (
             <button key={i} onClick={() => toggle(i)} aria-pressed={on.includes(i)}
-              className={`rounded-md px-2 py-1 ${on.includes(i) ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+              className={`rounded-full px-2 py-1 ${on.includes(i) ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
               {i}
             </button>
           ))}
@@ -240,12 +240,12 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
         <span className="flex gap-1">
           {(['none', 'trend', 'hline', 'fib'] as Tool[]).map((t) => (
             <button key={t} onClick={() => { setTool(t); pending.current = null; setAwaiting(false); }} aria-pressed={tool === t}
-              className={`rounded-md px-2 py-1 ${tool === t ? 'bg-ember text-graphite' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+              className={`rounded-full px-2 py-1 ${tool === t ? 'bg-ember text-graphite' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
               {t === 'none' ? 'cursor' : t}
             </button>
           ))}
           {drawings.length > 0 &&
-            <button className="rounded-md px-2 py-1 text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum"
+            <button className="rounded-full px-2 py-1 text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum"
               onClick={() => { setDrawings([]); pending.current = null; setAwaiting(false); }}>clear</button>}
         </span>
         {awaiting && <span className="font-medium text-obsidian dark:text-vellum">click the second point…</span>}
@@ -373,7 +373,7 @@ export function ChartsView({ dark }: { dark: boolean }) {
         <div className="flex gap-1 text-xs">
             {[1, 2, 4].map((n) => (
               <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
-                className={`flex-1 rounded-md px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+                className={`flex-1 rounded-full px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
                 {n} chart{n > 1 ? 's' : ''}
               </button>
             ))}

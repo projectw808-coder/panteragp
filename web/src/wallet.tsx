@@ -283,7 +283,7 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
         {(['credit', 'debit'] as const).map((d) => (
           <button key={d} type="button" onClick={() => setDir(d)} aria-pressed={dir === d}
             disabled={d === 'debit' && chosen?.kind === 'crypto'}
-            className={`flex-1 rounded-md px-2 py-1 font-mono text-xs capitalize disabled:opacity-40 ${dir === d
+            className={`flex-1 rounded-full px-2 py-1 font-mono text-xs capitalize disabled:opacity-40 ${dir === d
               ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {d}

@@ -175,7 +175,7 @@ function FeatureToggle({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => 
           onDone();
         } finally { setBusy(false); }
       }}
-      className={`rounded-md border px-2.5 py-1 transition-colors ${p.featured
+      className={`rounded-full border px-2.5 py-1 transition-colors ${p.featured
         ? 'border-ember text-ember-ink'
         : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
       {p.featured ? '★ on your balance' : '☆ show on balance'}
@@ -311,21 +311,21 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => { setAction(action === 'contribute' ? null : 'contribute'); setError(null); }}
-          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
           pay in
         </button>
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); setSent(null); }}
-          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
           {on.client_id ? 'take out' : 'submit a request'}
         </button>
         <FeatureToggle p={p} on={on} onDone={onDone} />
         <button onClick={() => setHistory((v) => !v)}
-          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
           {history ? 'hide history' : 'history'}
         </button>
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${rate
               ? 'border border-ember text-ember-ink hover:bg-ember/10'
               : 'bg-ember text-graphite hover:brightness-110'}`}>
             {rate ? 'Close' : 'Change return'}

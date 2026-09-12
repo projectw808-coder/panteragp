@@ -139,7 +139,7 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={unstake} disabled={busy || s.locked}
-          className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum"
+          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum"
           title={s.locked ? 'Locked until its date' : undefined}>
           {busy ? 'Unstaking…' : 'Unstake'}
         </button>
@@ -150,12 +150,12 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
           <>
             {s.locked && (
               <button onClick={unlock}
-                className="rounded-md border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+                className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
                 Release lock
               </button>
             )}
             <button onClick={() => { setRate((v) => !v); setError(null); }}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${rate
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${rate
                 ? 'border border-ember text-ember-ink hover:bg-ember/10'
                 : 'bg-ember text-graphite hover:brightness-110'}`}>
               {rate ? 'Close' : 'Change rate'}

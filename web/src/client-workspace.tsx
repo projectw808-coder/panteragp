@@ -72,7 +72,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
       <div className="flex flex-wrap gap-1 text-xs">
         {TABS.map((name) => (
           <button key={name} onClick={() => setTab(name)} aria-pressed={tab === name}
-            className={`rounded-md px-3 py-1 capitalize ${tab === name
+            className={`rounded-full px-3 py-1 capitalize ${tab === name
               ? 'bg-ember font-medium text-graphite'
               : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
             {name}
@@ -196,7 +196,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
           <Stat label="Since" value={new Date(c.created_at).toLocaleDateString()} />
         </dl>
 
-        <button className="rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite"
+        <button className="rounded-full border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite"
           onClick={() => setEditing((v) => !v)}>{editing ? 'Done' : 'Edit'}</button>
       </div>
 
