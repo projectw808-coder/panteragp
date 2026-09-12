@@ -115,16 +115,13 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
   return (
     <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-xs font-medium text-ember-ink">
-          {s.asset}
-        </span>
+        <TermRing s={s} />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">{s.product_name}</span>
           <span className="block text-xs text-slate-ink">
             {term(s.lock_days)}
             {s.unlocks_at && ` · ${s.locked ? 'unlocks' : 'unlocked'} ${day(s.unlocks_at)}`}
           </span>
-          <Lock s={s} />
         </span>
 
         <span className="ml-auto flex items-center gap-6">
@@ -397,27 +394,51 @@ function Figure({ icon, label, value, format, note, tone, i }: {
 }
 
 /**
- * How far through its term a locked stake is.
+ * How far through its term a stake is, as a dial.
  *
- * Nothing at all for a flexible one: there is no term to be part-way through, and a bar
- * sitting at zero would suggest there is.
+ * The circumference is 2πr for r=26 — 163.36 — and the dash offset is what is left to run,
+ * so the stroke drawn is the part served. It replaces the asset chip that used to sit here:
+ * the asset is already in the title beside it, and a ring that reads as a dial says more
+ * than a coloured square repeating a word.
+ *
+ * A flexible stake gets a dashed circle and a clock instead of a filled one. There is no
+ * term to be part-way through, and a ring sitting at zero would say there is.
  */
-function Lock({ s }: { s: Stake }) {
-  if (!s.unlocks_at || !s.lock_days) return null;
+function TermRing({ s }: { s: Stake }) {
+  const LEN = 163.36;
+
+  if (!s.unlocks_at || !s.lock_days) {
+    return (
+      <span className="relative grid h-14 w-14 shrink-0 place-items-center" title="No lock — unstake whenever you like">
+        <svg width="56" height="56" viewBox="0 0 62 62" aria-hidden className="absolute inset-0">
+          <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5" strokeDasharray="3 5"
+            className="stroke-slate-ink/30" />
+        </svg>
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"
+          strokeLinecap="round" aria-hidden className="relative text-slate-ink">
+          <path d="M10 5v5l3 2" /><circle cx="10" cy="10" r="7" />
+        </svg>
+      </span>
+    );
+  }
+
   const start = new Date(s.staked_at).getTime();
   const end = new Date(s.unlocks_at).getTime();
-  if (!(end > start)) return null;
-  const done = Math.min(1, Math.max(0, (Date.now() - start) / (end - start)));
+  const done = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
   const daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86_400_000));
 
   return (
-    <span className="mt-2 block max-w-xs">
-      <span className="flex h-1 overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
-        <span className="bg-ember transition-[width] duration-700 ease-out"
-          style={{ width: `${done * 100}%` }} />
-      </span>
-      <span className="mt-1 block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
-        {s.locked ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} to go` : 'term complete'}
+    <span className="relative grid h-14 w-14 shrink-0 place-items-center"
+      title={s.locked ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} to go` : 'Term complete'}>
+      <svg width="56" height="56" viewBox="0 0 62 62" aria-hidden className="absolute inset-0">
+        <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5" className="stroke-slate-ink/20" />
+        <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5" strokeLinecap="round"
+          transform="rotate(-90 31 31)" stroke="var(--color-ember)"
+          strokeDasharray={LEN} strokeDashoffset={LEN * (1 - done)}
+          className="ring-draw" style={{ '--len': String(LEN) } as CSSProperties} />
+      </svg>
+      <span className="relative font-mono text-[11px] font-medium tabular-nums">
+        {Math.round(done * 100)}%
       </span>
     </span>
   );
@@ -426,6 +447,9 @@ function Lock({ s }: { s: Stake }) {
 /** What can be staked, so the page has something to say before anything is. */
 function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }) {
   const best = [...products].sort((a, b) => Number(b.apy) - Number(a.apy));
+  // Every bar is read against the best rate on the shelf, so the widths compare products
+  // with each other rather than against an invented ceiling.
+  const topRate = Math.max(...products.map((x) => Number(x.apy)), 0.0001);
   return (
     <div className="enter" style={{ '--i': 6 } as CSSProperties}>
       <h4 className="metric-label mb-2">What you can stake</h4>
@@ -450,6 +474,10 @@ function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }
             </span>
             <span className="mt-2 block text-xs text-slate-ink">
               {product.description || `From ${num(product.min_amount)} ${product.asset}.`}
+            </span>
+            <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+              <span className="bar-x block h-[3px] rounded-full bg-ember"
+                style={{ width: `${(Number(product.apy) / topRate) * 100}%` }} />
             </span>
           </button>
         ))}

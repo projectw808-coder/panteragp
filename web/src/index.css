@@ -809,6 +809,28 @@ input:-webkit-autofill:active {
 .chip-down { background: color-mix(in srgb, var(--color-down) 14%, transparent); }
 .dark .chip-up, .dark .chip-down { background: rgb(0 0 0 / 0.28); }
 
+/* ----------------------------------------------------------- term dials
+   A ring that fills to where the term has got to, once, when it arrives.
+
+   Same trick as the earnings line: the dash is the whole circumference and the offset is
+   what is left to run, so animating the offset draws the served part. Both ends of the
+   keyframe are written out — a single `to` would take its start from the element's own
+   stroke-dashoffset, which is the value the component computes, and the ring would animate
+   from where it already is to where it already is. */
+@keyframes ring-draw {
+  from { stroke-dashoffset: var(--len, 163.36); }
+}
+.ring-draw { animation: ring-draw 1.4s var(--ease-enter) both; }
+
+/* The horizontal sibling of .bar. That one grows on Y from the baseline, which is right for
+   a column in a chart and wrong for a rate bar — it squashes rather than extends. */
+@keyframes bar-widen { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.bar-x { transform-origin: left; animation: bar-widen 0.8s var(--ease-enter) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-draw, .bar-x { animation: none; }
+}
+
 /* --------------------------------------------------------------- scrollbars
    Two syntaxes for the same thing: the standard properties, and the WebKit
    pseudo-elements that Safari still needs. Both are set because neither covers
