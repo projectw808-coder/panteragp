@@ -787,6 +787,23 @@ input:-webkit-autofill:active {
   caret-color: var(--color-vellum);
 }
 
+/* ------------------------------------------------------- the signal log
+   A new signal lands at the top of the log. It comes in from above and settles, which is
+   the direction it actually arrived from — a row that fades in place gives no clue that the
+   list moved under it, and a row that slides up reads as something leaving.
+
+   Faster than the panel arrivals elsewhere: these land every couple of seconds, and motion
+   you see that often has to be over before you look at it. */
+@keyframes signal-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.signal-in { animation: signal-in var(--motion-deliberate) var(--ease-enter) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-in { animation: none; }
+}
+
 /* --------------------------------------------------------------- scrollbars
    Two syntaxes for the same thing: the standard properties, and the WebKit
    pseudo-elements that Safari still needs. Both are set because neither covers

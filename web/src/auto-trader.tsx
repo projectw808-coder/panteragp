@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { alertBox, card, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { price, result, tone } from './format.ts';
 import { clear, getLines, isRunning, onLines, setSymbols, start, stop, type Line } from './auto-trader-store.ts';
 
 /**
@@ -20,7 +21,7 @@ import { clear, getLines, isRunning, onLines, setSymbols, start, stop, type Line
 type Profile = { auto_trader: boolean };
 type Instrument = { symbol: string };
 
-const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const clock = (t: number) => new Date(t).toLocaleTimeString();
 
 /**
@@ -159,28 +160,40 @@ export function AutoTraderView() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-pebble text-left dark:border-white/10">
-                  {['Side', 'Instrument', 'Size', 'Price', 'Result', 'Time'].map((h) => (
-                    <th key={h} className="metric-label px-2 py-2 font-normal">{h}</th>
+                {/* Figures right, words left. Aligning a column of numbers on its right
+                    edge is what lets the eye compare magnitudes down the column instead of
+                    reading each one — the single thing that most separates a trading table
+                    from a list of rows. */}
+                <tr className="border-b border-pebble dark:border-white/10">
+                  {([['Side', false], ['Instrument', false], ['Size', true],
+                     ['Price', true], ['Result', true], ['Time', true]] as const).map(([h, num]) => (
+                    <th key={h} className={`metric-label px-2 py-2 font-normal ${num ? 'text-right' : 'text-left'}`}>
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
+                {/* Each row animates once, when it mounts. React keys these by signal id, so
+                    a refresh re-renders the existing rows without remounting them and only the
+                    new arrival moves — which is the rule the rest of the app follows: motion on
+                    arrival, never on refresh. */}
                 {lines.map((l) => (
-                  <tr key={l.id} className="border-b border-pebble last:border-0 dark:border-white/10">
+                  <tr key={l.id}
+                    className="signal-in border-b border-pebble transition-colors last:border-0 hover:bg-ember/5 dark:border-white/10">
                     <td className="px-2 py-1.5">
-                      <span className={`inline-block w-11 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] font-medium uppercase ${
+                      <span className={`inline-block w-11 rounded-full px-1.5 py-0.5 text-center font-mono text-[10px] font-medium uppercase ${
                         l.side === 'buy' ? 'bg-up/15 text-up' : 'bg-down/15 text-down'}`}>
                         {l.side}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 font-medium">{l.symbol}</td>
-                    <td className="px-2 py-1.5 font-mono tabular-nums text-slate-ink">{l.qty}</td>
-                    <td className="px-2 py-1.5 font-mono tabular-nums">{money(l.price)}</td>
-                    <td className={`px-2 py-1.5 font-mono tabular-nums ${l.pnl >= 0 ? 'text-up' : 'text-down'}`}>
-                      {l.pnl >= 0 ? '+' : ''}{money(l.pnl)}
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums text-slate-ink">{l.qty}</td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">{price(l.price)}</td>
+                    <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${tone(l.pnl)}`}>
+                      {result(l.pnl)}
                     </td>
-                    <td className="px-2 py-1.5 font-mono text-xs text-slate-ink">{clock(l.at)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-xs text-slate-ink">{clock(l.at)}</td>
                   </tr>
                 ))}
               </tbody>
