@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useApi } from './api.ts';
-import { useCountUp } from './count-up.ts';
+import { useCountUp, useTick } from './count-up.ts';
 
 /**
  * What the client has, wherever they are in the app.
@@ -78,7 +78,7 @@ export function BalanceBar() {
   const open = Number(account.data?.unrealized ?? 0);
 
   return (
-    <div className="grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
+    <div className="glow grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
       <span className="metric-label">Balance</span>
       {rows.length === 0
         ? <span className="text-sm text-slate-ink">Nothing yet.</span>
@@ -173,6 +173,13 @@ export function BalancePanel() {
  */
 function Total({ value }: { value: number }) {
   const shown = useCountUp(Number(value));
+  // The one figure on the page that gets the full treatment: it counts up when it first
+  // lands, carries the gradient, and flashes the direction it moved on every change after.
+  const direction = useTick(Number(value));
   if (shown === null) return <span className="skeleton bal-value inline-block h-4 w-24" />;
-  return <span className="bal-value bal-total">{usd(shown)}</span>;
+  return (
+    <span className={`bal-value bal-total hero-figure ${direction ? `tick-${direction}` : ''}`}>
+      {usd(shown)}
+    </span>
+  );
 }

@@ -51,6 +51,24 @@
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* Motion, as named pairs rather than numbers scattered through the file. Speed carries
+     hierarchy: feedback you should not notice, transitions you should barely notice, and
+     first-impression moments slow enough that the craft is actually perceivable.
+
+     The curve is the system's existing one and deliberately stays. It is an expo-out —
+     leaves fast, decelerates hard, never overshoots — and it is already on every animation
+     that has shipped. Swapping it for a marginally different expo-out would restyle motion
+     the whole app over, for a difference nobody could name.
+
+     --ease-exit is new: things leaving should not take as long as things arriving, because
+     nobody is waiting to admire an element on its way out. */
+  /* The curve is the system's existing one and deliberately stays: an expo-out that leaves
+     fast, decelerates hard and never overshoots, already on every animation that has
+     shipped. --ease-exit is new — things leaving should not take as long as things
+     arriving, because nobody is waiting to admire an element on its way out. */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.6, 1);
+
   /* Buttons, inputs and tags take md; cards and panels lg..xl; chips are pills.
      0px corners are never used on an interactive or content surface. */
   --radius-sm: 4px;
@@ -60,6 +78,22 @@
 }
 
 :root {
+  /* Motion, as named pairs rather than numbers scattered through the file. Speed carries
+     hierarchy: feedback you should not notice, transitions you should barely notice, and
+     first-impression moments slow enough that the craft is actually perceivable.
+
+     They sit here rather than in @theme because @theme is for values Tailwind generates
+     utilities from. These generate none — nothing wants a .duration-cinematic class — they
+     are read by name inside the rules below, which is what plain custom properties in
+     :root are for. The easing pair does belong in @theme, and stays there.
+
+     Worth knowing either way: @theme drops values nothing references. A token declared and
+     never used does not reach the build, so it cannot be verified by grepping the CSS. */
+  --motion-instant: 140ms;      /* button press, toggle, hover — felt, not seen */
+  --motion-fast: 180ms;         /* a control changing state */
+  --motion-deliberate: 300ms;   /* a tab, a drawer, a panel swap */
+  --motion-cinematic: 600ms;    /* a first appearance, where there is time to look */
+
   /* The one permitted "shadow": a 1px inset hairline separating cards that sit on a dark
      surface. Never a blur, never on a light surface. */
   --shadow-inset-dark: rgba(255, 255, 255, 0.1) 0 0 0 1px inset;
@@ -182,7 +216,7 @@
   width: 2px; height: 0;
   background: var(--color-ember);
   transform: translateY(-50%);
-  transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: height 0.28s var(--ease-enter);
 }
 .nav-item.is-active::before { height: 100%; }
 .nav-item.is-active { color: var(--color-vellum); background: rgba(255, 255, 255, 0.06); }
@@ -314,10 +348,10 @@
   to   { transform: translateX(0); }
 }
 
-.anim-rise { animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-rise { animation: rise 0.7s var(--ease-enter) both; }
 .anim-fade { animation: fade 0.9s ease-out both; }
 /* Candles grow from the axis, like a chart drawing itself in. */
-.anim-grow { transform-origin: bottom; animation: grow 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-grow { transform-origin: bottom; animation: grow 0.8s var(--ease-enter) both; }
 /* Marquee strips: one continuous pass, content duplicated so the loop never gaps.
    60s to match the reference — slow enough to read, not a conveyor belt. */
 .anim-drift { animation: drift 60s linear infinite; }
@@ -329,7 +363,7 @@
 .reveal.shown {
   opacity: 1;
   transform: none;
-  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.7s var(--ease-enter), transform 0.7s var(--ease-enter);
 }
 
 /* Masked line reveal: the line slides up from behind its own edge rather than fading in
@@ -339,7 +373,7 @@
 .mask > span {
   display: block;
   transform: translateY(105%);
-  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.9s var(--ease-enter);
 }
 .shown .mask > span, .mask.shown > span { transform: none; }
 
@@ -350,7 +384,7 @@
   position: absolute;
   left: 0; bottom: -1px; height: 1px; width: 0;
   background: var(--color-ember);
-  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 0.5s var(--ease-enter);
 }
 .row-rule:hover::after { width: 100%; }
 .row-arrow { transform: translateX(-6px); opacity: 0; transition: transform 0.4s, opacity 0.4s; }
@@ -390,7 +424,7 @@
   left: 0; top: 0;
   height: 2px; width: 0;
   background: var(--color-ember);
-  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 0.4s var(--ease-enter);
 }
 .tile:hover::after, .tile.is-alert::after { width: 100%; }
 .tile.is-alert { border-color: color-mix(in srgb, var(--color-ember) 45%, transparent); }
@@ -416,7 +450,7 @@
 /* Bars grow from the baseline once, on mount. A dashboard that re-animates on
    every fifteen-second refresh is a dashboard nobody can read. */
 @keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-.bar { transform-origin: bottom; animation: bar-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.bar { transform-origin: bottom; animation: bar-rise 0.5s var(--ease-enter) both; }
 
 @media (prefers-reduced-motion: reduce) {
   .tile::after { transition: none; }
@@ -443,7 +477,7 @@
   to   { opacity: 1; transform: none; }
 }
 .enter {
-  animation: enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: enter 0.55s var(--ease-enter) both;
   animation-delay: calc(var(--i, 0) * 55ms);
 }
 
@@ -455,7 +489,7 @@
    Enumerated rather than computed because CSS cannot read an element's index into calc().
    Eight is past the point where a screen has too many top-level panels anyway; beyond it
    everything holds the last delay rather than drifting further and further out. */
-.stagger > * { animation: enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.stagger > * { animation: enter 0.55s var(--ease-enter) both; }
 .stagger > :nth-child(1) { animation-delay: 0ms; }
 .stagger > :nth-child(2) { animation-delay: 55ms; }
 .stagger > :nth-child(3) { animation-delay: 110ms; }
@@ -468,7 +502,7 @@
 /* Intent. A one-pixel rise and the hairline warming: the panel acknowledges the
    cursor without leaving the grid. Shadowless, so it still obeys the system. */
 .lift {
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s;
+  transition: transform 0.25s var(--ease-enter), border-color 0.25s;
   will-change: transform;
 }
 .lift:hover {
@@ -493,7 +527,7 @@
   transform: translateX(-120%) skewX(-18deg);
   pointer-events: none;
 }
-.sheen:hover::after { animation: sheen 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+.sheen:hover::after { animation: sheen 0.9s var(--ease-enter); }
 
 /* Waiting. A shimmering block is an honest "this figure is coming"; the em dash
    it replaces reads as "this figure is zero", which is a different statement and
@@ -529,11 +563,11 @@
 }
 .draw {
   stroke-dasharray: var(--len, 2000);
-  animation: draw 1.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: draw 1.5s var(--ease-enter) both;
 }
 /* The area under it fills in behind the line rather than with it. */
 @keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-.wipe { animation: wipe 1.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.wipe { animation: wipe 1.5s var(--ease-enter) both; }
 
 /* Material. Flat fills at this size read as plastic; a trace of grain gives the
    surface something to catch. Two per cent, generated rather than fetched, and
@@ -564,6 +598,103 @@
   /* The shimmer stops, but the block stays — it is load-bearing, not decoration:
      without it there is nothing to say the figure has not arrived. */
   .skeleton { animation: none; }
+}
+
+/* -------------------------------------------------- the expensive half-dozen
+   Treatments that are meant to be rare. Each one is a luxury signal precisely because it
+   appears once on a screen; applied everywhere they stop reading as special and start
+   reading as a theme, which is the failure mode they exist to avoid.
+
+   None of them introduce a colour. The palette is the same ember on the same near-black
+   and the same bone it has always been — these change how light falls on it, not what it
+   is made of. */
+
+/* Gallery lighting: a soft directional wash above a hero element, as though the light in
+   the room is coming from over its shoulder. This is the system's answer to the drop
+   shadow it forbids — depth from light rather than from a dark smear underneath. */
+.glow { position: relative; }
+.glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  /* 6%, and the ceiling is contrast rather than taste. The wash sits behind whatever the
+     surface carries, so it lifts the effective background of every label on it: at 14% the
+     muted ink measured 4.26:1 on the terminal ground and 4.24:1 on the light one, both
+     under the 4.5:1 this system holds itself to. 6% is the most that keeps the smallest,
+     faintest text on a glowing surface legible — which is the right way round, since the
+     brief asks for low-opacity and subtle, and a wash you have to notice is neither. */
+  background: radial-gradient(75% 120% at 50% 0%,
+    color-mix(in srgb, var(--color-ember) 6%, transparent), transparent 72%);
+}
+.glow > * { position: relative; z-index: 1; }
+
+/* The one number on a screen that matters most. Warm white falling into ember on the dark
+   ground; on the light one the same idea runs between two depths of ember, because a
+   gradient that starts at white on a bone card is a figure nobody can read.
+   Both ends of both gradients clear 4.5:1 against the surface they sit on — a hero number
+   that fails contrast is an expensive-looking way to lose the reader. */
+.hero-figure.hero-figure {
+  background-image: linear-gradient(100deg, #7a3300 0%, var(--color-ember-ink) 60%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Doubled class, deliberately: this has to out-weigh the colour the figure's own class
+     sets (.bal-total is ember, and sits later in this file). Equal specificity would hand
+     the cascade to whichever came last, and a gradient under a solid fill is just a solid
+     fill — the treatment would silently do nothing. */
+  color: transparent;
+}
+.dark .hero-figure.hero-figure {
+  background-image: linear-gradient(100deg, var(--color-vellum) 0%, var(--color-ember) 85%);
+}
+
+/* Overlays sit above the terminal rather than replacing it, so they read as glass over the
+   surface instead of a hole cut in it. Only ever on things that float — a panel in the
+   page flow gets a solid fill, because blur costs compositing and a page full of it is a
+   page that drops frames on the machines traders actually use. */
+.glass {
+  background: color-mix(in srgb, var(--color-vellum) 82%, transparent);
+  /* Unprefixed only — the build adds the -webkit- form for the targets that need it.
+     Declaring both by hand made it keep the prefixed one and drop the standard. */
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+.dark .glass {
+  background: color-mix(in srgb, var(--color-onyx) 78%, transparent);
+}
+/* Where the browser cannot blur, fall back to an opaque surface rather than a see-through
+   one — unreadable is worse than unfashionable. */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass { background: var(--color-vellum); }
+  .dark .glass { background: var(--color-onyx); }
+}
+
+/* A figure that changed. A brief wash of the direction it moved, fading back to the ink
+   over the cinematic duration — long enough to catch out of the corner of an eye, short
+   enough that it is gone before you look straight at it. Reserved for the hero figure: the
+   same flash down every row of a dense table is noise, which is the opposite of this. */
+@keyframes tick-up {
+  0%   { color: var(--color-up); }
+  100% { color: inherit; }
+}
+@keyframes tick-down {
+  0%   { color: var(--color-down); }
+  100% { color: inherit; }
+}
+.tick-up   { animation: tick-up   var(--motion-cinematic) var(--ease-exit) both; }
+.tick-down { animation: tick-down var(--motion-cinematic) var(--ease-exit) both; }
+
+/* On a gradient figure the flash has to land back on transparent, or the solid colour it
+   animates towards would paint over the gradient and stay there. Same gesture, different
+   destination: flash the direction, then hand the glyphs back to the gradient. */
+@keyframes tick-up-hero   { 0% { color: var(--color-up); }   100% { color: transparent; } }
+@keyframes tick-down-hero { 0% { color: var(--color-down); } 100% { color: transparent; } }
+.hero-figure.hero-figure.tick-up   { animation-name: tick-up-hero; }
+.hero-figure.hero-figure.tick-down { animation-name: tick-down-hero; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tick-up, .tick-down { animation: none; }
+  /* The glow is light, not movement, so it stays. */
 }
 
 /* --------------------------------------------------------------- scrollbars

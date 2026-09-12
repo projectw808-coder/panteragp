@@ -55,3 +55,33 @@ export function useCountUp(value: number | null, duration = 700): number | null 
 
   return shown;
 }
+
+/**
+ * Which way a figure just moved, for the brief flash that follows it.
+ *
+ * Returns a direction for one animation's length after the value changes, then null again.
+ * The first value to arrive never flashes — there is nothing to have moved from, and a
+ * figure that flashes green on page load is telling the reader something happened when
+ * nothing did.
+ *
+ * Deliberately not wired to every number on a screen. A whole table flashing on each poll
+ * is noise, and noise is what this vocabulary exists to avoid; it is for the one figure a
+ * screen is about.
+ */
+export function useTick(value: number | null, ms = 600): 'up' | 'down' | null {
+  const previous = useRef<number | null>(null);
+  const [direction, setDirection] = useState<'up' | 'down' | null>(null);
+
+  useEffect(() => {
+    if (value === null) return;
+    const was = previous.current;
+    previous.current = value;
+    if (was === null || was === value) return;
+
+    setDirection(value > was ? 'up' : 'down');
+    const t = setTimeout(() => setDirection(null), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+
+  return direction;
+}

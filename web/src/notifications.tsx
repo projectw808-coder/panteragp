@@ -125,7 +125,7 @@ export function NotificationBell() {
 
       {open && at && createPortal(
         <div ref={panel} style={{ left: at.left, bottom: at.bottom }}
-          className="fixed z-50 w-80 rounded-lg border border-pebble bg-vellum shadow-lg dark:border-white/10 dark:bg-onyx">
+          className="glass fixed z-50 w-80 rounded-lg border border-pebble dark:border-white/10">
           <div className="flex items-center justify-between border-b border-pebble px-3 py-2 dark:border-white/10">
             <span className="text-xs font-semibold">Notifications</span>
             {unread > 0 && (
