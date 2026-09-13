@@ -327,7 +327,8 @@ function Shell({ dark, setDark, onLogout }: {
           while the app keeps the same visual DNA as the marketing hero. The rail reads
           as instrument panel rather than website menu: numbered slots, mono labels, a
           scanline wash, and an accent bar that slides between items. */}
-      <aside className="nav-rail relative flex w-56 shrink-0 flex-col overflow-hidden bg-obsidian dark:bg-onyx">
+      <TerminalGround />
+      <aside className="nav-rail relative z-10 flex w-56 shrink-0 flex-col overflow-hidden bg-obsidian dark:bg-onyx">
         <div className="relative z-10 px-5 py-5">
           <div className="flex items-baseline gap-1">
             <span className="font-display text-lg text-vellum">Pantera GP</span>
@@ -365,7 +366,7 @@ function Shell({ dark, setDark, onLogout }: {
           </div>
         </div>
       </aside>
-      <main className={`flex min-h-0 flex-1 flex-col ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
+      <main className={`relative z-10 flex min-h-0 flex-1 flex-col ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
         {/* On every client screen, charts included. It used to be hidden there because the
             charts run full-bleed, which stopped mattering the moment charts became where a
             trader lands. */}
@@ -414,6 +415,31 @@ const Person = () => (
     <circle cx="12" cy="8" r="3.6" />
     <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
   </svg>
+);
+
+/**
+ * The sign-in screen's ground, carried into the terminal.
+ *
+ * The same bloom and the same twelve bars, at lower opacity: on the sign-in screen they sit
+ * behind empty space, and here they sit behind a page of figures. FIXED rather than
+ * absolute, so the bars stay at the foot of the window instead of riding up through the
+ * page as it scrolls — which is what makes this a room rather than a picture.
+ *
+ * Inset past the rail, which keeps its own scanline texture. Everything readable sits on an
+ * opaque card above this, so no contrast measured anywhere in the app changes.
+ */
+const GROUND_BARS = [24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58];
+
+const TerminalGround = () => (
+  <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-56 z-0 overflow-hidden">
+    <div className="absolute inset-0 bg-[radial-gradient(70%_120%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
+    <div className="absolute inset-x-0 bottom-0 flex h-[46%] items-end gap-1.5 px-8">
+      {GROUND_BARS.map((h, i) => (
+        <div key={i} className="flex-1 bg-[linear-gradient(to_top,var(--ground-bar),transparent)]"
+          style={{ height: `${h}%` }} />
+      ))}
+    </div>
+  </div>
 );
 
 /**

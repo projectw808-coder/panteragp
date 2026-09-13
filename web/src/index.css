@@ -92,6 +92,14 @@
   --shadow-inset-dark: rgba(255, 255, 255, 0.1) 0 0 0 1px inset;
   --page-max-width: 1200px;
 
+  /* The ground under the terminal: the sign-in screen's bloom and bar field, carried in.
+     Both themes get it. Light runs lower — 0.10 and 0.12 against white is about as far as
+     warm tint goes before the cards stop reading as raised — and dark runs at the values
+     the sign-in screen itself uses, less a little off the bars, which there sit behind
+     empty space and here sit behind a page of figures. */
+  --ground-glow: rgba(255, 120, 23, 0.10);
+  --ground-bar: rgba(255, 120, 23, 0.12);
+
   /* Scrollbars are part of the surface, not furniture the browser is entitled to paint
      white over a dark panel. Neutral by default and only reaching the accent on hover,
      because a permanently orange bar would be the loudest thing on a screen full of
@@ -105,6 +113,8 @@
    loss you cannot read is the worst one to get wrong. Same hues, lifted until they clear
    4.5:1. Nothing else in the palette changes — the neutrals already pass both ways. */
 .dark {
+  --ground-glow: rgba(255, 120, 23, 0.16);
+  --ground-bar: rgba(255, 120, 23, 0.20);
   --color-ember-ink: #ff7817;
   /* The loss colour was a salmon, and the reason is worth writing down: pure #ff0000
      reaches only 3.88:1 against the raised card, so NO fully saturated red can clear 4.5:1
