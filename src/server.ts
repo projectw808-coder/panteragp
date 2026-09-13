@@ -1302,6 +1302,27 @@ const ALLOWED_UPLOAD = new Map([
 ]);
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(import.meta.dirname, '..', 'uploads');
 
+/**
+ * Whether uploaded files are written somewhere that survives a deploy.
+ *
+ * Unset UPLOAD_DIR means the container filesystem, which on a platform that rebuilds the
+ * container on every deploy means every profile photo and every KYC document — passports,
+ * proof of address — is deleted the next time this ships. Nothing about that is visible at
+ * the time: the upload returns 201, avatar_key and storage_key are written, and the file
+ * is simply missing later, which reads as "no photo" rather than as data loss.
+ *
+ * So it is said once, loudly, at boot, and reported on /health so it can be checked from
+ * outside without signing in. The fix is a mounted volume and UPLOAD_DIR pointing into it;
+ * the README's deploy steps have it.
+ */
+const UPLOADS_ARE_EPHEMERAL = !process.env.UPLOAD_DIR;
+if (UPLOADS_ARE_EPHEMERAL && process.env.NODE_ENV === 'production') {
+  app.log.error(
+    { uploadDir: UPLOAD_DIR },
+    'UPLOAD_DIR is not set: uploaded documents and photos are on the container filesystem '
+    + 'and will be LOST on the next deploy. Mount a volume and set UPLOAD_DIR into it.');
+}
+
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
 /** A client uploads its own documents; staff with crm:write can upload on their behalf. */
@@ -3876,7 +3897,12 @@ app.get('/audit', { preHandler: auth('audit:read') }, async (req) => {
 app.get('/health', async (_req, reply) => {
   try {
     await pool.query('SELECT 1');
-    return { ok: true };
+    // uploads: 'volume' when UPLOAD_DIR was set to somewhere chosen deliberately,
+    // 'ephemeral' when it fell back to the container filesystem — where a profile photo
+    // and every KYC document survive until the next deploy and no longer. Reported here
+    // because it is otherwise invisible: the upload succeeds, the row is written, and the
+    // file is simply gone later. See UPLOADS_ARE_EPHEMERAL and the README.
+    return { ok: true, uploads: UPLOADS_ARE_EPHEMERAL ? 'ephemeral' : 'volume' };
   } catch {
     return reply.code(503).send({ ok: false });
   }
