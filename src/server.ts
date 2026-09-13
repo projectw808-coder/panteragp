@@ -6,7 +6,7 @@ import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -1303,24 +1303,34 @@ const ALLOWED_UPLOAD = new Map([
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(import.meta.dirname, '..', 'uploads');
 
 /**
- * Whether uploaded files are written somewhere that survives a deploy.
+ * Whether uploaded files actually survive a restart — proven, not assumed.
  *
- * Unset UPLOAD_DIR means the container filesystem, which on a platform that rebuilds the
- * container on every deploy means every profile photo and every KYC document — passports,
- * proof of address — is deleted the next time this ships. Nothing about that is visible at
- * the time: the upload returns 201, avatar_key and storage_key are written, and the file
- * is simply missing later, which reads as "no photo" rather than as data loss.
+ * The first version of this checked whether UPLOAD_DIR was SET, which proves nothing: a
+ * path pointing at a directory no volume is mounted on is created happily and wiped just
+ * the same. So it leaves a marker and looks for it on the next boot. Three answers:
  *
- * So it is said once, loudly, at boot, and reported on /health so it can be checked from
- * outside without signing in. The fix is a mounted volume and UPLOAD_DIR pointing into it;
- * the README's deploy steps have it.
+ *   persisted  a marker from an earlier boot was here — the disk survives restarts
+ *   fresh      no marker: either the first boot on this disk, or it was wiped
+ *   ephemeral  UPLOAD_DIR is not set at all, so this is the container filesystem
+ *
+ * "fresh" twice across two deploys means the files are NOT surviving, whatever the path
+ * is called. This matters most for KYC documents — passports, proof of address — which
+ * are still files; a profile photo lives in its row now and does not depend on any of it.
  */
-const UPLOADS_ARE_EPHEMERAL = !process.env.UPLOAD_DIR;
-if (UPLOADS_ARE_EPHEMERAL && process.env.NODE_ENV === 'production') {
-  app.log.error(
-    { uploadDir: UPLOAD_DIR },
-    'UPLOAD_DIR is not set: uploaded documents and photos are on the container filesystem '
-    + 'and will be LOST on the next deploy. Mount a volume and set UPLOAD_DIR into it.');
+const PROBE = join(UPLOAD_DIR, '.persistence-probe');
+let UPLOAD_PERSISTENCE: 'persisted' | 'fresh' | 'ephemeral' =
+  process.env.UPLOAD_DIR ? 'fresh' : 'ephemeral';
+try {
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  if (existsSync(PROBE) && UPLOAD_PERSISTENCE !== 'ephemeral') UPLOAD_PERSISTENCE = 'persisted';
+  await writeFile(PROBE, new Date().toISOString());
+} catch {
+  // A probe that cannot be written says nothing either way; leave the answer as it is.
+}
+if (UPLOAD_PERSISTENCE !== 'persisted' && process.env.NODE_ENV === 'production') {
+  app.log.warn({ uploadDir: UPLOAD_DIR, persistence: UPLOAD_PERSISTENCE },
+    'No marker from an earlier boot under UPLOAD_DIR. If this says the same after the next '
+    + 'deploy, uploaded KYC documents are NOT surviving restarts.');
 }
 
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
@@ -1438,19 +1448,27 @@ function avatarPath(key: string, reply: any): string | null {
   return path;
 }
 
+/**
+ * Upload a profile photo. The bytes go into the row, not onto a disk.
+ *
+ * They used to be a file under UPLOAD_DIR, which is exactly as permanent as whatever
+ * happens to be mounted there — and when it was not permanent, nothing said so: the
+ * upload returned 201, avatar_key was written, and the photo was simply missing later,
+ * which the page renders as "no photo" rather than as something lost. A photo is capped
+ * at 2 MB and there is one per client, so it is small enough to live with the record and
+ * be as permanent as the account itself.
+ */
 app.post('/me/avatar', { preHandler: trader }, async (req: any, reply) => {
   const file = await req.file();
   if (!file) return reply.code(400).send({ error: 'no file' });
+  if (!AVATAR_TYPES.has(file.mimetype)) {
+    return reply.code(415).send({ error: 'a photo, as JPEG, PNG or WebP' });
+  }
 
-  const ext = AVATAR_TYPES.get(file.mimetype);
-  if (!ext) return reply.code(415).send({ error: 'a photo, as JPEG, PNG or WebP' });
-
-  const key = `avatar-${randomUUID()}${ext}`;
-  await mkdir(UPLOAD_DIR, { recursive: true });
-  await pipeline(file.file, createWriteStream(join(UPLOAD_DIR, key)));
-  // The multipart limit is set for documents, so the size is enforced here as well.
-  if (file.file.truncated || file.file.bytesRead > AVATAR_MAX) {
-    await rm(join(UPLOAD_DIR, key), { force: true });
+  // The multipart plugin's own ceiling is set for documents, so the photo limit is
+  // enforced here — after buffering, which is safe because that ceiling is 10 MB.
+  const bytes = await file.toBuffer();
+  if (file.file.truncated || bytes.length > AVATAR_MAX) {
     return reply.code(413).send({ error: 'that photo is larger than 2 MB' });
   }
 
@@ -1459,19 +1477,22 @@ app.post('/me/avatar', { preHandler: trader }, async (req: any, reply) => {
     // actually replaced rather than whatever happened to be there a moment earlier.
     const { rows: [before] } = await c.query<{ avatar_key: string | null }>(
       'SELECT avatar_key FROM clients WHERE id = $1 FOR UPDATE', [req.principal.sub]);
-    await c.query('UPDATE clients SET avatar_key = $2 WHERE id = $1', [req.principal.sub, key]);
-    const rows = [{ old_key: before?.avatar_key ?? null }];
+    // The key is now only a cache-busting token: it changes on every upload, which is
+    // what makes the client refetch, and it no longer names anything on disk.
+    await c.query(
+      `UPDATE clients SET avatar_key = $2, avatar_image = $3, avatar_type = $4 WHERE id = $1`,
+      [req.principal.sub, randomUUID(), bytes, file.mimetype]);
     await logActivity(c, {
       client_id: req.principal.sub, kind: 'note', actor: req.principal.sub,
       summary: 'Updated their profile photo',
     });
-    return rows[0]?.old_key ?? null;
+    return before?.avatar_key ?? null;
   });
 
-  // The one it replaced is deleted rather than left behind: keeping every photo somebody
-  // ever uploaded of themselves is holding more than was asked for.
-  if (previous && basename(previous) !== key) {
-    await rm(join(UPLOAD_DIR, basename(previous)), { force: true });
+  // If the one it replaced was a file from before this change, take it with us: keeping
+  // every photo somebody ever uploaded of themselves is holding more than was asked for.
+  if (previous && /\.(jpg|png|webp)$/i.test(previous)) {
+    await rm(join(UPLOAD_DIR, basename(previous)), { force: true }).catch(() => {});
   }
   return reply.code(201).send({ avatar: true });
 });
@@ -1479,7 +1500,8 @@ app.post('/me/avatar', { preHandler: trader }, async (req: any, reply) => {
 app.delete('/me/avatar', { preHandler: trader }, async (req: any) => {
   const out = await tx(req.principal.sub, async (c) => {
     const { rows } = await c.query<{ avatar_key: string | null }>(
-      'UPDATE clients SET avatar_key = NULL WHERE id = $1 RETURNING avatar_key', [req.principal.sub]);
+      `UPDATE clients SET avatar_key = NULL, avatar_image = NULL, avatar_type = NULL
+        WHERE id = $1 RETURNING avatar_key`, [req.principal.sub]);
     return rows[0];
   });
   return { avatar: false, removed: !!out };
@@ -1490,17 +1512,25 @@ app.delete('/me/avatar', { preHandler: trader }, async (req: any) => {
  * which is the same rule their record already follows.
  */
 app.get('/clients/:id/avatar', { preHandler: clientScope }, async (req: any, reply) => {
-  const { rows } = await pool.query<{ avatar_key: string | null }>(
-    'SELECT avatar_key FROM clients WHERE id = $1', [req.params.id]);
-  const key = rows[0]?.avatar_key;
-  if (!key) return reply.code(404).send({ error: 'no photo' });
-  const path = avatarPath(key, reply);
+  const { rows } = await pool.query<{
+    avatar_key: string | null; avatar_image: Buffer | null; avatar_type: string | null;
+  }>('SELECT avatar_key, avatar_image, avatar_type FROM clients WHERE id = $1', [req.params.id]);
+  const row = rows[0];
+  if (!row?.avatar_key) return reply.code(404).send({ error: 'no photo' });
+
+  // Private: it is a picture of a person, and a shared cache is not the place for it.
+  const priv = (type: string) => reply.type(type).header('cache-control', 'private, max-age=60');
+
+  if (row.avatar_image) return priv(row.avatar_type ?? 'image/jpeg').send(row.avatar_image);
+
+  // Uploaded before the photo moved into the row: still a file on disk, still served. The
+  // next upload replaces it with bytes and deletes it.
+  const path = avatarPath(row.avatar_key, reply);
   if (!path) return;
   if (!existsSync(path)) return reply.code(404).send({ error: 'no photo' });
   const type = extname(path) === '.png' ? 'image/png'
     : extname(path) === '.webp' ? 'image/webp' : 'image/jpeg';
-  // Private: it is a picture of a person, and a shared cache is not the place for it.
-  return reply.type(type).header('cache-control', 'private, max-age=60').send(createReadStream(path));
+  return priv(type).send(createReadStream(path));
 });
 
 app.post('/kyc/:id/review', { preHandler: auth('kyc:review') }, async (req: any, reply) => {
@@ -3897,12 +3927,10 @@ app.get('/audit', { preHandler: auth('audit:read') }, async (req) => {
 app.get('/health', async (_req, reply) => {
   try {
     await pool.query('SELECT 1');
-    // uploads: 'volume' when UPLOAD_DIR was set to somewhere chosen deliberately,
-    // 'ephemeral' when it fell back to the container filesystem — where a profile photo
-    // and every KYC document survive until the next deploy and no longer. Reported here
-    // because it is otherwise invisible: the upload succeeds, the row is written, and the
-    // file is simply gone later. See UPLOADS_ARE_EPHEMERAL and the README.
-    return { ok: true, uploads: UPLOADS_ARE_EPHEMERAL ? 'ephemeral' : 'volume' };
+    // See UPLOAD_PERSISTENCE: proven from a marker left on the last boot, not inferred
+    // from an environment variable being set. Reported here so it can be read from
+    // outside without signing in.
+    return { ok: true, uploads: UPLOAD_PERSISTENCE };
   } catch {
     return reply.code(503).send({ ok: false });
   }

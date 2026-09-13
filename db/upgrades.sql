@@ -250,3 +250,14 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS auto_trader boolean NOT NULL DEFAUL
 -- A photo of the account holder. The stored name is generated, and the file is served from
 -- behind auth rather than a guessable path — it is a picture of a person, not an asset.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_key text;
+
+-- The photo itself, in the database rather than on a disk.
+--
+-- It was a file under UPLOAD_DIR, which is only as permanent as whatever is mounted there
+-- — and a client whose photo vanished had no way to tell that from never having uploaded
+-- one. A photo is capped at 2 MB and there is at most one per client, so it is small
+-- enough to live with the record it belongs to and be exactly as permanent as the account.
+-- avatar_key stays: it is the cache-busting token the client keys its fetch on, and for
+-- rows written before this it is still the name of a file on disk (see the read path).
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_image bytea;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_type  text;
