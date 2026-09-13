@@ -27,8 +27,19 @@
   --color-obsidian: #18181b;
   --color-onyx: #09090b;
   --color-graphite: #000000;
-  --color-pebble: #e5e7eb;
-  --color-bone: #ebebeb;
+  /* The light theme is a warm desk with white paper on it, not white with grey patches.
+     A card used to be bone on vellum: 1.19:1 apart, and — unlike its dark counterpart,
+     which has a 1px white inset hairline doing the real work — carrying no border, no
+     rule and no shadow, because the system bans shadows outright. So the relationship is
+     inverted. The page is the desk, the card is white, and a warm hairline draws its
+     edge. The card is now the brightest thing on the screen rather than a grey patch.
+
+     pebble and bone warm with it — a cool grey chip on a warm desk reads as a mistake —
+     and every text token was re-measured against all three surfaces: the lowest is
+     slate-ink on bone at 4.75:1, still over the 4.5:1 the system asks for. */
+  --color-desk: #f7f4f1;
+  --color-pebble: #e6e0da;
+  --color-bone: #edeae6;
   /* Nudged from the specified #71717a to #66666e: at #71717a, secondary text on a bone
      card measured 4.05:1, under the 4.5:1 the system's own contrast rule asks for. Weight
      and size could not fix it — these are 12–14px labels — so the token moved instead. */
@@ -90,19 +101,20 @@
   /* The one permitted "shadow": a 1px inset hairline separating cards that sit on a dark
      surface. Never a blur, never on a light surface. */
   --shadow-inset-dark: rgba(255, 255, 255, 0.1) 0 0 0 1px inset;
+  /* Its light counterpart, and the thing light never had. Not inset: on a white card a
+     hairline drawn outside the fill keeps the full radius crisp. */
+  --shadow-hairline-light: #e6e0da 0 0 0 1px;
   --page-max-width: 1200px;
 
   /* The ground under the terminal: the sign-in screen's bloom, without its bar field.
      Carrying the warmth alone, so it runs above the sign-in screen's own 0.16.
 
-     The two themes want opposite things, which is worth writing down. The dark card is
-     DARKER than the ground, so more glow separates them better: card against the bloom's
-     peak measures 1.54:1 at 0.20 and 1.73:1 at 0.26. The light card is BRIGHTER than
-     white-plus-a-little-ember but not than white-plus-a-lot, so there is a crossover
-     around 0.19 where the ground passes the card and the cards read RECESSED. At 0.13
-     this was on the wrong side of it. 0.22 is past it: peak ground lands near L 0.80
-     against the bone card's 0.831, so the card is the brighter surface again. */
-  --ground-glow: rgba(255, 120, 23, 0.22);
+     Dark only. The light theme gets its warmth from the paper itself now — see
+     --color-desk — and a bloom on top of a warm desk is two warm things arguing. It also
+     made the crossover problem: a tinted ground climbing past the card's own lightness is
+     what turned the cards from raised to recessed. A white card on a warm desk cannot
+     have that argument, so the ground goes transparent here and the desk does the work. */
+  --ground-glow: transparent;
 
   /* Scrollbars are part of the surface, not furniture the browser is entitled to paint
      white over a dark panel. Neutral by default and only reaching the accent on hover,

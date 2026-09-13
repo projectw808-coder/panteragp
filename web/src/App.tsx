@@ -320,7 +320,7 @@ function Shell({ dark, setDark, onLogout }: {
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
   return (
-    <div className="flex h-full bg-vellum text-obsidian dark:bg-obsidian dark:text-vellum">
+    <div className="flex h-full bg-desk text-obsidian dark:bg-obsidian dark:text-vellum">
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
           while the app keeps the same visual DNA as the marketing hero. */}
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
@@ -481,7 +481,7 @@ export const btnGhost = 'rounded-full border border-pebble bg-bone px-4 py-2 fon
 
 // Panels of grouped metadata: bone on the white canvas, so the tonal step does the work
 // a shadow would have done.
-export const card = 'rounded-lg bg-bone p-4 dark:bg-onyx dark:[box-shadow:var(--shadow-inset-dark)]';
+export const card = 'rounded-lg bg-vellum p-4 [box-shadow:var(--shadow-hairline-light)] dark:bg-onyx dark:[box-shadow:var(--shadow-inset-dark)]';
 // Tables get their own container: vellum inside a pebble hairline, header row on bone.
 export const tableCard = 'overflow-hidden rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx';
 export const thead = 'bg-bone text-left text-xs font-medium tracking-wide text-slate-ink dark:bg-vellum/5 dark:text-mist';
