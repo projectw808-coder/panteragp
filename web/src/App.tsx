@@ -420,25 +420,20 @@ const Person = () => (
 /**
  * The sign-in screen's ground, carried into the terminal.
  *
- * The same bloom and the same twelve bars, at lower opacity: on the sign-in screen they sit
- * behind empty space, and here they sit behind a page of figures. FIXED rather than
- * absolute, so the bars stay at the foot of the window instead of riding up through the
- * page as it scrolls — which is what makes this a room rather than a picture.
+ * The bloom alone, without the sign-in screen's bar field. The bars are a motif for a
+ * screen with one form on it and nothing to read; behind a page of figures — and behind
+ * the charts, which are already full of lines — they are a second thing to look at. What
+ * carries over is the warmth at the foot of the window, widened and lifted a little to
+ * make up for the bars being gone.
  *
- * Inset past the rail, which keeps its own scanline texture. Everything readable sits on an
- * opaque card above this, so no contrast measured anywhere in the app changes.
+ * FIXED rather than absolute, so the horizon stays at the foot of the window instead of
+ * riding up through the page as it scrolls: a room the terminal is in, not a picture hung
+ * behind it. Inset past the rail, which keeps its own scanline texture. Everything
+ * readable sits on an opaque card above this, so no contrast in the app changes.
  */
-const GROUND_BARS = [24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58];
-
 const TerminalGround = () => (
   <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-56 z-0 overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(70%_120%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
-    <div className="absolute inset-x-0 bottom-0 flex h-[46%] items-end gap-1.5 px-8">
-      {GROUND_BARS.map((h, i) => (
-        <div key={i} className="flex-1 bg-[linear-gradient(to_top,var(--ground-bar),transparent)]"
-          style={{ height: `${h}%` }} />
-      ))}
-    </div>
+    <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
   </div>
 );
 
