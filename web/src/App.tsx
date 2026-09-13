@@ -431,9 +431,20 @@ const Person = () => (
  * behind it. Inset past the rail, which keeps its own scanline texture. Everything
  * readable sits on an opaque card above this, so no contrast in the app changes.
  */
+const GROUND_BARS = [24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58];
+
 const TerminalGround = () => (
   <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-56 z-0 overflow-hidden">
     <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
+    {/* The bars are the light theme's. Dark sets --ground-bar transparent and keeps the
+        bloom alone, because on the terminal ground twelve more lit shapes are a second
+        thing to look at behind the charts; on paper they read as a watermark. */}
+    <div className="absolute inset-x-0 bottom-0 flex h-[46%] items-end gap-1.5 px-8">
+      {GROUND_BARS.map((h, i) => (
+        <div key={i} className="flex-1 bg-[linear-gradient(to_top,var(--ground-bar),transparent)]"
+          style={{ height: `${h}%` }} />
+      ))}
+    </div>
   </div>
 );
 

@@ -92,17 +92,15 @@
   --shadow-inset-dark: rgba(255, 255, 255, 0.1) 0 0 0 1px inset;
   --page-max-width: 1200px;
 
-  /* The ground under the terminal: the sign-in screen's bloom, without its bar field.
-     Carrying the warmth alone, so it runs above the sign-in screen's own 0.16.
+  /* The ground under the terminal: the sign-in screen's bloom and, on the light theme,
+     its bar field as well.
 
-     The two themes want opposite things, which is worth writing down. The dark card is
-     DARKER than the ground, so more glow separates them better: card against the bloom's
-     peak measures 1.54:1 at 0.20 and 1.73:1 at 0.26. The light card is BRIGHTER than
-     white-plus-a-little-ember but not than white-plus-a-lot, so there is a crossover
-     around 0.19 where the ground passes the card and the cards read RECESSED. At 0.13
-     this was on the wrong side of it. 0.22 is past it: peak ground lands near L 0.80
-     against the bone card's 0.831, so the card is the brighter surface again. */
-  --ground-glow: rgba(255, 120, 23, 0.22);
+     The two themes take it differently on purpose. Light gets the whole motif at low
+     opacity, where it reads as a watermark on paper. Dark keeps the bloom alone and sets
+     --ground-bar transparent: on the terminal ground twelve more lit shapes are a second
+     thing to look at, and the charts are already full of lines. */
+  --ground-glow: rgba(255, 120, 23, 0.10);
+  --ground-bar: rgba(255, 120, 23, 0.12);
 
   /* Scrollbars are part of the surface, not furniture the browser is entitled to paint
      white over a dark panel. Neutral by default and only reaching the accent on hover,
@@ -118,6 +116,7 @@
    4.5:1. Nothing else in the palette changes — the neutrals already pass both ways. */
 .dark {
   --ground-glow: rgba(255, 120, 23, 0.28);
+  --ground-bar: transparent;
   --color-ember-ink: #ff7817;
   /* The loss colour was a salmon, and the reason is worth writing down: pure #ff0000
      reaches only 3.88:1 against the raised card, so NO fully saturated red can clear 4.5:1
