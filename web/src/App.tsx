@@ -70,7 +70,9 @@ function Login({ mode, onDone, onMode, onBack }: {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [as, setAs] = useState<'staff' | 'client'>('staff');
+  // Trader first, and selected: almost everybody arriving at this form is one, and a
+  // switcher whose first option is not the lit one reads as a bug rather than a default.
+  const [as, setAs] = useState<'staff' | 'client'>('client');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const registering = mode === 'register';
@@ -190,14 +192,14 @@ function Login({ mode, onDone, onMode, onBack }: {
             </p>
           </div>
 
-          {/* Staff and traders sign in to different places; an account you create is a trader.
+          {/* Traders and staff sign in to different places; an account you create is a trader.
 
               Set like the field labels it sits between, not like a button: this chooses which
               kind of account is signing in, so it labels the form rather than acting on it —
               and EMAIL and PASSWORD are two lines below in exactly this voice. */}
           {!registering && (
             <div className="flex gap-1 rounded-full bg-vellum/5 p-1">
-              {(['staff', 'client'] as const).map((k) => (
+              {(['client', 'staff'] as const).map((k) => (
                 <button key={k} type="button" onClick={() => setAs(k)} aria-pressed={as === k}
                   className={`focus-ring flex-1 rounded-full px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${as === k
                     ? 'bg-ember font-medium text-graphite'
