@@ -136,7 +136,7 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
 
       <p className="mt-2 text-xs text-slate-ink">
         Earned so far <span className="font-mono text-up">{num(s.rewards)} {s.asset}</span>
-        {' · '}a year at this rate pays about {num(s.projected_year)} {s.asset}, credited daily.
+        {' · '}about {num(s.projected_year)} {s.asset} over a year, credited daily.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -276,12 +276,6 @@ function NewStake({ products, on, onCancel, onDone }: {
                     {term(p.lock_days)}
                   </span>
                 </span>
-                <span>
-                  <span className="block font-mono text-2xl leading-none font-medium tabular-nums text-ember-ink">
-                    {pct(p.apy)}
-                  </span>
-                  <span className="metric-label mt-0.5 block">a year</span>
-                </span>
                 <span className="text-xs leading-tight font-medium text-obsidian dark:text-vellum">
                   {p.name}
                 </span>
@@ -338,24 +332,17 @@ function Totals({ stakes }: { stakes: Stake[] }) {
   const staked = priced.reduce((n, s) => n + Number(s.usd_value), 0);
   const earned = priced.reduce(
     (n, s) => n + Number(s.rewards) * (Number(s.usd_value) / Number(s.amount)), 0);
-  // Weighted by size: an average of the rates themselves would let a token position at a
-  // headline rate speak as loudly as the bulk of the money.
-  const rate = staked > 0
-    ? priced.reduce((n, s) => n + Number(s.apy) * Number(s.usd_value), 0) / staked
-    : 0;
   const locked = stakes.filter((s) => s.locked).length;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <Figure i={0} icon="◈" label="Staked" value={staked} format={usd}
         note={unpriced.length
           ? `${unpriced.length} not priced`
           : `across ${stakes.length} position${stakes.length === 1 ? '' : 's'}`} />
       <Figure i={1} icon="↗" label="Earned so far" value={earned} format={usd} tone="up"
         note="paid in the asset, credited daily" />
-      <Figure i={2} icon="~" label="Average rate" value={rate * 100}
-        format={(n) => `${n.toFixed(2)}%`} note="weighted by size" />
-      <Figure i={3} icon="⊘" label="Locked" value={locked}
+      <Figure i={2} icon="⊘" label="Locked" value={locked}
         format={(n) => String(Math.round(n))}
         note={locked ? 'cannot be unstaked yet' : 'all of it can be unstaked'} />
     </div>
@@ -441,17 +428,12 @@ function TermRing({ s }: { s: Stake }) {
 /**
  * What can be staked, grouped by how long it is locked for.
  *
- * Term is the decision. Rate follows from it — a longer lock pays more, that is the whole
- * trade — so one list sorted by rate buries the thing being chosen under the thing being
- * compared. The groups come out of the data rather than a fixed 180/60/30: whatever terms
- * the desk has products on, longest first, with flexible last, because it is the absence of
- * a term rather than the shortest one.
+ * Term is the decision, and with the rates gone it is the only one the shelf presents. The
+ * groups come out of the data rather than a fixed 180/60/30: whatever terms the desk has
+ * products on, longest first, with flexible last, because it is the absence of a term
+ * rather than the shortest one.
  */
 function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }) {
-  // Bars are read against the best rate on the WHOLE shelf, not the best in the group, so a
-  // 30-day product cannot look like the 180-day one by topping a short row.
-  const topRate = Math.max(...products.map((x) => Number(x.apy)), 0.0001);
-
   const groups = useMemo(() => {
     const by = new Map<number, Product[]>();
     for (const product of products) {
@@ -478,7 +460,7 @@ function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }
             </span>
             <span className="text-xs text-slate-ink">
               {group.days === 0
-                ? 'unstake whenever you like — the lower rate is the price of that'
+                ? 'unstake whenever you like — no term, and no lock to wait out'
                 : `locked for ${group.days} days, paid daily in the asset staked`}
             </span>
           </div>
@@ -495,16 +477,9 @@ function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{product.name}</span>
                   </span>
-                  <span className="ml-auto font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
-                    {pct(product.apy)}
-                  </span>
                 </span>
                 <span className="mt-2 block text-xs text-slate-ink">
                   {product.description || `From ${num(product.min_amount)} ${product.asset}.`}
-                </span>
-                <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
-                  <span className="bar-x block h-[3px] rounded-full bg-ember"
-                    style={{ width: `${(Number(product.apy) / topRate) * 100}%` }} />
                 </span>
               </button>
             ))}

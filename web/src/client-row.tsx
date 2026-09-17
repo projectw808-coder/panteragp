@@ -47,6 +47,14 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
             <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
               aria-hidden>›</span>
             <span className="font-medium">{c.name}</span>
+            {/* A record without a password is a lead, not an account — and until this said
+                so, it was indistinguishable from a working login in every column here. */}
+            {!c.has_login && (
+              <span title="No password set — this client cannot sign in yet"
+                className="rounded-full bg-bone px-2 py-0.5 font-mono text-[10px] tracking-wide text-slate-ink uppercase dark:bg-white/10 dark:text-mist">
+                no login
+              </span>
+            )}
           </span>
         </td>
         {/* Contact details and timestamps read as data, so they take the mono face. */}
@@ -111,7 +119,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
                     <PortfoliosPanel clientId={c.id} />
                   </div>
                 )}
-                {canResetPassword && <SignIn clientId={c.id} name={c.name} />}
+                {canResetPassword && <SignIn clientId={c.id} name={c.name} hasLogin={c.has_login} />}
               </div>
             </div>
           </td>
@@ -259,7 +267,7 @@ function Documents({ clientId, canDownload }: { clientId: string; canDownload: b
  * somebody's account, and it should take a deliberate action to reach. The route it calls
  * needs password:reset, notifies the client, and writes to their timeline.
  */
-function SignIn({ clientId, name }: { clientId: string; name: string }) {
+function SignIn({ clientId, name, hasLogin }: { clientId: string; name: string; hasLogin: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -268,10 +276,13 @@ function SignIn({ clientId, name }: { clientId: string; name: string }) {
         <ResetPassword path={`/clients/${clientId}/password`} who={name} onDone={() => setOpen(false)} />
       ) : (
         <>
-          <button className={`${btn} mt-3`} onClick={() => setOpen(true)}>Change password</button>
+          <button className={`${btn} mt-3`} onClick={() => setOpen(true)}>
+            {hasLogin ? 'Change password' : 'Set a password'}
+          </button>
           <p className="mt-2 text-xs text-slate-ink">
-            Sets a new password on their account. They are notified, and it lands on their
-            timeline.
+            {hasLogin
+              ? 'Sets a new password on their account. They are notified, and it lands on their timeline.'
+              : 'This client has no password yet and cannot sign in. Setting one here is what gives them a login.'}
           </p>
         </>
       )}

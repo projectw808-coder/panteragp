@@ -54,6 +54,8 @@ export type ClientRow = {
   id: string; email: string; name: string; tier: string; kyc_status: string;
   risk_profile: string | null; created_at: string; stage_id: number; stage: string;
   owner_staff_id: string | null; owner_name: string | null;
+  /** False until someone sets a password: the record exists, the login does not. */
+  has_login: boolean;
 };
 export type Client = ClientRow & { phone: string | null; country: string | null };
 export type Activity = {

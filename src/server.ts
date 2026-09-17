@@ -292,7 +292,11 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
   // ponytail: ILIKE '%x%' is a seq scan; add a pg_trgm index when the client list gets long.
   const { rows } = await pool.query(
     `SELECT c.id, c.email, c.name, c.tier, c.kyc_status, c.risk_profile, c.created_at,
-            c.stage_id, s.name AS stage, c.owner_staff_id, o.name AS owner_name
+            c.stage_id, s.name AS stage, c.owner_staff_id, o.name AS owner_name,
+            -- Whether they can sign in at all, never the hash itself. A client created
+            -- from the CRM has no password until someone sets one, and that state was
+            -- invisible here: the row looked identical to an account that works.
+            c.password_hash IS NOT NULL AS has_login
        FROM clients c
        JOIN pipeline_stages s ON s.id = c.stage_id
        LEFT JOIN staff o ON o.id = c.owner_staff_id
@@ -422,10 +426,14 @@ app.post('/clients/:id/password', { preHandler: auth('password:reset') }, async 
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
   const hash = await hashPassword(body.data.new_password);
-  return tx(req.principal.sub, async (c) => {
+  // The miss is reported after the transaction rather than inside it: replying from within
+  // the callback returns normally, so tx() commits a transaction the route is calling a
+  // failure. Nothing is written on that path today, but the next write added above this
+  // line would be committed by a 404. Same shape as the wallet unlink below.
+  const out = await tx(req.principal.sub, async (c) => {
     const { rows } = await c.query(
       'UPDATE clients SET password_hash = $2 WHERE id = $1 RETURNING id', [req.params.id, hash]);
-    if (!rows[0]) return reply.code(404).send({ error: 'no such client' });
+    if (!rows[0]) return null;
     await logActivity(c, {
       client_id: req.params.id, kind: 'security', actor: req.principal.sub,
       summary: 'Password reset by staff',
@@ -435,8 +443,10 @@ app.post('/clients/:id/password', { preHandler: auth('password:reset') }, async 
       client_id: req.params.id, kind: 'security', title: 'Your password was reset',
       body: 'A member of staff set a new password on your account. If you were not expecting this, contact support.',
     });
-    return { ok: true };
+    return rows[0];
   });
+  if (!out) return reply.code(404).send({ error: 'no such client' });
+  return { ok: true };
 });
 
 /** An admin setting a colleague's password. Not their own — that route needs the current one. */
@@ -468,6 +478,8 @@ app.get('/clients/:id', { preHandler: clientScope }, async (req: any, reply) => 
     `SELECT c.*, s.name AS stage FROM clients c
        JOIN pipeline_stages s ON s.id = c.stage_id WHERE c.id = $1`, [req.params.id]);
   if (!rows[0]) return reply.code(404).send({ error: 'not found' });
+  // Derived before the hash is dropped, for the same reason the list carries it.
+  rows[0].has_login = rows[0].password_hash !== null;
   delete rows[0].password_hash;
   return rows[0];
 });
