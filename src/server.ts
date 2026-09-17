@@ -2734,7 +2734,10 @@ app.post('/clients/:id/pnl', { preHandler: auth('funds:credit') }, async (req: a
 
     await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1',
       [account.id, amount]);
-    const shown = `${amount > 0 ? '+' : '−'}${Math.abs(amount)} USD`;
+    // ASCII minus, not a typographic one. This string is stored, and a database on a
+    // WIN1252 client encoding rejects U+2212 outright: the insert failed, so every loss
+    // came back a 500 while gains, carrying a plain +, went through.
+    const shown = `${amount > 0 ? '+' : '-'}${Math.abs(amount)} USD`;
     await logActivity(c, {
       client_id: req.params.id, kind: 'pnl', actor: req.principal.sub,
       summary: `P&L adjusted by ${shown}${note ? ` — ${note}` : ''}`,
