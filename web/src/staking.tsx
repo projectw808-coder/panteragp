@@ -29,6 +29,28 @@ const pct = (n: number) => `${Number((n * 100).toFixed(2))}%`;
 const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
 const day = (d: string) => new Date(d).toLocaleDateString();
 const term = (days: number) => (days === 0 ? 'Flexible' : `${days} days`);
+
+/**
+ * Products grouped by how long they lock, longest first, with flexible last — it is the
+ * absence of a term rather than the shortest one.
+ *
+ * Shared by the shelf and the product picker so the two present the same catalogue in the
+ * same order. A picker that lists twelve products flat while the page above it sorts them
+ * into terms makes the reader do the grouping twice.
+ */
+function byTerm(products: Product[]) {
+  const by = new Map<number, Product[]>();
+  for (const product of products) {
+    const days = Number(product.lock_days) || 0;
+    by.set(days, [...(by.get(days) ?? []), product]);
+  }
+  return [...by.entries()]
+    .sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : b[0] - a[0]))
+    .map(([days, list]) => ({
+      days,
+      list: [...list].sort((a, b) => Number(b.apy) - Number(a.apy)),
+    }));
+}
 // Rewards are paid in the asset. This is only for the dollar totals above the list.
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -258,36 +280,44 @@ function NewStake({ products, on, onCancel, onDone }: {
     <form onSubmit={submit} className={`${card} space-y-4`}>
       <div>
         <h3 className="section-title">Choose a product</h3>
-        <div role="radiogroup" aria-label="Staking product"
-          className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {products.map((p) => {
-            const active = p.code === code;
-            return (
-              <label key={p.code}
-                className={`flex aspect-square cursor-pointer flex-col justify-between rounded-lg border p-3 transition-colors ${active
-                  ? 'border-ember bg-ember/10'
-                  : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
-                <input type="radio" name="product" value={p.code} checked={active} className="sr-only"
-                  onChange={() => setCode(p.code)} />
-                <span className="flex items-center justify-between">
-                  <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember-ink">
-                    {p.asset}
-                  </span>
-                  <span className="font-mono text-[10px] tracking-wide text-slate-ink uppercase">
-                    {term(p.lock_days)}
-                  </span>
-                </span>
-                {/* Fills the room the rate used to take, and gives the grid something to
-                    be scanned by other than twelve near-identical lines of text. */}
-                <span className={`flex flex-1 items-center justify-center ${active ? 'text-ember-ink' : 'text-slate-ink'}`}>
-                  <AssetArt code={p.asset} size={40} />
-                </span>
-                <span className="text-xs leading-tight font-medium text-obsidian dark:text-vellum">
-                  {p.name}
-                </span>
-              </label>
-            );
-          })}
+        {/* Grouped by term, the same grouping and the same order as the shelf on the page
+            behind this form. The tiles no longer carry a term of their own: the heading
+            above them says it once for the whole row. */}
+        <div role="radiogroup" aria-label="Staking product" className="mt-2 space-y-4">
+          {byTerm(products).map((group) => (
+            <div key={group.days}>
+              <span className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">
+                {term(group.days)}
+              </span>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {group.list.map((p) => {
+                  const active = p.code === code;
+                  return (
+                    <label key={p.code}
+                      className={`flex aspect-square cursor-pointer flex-col justify-between rounded-lg border p-3 transition-colors ${active
+                        ? 'border-ember bg-ember/10'
+                        : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
+                      <input type="radio" name="product" value={p.code} checked={active} className="sr-only"
+                        onChange={() => setCode(p.code)} />
+                      <span className="flex items-center justify-between">
+                        <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember-ink">
+                          {p.asset}
+                        </span>
+                      </span>
+                      {/* Fills the room the rate used to take, and gives the grid something
+                          to be scanned by other than near-identical lines of text. */}
+                      <span className={`flex flex-1 items-center justify-center ${active ? 'text-ember-ink' : 'text-slate-ink'}`}>
+                        <AssetArt code={p.asset} size={40} />
+                      </span>
+                      <span className="text-xs leading-tight font-medium text-obsidian dark:text-vellum">
+                        {p.name}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -440,19 +470,7 @@ function TermRing({ s }: { s: Stake }) {
  * rather than the shortest one.
  */
 function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }) {
-  const groups = useMemo(() => {
-    const by = new Map<number, Product[]>();
-    for (const product of products) {
-      const days = Number(product.lock_days) || 0;
-      by.set(days, [...(by.get(days) ?? []), product]);
-    }
-    return [...by.entries()]
-      .sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : b[0] - a[0]))
-      .map(([days, list]) => ({
-        days,
-        list: [...list].sort((a, b) => Number(b.apy) - Number(a.apy)),
-      }));
-  }, [products]);
+  const groups = useMemo(() => byTerm(products), [products]);
 
   return (
     <div className="enter space-y-5" style={{ '--i': 6 } as CSSProperties}>
@@ -477,8 +495,11 @@ function Shelf({ products, onPick }: { products: Product[]; onPick: () => void }
                 className={`${card} tile lift grain focus-ring text-left`}>
                 <span className="tile-corner" aria-hidden />
                 <span className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] font-medium text-ember-ink">
-                    {product.asset}
+                  {/* The asset's own mark, the same one the picker shows, so a product is
+                      recognised the same way in both places. The name spells the asset out
+                      beside it, so nothing is lost by dropping the code. */}
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 text-ember-ink">
+                    <AssetArt code={product.asset} size={20} />
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{product.name}</span>

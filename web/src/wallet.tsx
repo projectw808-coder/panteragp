@@ -321,6 +321,75 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
 }
 
 /**
+ * Admin-only: move a client's realised P&L.
+ *
+ * Its own control rather than a third direction on the credit form, because it is not the
+ * same act. A credit is the desk putting money on an account and reads as an adjustment; a
+ * gain is the account having earned. The route moves the balance with it, so the client's
+ * earnings and their equity keep agreeing.
+ */
+export function PnlForm({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const [dir, setDir] = useState<'gain' | 'loss'>('gain');
+  const [amt, setAmt] = useState('');
+  const [note, setNote] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      // Signed at the source, so the direction the reader picked is the one sent.
+      const signed = dir === 'loss' ? -Math.abs(Number(amt)) : Math.abs(Number(amt));
+      await api(`/clients/${clientId}/pnl`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: signed, note: note || undefined }),
+      });
+      setResult(`${dir === 'loss' ? 'Loss' : 'Gain'} of ${amt} USD applied`);
+      setAmt(''); setNote('');
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit} className={`${card} space-y-2`}>
+      <h2 className="text-sm font-semibold">Adjust P&amp;L</h2>
+      {/* Direction first: it changes what the button does, so it is read first — the same
+          order as the credit form above it. */}
+      <div className="flex gap-1">
+        {(['gain', 'loss'] as const).map((d) => (
+          <button key={d} type="button" onClick={() => setDir(d)} aria-pressed={dir === d}
+            className={`flex-1 rounded-full px-2 py-1 font-mono text-xs capitalize ${dir === d
+              ? 'bg-ember font-medium text-graphite'
+              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
+            {d}
+          </button>
+        ))}
+      </div>
+      <input className={input} type="number" step="any" min="0" required placeholder="Amount in USD"
+        value={amt} onChange={(e) => setAmt(e.target.value)} />
+      <input className={input} maxLength={500} placeholder="Reason (appears on the timeline)"
+        value={note} onChange={(e) => setNote(e.target.value)} />
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+      {result && <p className="text-sm text-slate-ink">{result}</p>}
+      <button className={`${btn} w-full`} disabled={busy}>
+        {busy ? 'Working…' : dir === 'loss' ? 'Apply loss' : 'Apply gain'}
+      </button>
+      <p className="text-xs text-slate-ink">
+        Counts as realised P&amp;L in the client's earnings and moves their USD balance with
+        it, so the two keep agreeing. A loss cannot take the balance below zero. Audited, on
+        their timeline, and they are notified.
+      </p>
+    </form>
+  );
+}
+
+/**
  * Admin-only: record money the client actually paid in.
  *
  * Kept apart from "Adjust this account" on purpose. A credit is the desk putting money on

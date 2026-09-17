@@ -1061,43 +1061,95 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
     days: z.coerce.number().int().min(1).max(3650).default(30),
   }).parse(req.query);
 
-  const { rows } = await pool.query<{
-    day: string; realized: number; interest: number; rewards: number; moved_in: number; moved_out: number;
+  // The day spine, so a day on which nothing happened is still a point on the line.
+  const { rows: spine } = await pool.query<{ day: string }>(`
+    SELECT to_char(d, 'YYYY-MM-DD') AS day
+      FROM generate_series(current_date - ($1 || ' days')::interval, current_date, interval '1 day') d
+     ORDER BY day`, [q.days - 1]);
+
+  // One row per day, per source, PER CURRENCY — never summed across currencies in SQL,
+  // because they cannot be. A pot pays interest in the pot's currency and a stake pays its
+  // reward in the asset staked, so the old version added 0.01 BTC to a dollar figure as
+  // though it were one cent, and £100 of interest as though it were $100. The same mistake
+  // was found and fixed for cash flows (see the note below) and left standing here.
+  const { rows: parts } = await pool.query<{
+    day: string; bucket: 'earned' | 'in' | 'out'; code: string; amount: string;
   }>(`
-    SELECT to_char(d, 'YYYY-MM-DD') AS day,
-           -- Realised P&L is written onto the fill's own timeline entry when it happens.
-           (SELECT coalesce(sum((a.data->>'realized')::numeric), 0) FROM activity_log a
-             WHERE a.client_id = $1 AND a.kind = 'order.filled'
-               AND a.at >= d AND a.at < d + interval '1 day')                       AS realized,
-           (SELECT coalesce(sum(t.amount), 0) FROM portfolio_transactions t
-             WHERE t.client_id = $1 AND t.kind = 'interest'
-               AND t.at >= d AND t.at < d + interval '1 day')                       AS interest,
-           (SELECT coalesce(sum((a.data->>'reward')::numeric), 0) FROM activity_log a
-             WHERE a.client_id = $1 AND a.kind = 'stake' AND a.actor = 'system'
-               AND a.at >= d AND a.at < d + interval '1 day')                       AS rewards,
-           (SELECT coalesce(sum(c.amount), 0) FROM cash_transactions c
-             WHERE c.client_id = $1 AND c.amount > 0 AND c.status IN ('approved','settled')
-               AND c.created_at >= d AND c.created_at < d + interval '1 day')       AS moved_in,
-           (SELECT coalesce(-sum(c.amount), 0) FROM cash_transactions c
-             WHERE c.client_id = $1 AND c.amount < 0 AND c.status IN ('approved','settled')
-               AND c.created_at >= d AND c.created_at < d + interval '1 day')       AS moved_out
-      FROM generate_series(current_date - ($2 || ' days')::interval, current_date, interval '1 day') d
-     ORDER BY day`, [req.principal.sub, q.days - 1]);
+    WITH span AS (SELECT (current_date - ($2 || ' days')::interval)::date AS from_day)
+    -- Realised P&L, written onto the fill's own timeline entry when it happens, plus any
+    -- adjustment the desk has made by hand. Both land in the account demoAccount() returns,
+    -- which is the USD one, and both write the same realized field.
+    SELECT a.at::date::text AS day, 'earned' AS bucket, 'USD' AS code,
+           sum((a.data->>'realized')::numeric) AS amount
+      FROM activity_log a, span s
+     WHERE a.client_id = $1 AND a.kind IN ('order.filled', 'pnl')
+       AND a.at >= s.from_day AND (a.data->>'realized') IS NOT NULL
+     GROUP BY 1, 2, 3
+    UNION ALL
+    -- Interest, in the currency of the pot that paid it.
+    SELECT t.at::date::text, 'earned', p.currency, sum(t.amount)
+      FROM portfolio_transactions t
+      JOIN portfolios p ON p.id = t.portfolio_id, span s
+     WHERE t.client_id = $1 AND t.kind = 'interest' AND t.at >= s.from_day
+     GROUP BY 1, 2, 3
+    UNION ALL
+    -- Staking rewards, in the asset staked. The accrual records it alongside the amount.
+    SELECT a.at::date::text, 'earned', coalesce(a.data->>'asset', '?'),
+           sum((a.data->>'reward')::numeric)
+      FROM activity_log a, span s
+     WHERE a.client_id = $1 AND a.kind = 'stake' AND a.actor = 'system'
+       AND a.at >= s.from_day AND (a.data->>'reward') IS NOT NULL
+     GROUP BY 1, 2, 3
+    UNION ALL
+    -- Money in and out, in the currency of the account it moved through.
+    SELECT c.created_at::date::text,
+           CASE WHEN c.amount > 0 THEN 'in' ELSE 'out' END,
+           ta.currency, sum(c.amount)
+      FROM cash_transactions c
+      JOIN trading_accounts ta ON ta.id = c.account_id, span s
+     WHERE c.client_id = $1 AND c.status IN ('approved','settled')
+       AND c.created_at >= s.from_day
+     GROUP BY 1, 2, 3`, [req.principal.sub, q.days - 1]);
+
+  // Priced once per currency rather than once per row. Converted at today's rate, which is
+  // the only rate this platform has: no FX or spot history is kept, so a reward earned in
+  // BTC three weeks ago is valued at what that BTC is worth now. Approximate, and named as
+  // such, rather than silently wrong.
+  const rate = new Map<string, number | null>();
+  for (const code of new Set(parts.map((p) => p.code))) {
+    rate.set(code, await rateToUsd(code));
+  }
+  // An unpriced currency is dropped from the figure and named, never counted as zero.
+  const unpricedFlow = new Set<string>();
+
+  const byDay = new Map<string, { earned: number; in: number; out: number }>();
+  for (const p of parts) {
+    const r = rate.get(p.code) ?? null;
+    if (r === null) { unpricedFlow.add(p.code); continue; }
+    const usd = Number(p.amount) * r;
+    const slot = byDay.get(p.day) ?? { earned: 0, in: 0, out: 0 };
+    if (p.bucket === 'earned') slot.earned += usd;
+    else if (p.bucket === 'in') slot.in += usd;
+    // Out is stored negative and reported positive, as it was before.
+    else slot.out += -usd;
+    byDay.set(p.day, slot);
+  }
 
   let running = 0;
-  const series = rows.map((r) => {
-    const earned = Number(r.realized) + Number(r.interest) + Number(r.rewards);
-    running = round8(running + earned);
+  const series = spine.map(({ day }) => {
+    const s = byDay.get(day) ?? { earned: 0, in: 0, out: 0 };
+    const dayEarned = round8(s.earned);
+    running = round8(running + dayEarned);
     return {
-      day: r.day,
-      earned: round8(earned),
+      day,
+      earned: dayEarned,
       cumulative: running,
-      moved_in: Number(r.moved_in),
-      moved_out: Number(r.moved_out),
+      moved_in: round8(s.in),
+      moved_out: round8(s.out),
     };
   });
 
-  const earned = series.reduce((n, p) => n + p.earned, 0);
+  const earned = round8(series.reduce((n, p) => n + p.earned, 0));
   const best = series.reduce((b, p) => (b === null || p.earned > b.earned ? p : b), null as typeof series[0] | null);
   const worst = series.reduce((w, p) => (w === null || p.earned < w.earned ? p : w), null as typeof series[0] | null);
 
@@ -1136,27 +1188,26 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
   const openPnl = positions.rows.reduce((n, x) => n + unrealized(x, spot(x.symbol)), 0);
   const equity = round8(held.usd + openPnl);
 
-  // Flows converted the same way, by currency, rather than summed as if they were all
-  // dollars.
-  const { rows: byCurrency } = await pool.query<{ currency: string; moved: number }>(`
-    SELECT t.currency, coalesce(sum(c.amount), 0) AS moved
-      FROM cash_transactions c JOIN trading_accounts t ON t.id = c.account_id
-     WHERE c.client_id = $1 AND c.status IN ('approved','settled')
-       AND c.created_at >= current_date - ($2 || ' days')::interval
-     GROUP BY t.currency`, [req.principal.sub, q.days - 1]);
-  const moved = await totalUsd(byCurrency.map((r) => ({ code: r.currency, amount: Number(r.moved) })));
+  // Net flow over the window, from the series that is already converted per currency. It
+  // used to be a second query doing its own conversion, which was one more place for the
+  // two to disagree about the same money.
+  const movedUsd = round8(series.reduce((n, p) => n + p.moved_in - p.moved_out, 0));
 
-  const opening = round8(equity - earned - moved.usd);
+  const opening = round8(equity - earned - movedUsd);
+  // Anything the figures could not price, from either the holdings or the flows.
+  const unpriced = [...new Set([...held.unpriced, ...unpricedFlow])];
 
   return {
     days: q.days,
     series,
-    earned: round8(earned),
+    earned,
     // Null rather than a number when there was nothing to earn on: a percentage of zero
     // is not a large return, it is not a return. Null too when something in the mix has
-    // no price source, because the opening figure would be missing a piece.
-    pct: opening > 0 && !held.unpriced.length ? round8(earned / opening) : null,
-    unpriced: held.unpriced,
+    // no price source, because the figure it is taken against would be missing a piece —
+    // and that now includes an unpriced currency anywhere in the earnings or the flows,
+    // not just in what is held today.
+    pct: opening > 0 && !unpriced.length ? round8(earned / opening) : null,
+    unpriced,
     opening,
     equity,
     best: best && best.earned > 0 ? best : null,
@@ -2631,6 +2682,77 @@ app.post('/clients/:id/debit', { preHandler: auth('funds:credit') }, async (req:
     });
     return { transaction: entry, currency, amount: -amount };
   });
+});
+
+const pnlBody = z.object({
+  // Signed: a gain is positive, a loss negative. Zero is refused rather than written as a
+  // no-op entry on somebody's timeline.
+  amount: z.number().finite().max(1e12).min(-1e12).refine((n) => n !== 0, 'amount cannot be zero'),
+  note: z.string().max(500).optional(),
+});
+
+/**
+ * Adjust a client's realised P&L by hand.
+ *
+ * It moves the balance as well as the figure, and that is the whole point. Realised P&L on
+ * a fill is money: it lands in the account. Writing an earnings entry without moving the
+ * balance would make the account's own arithmetic disagree with itself, because the opening
+ * balance is worked back as equity less what was earned less what was paid in — add to the
+ * middle term alone and the client is retrospectively told they started poorer. Moving both
+ * leaves that reconstruction untouched.
+ *
+ * Recorded as its own kind rather than dressed as a fill. It belongs in the earnings series
+ * because it is earnings, but a fill that never happened has no order, no symbol and no
+ * price, and inventing one would put a trade in the client's history that cannot be
+ * explained if anybody asks.
+ *
+ * Same permission as crediting — this creates a gain out of nothing on a demo account, which
+ * is the same power — and like crediting it is audited, timelined, and told to the client.
+ */
+app.post('/clients/:id/pnl', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = pnlBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { amount, note } = body.data;
+
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+  // Realised P&L lands in the account orders trade on, so make sure it exists first.
+  await demoAccount(req.params.id);
+
+  const out = await tx(req.principal.sub, async (c) => {
+    // FOR UPDATE for the same reason the debit route takes it: two adjustments landing
+    // together must not both read the same balance.
+    const { rows: [account] } = await c.query(
+      `SELECT * FROM trading_accounts
+        WHERE client_id = $1 AND mode = 'demo' AND currency = 'USD' FOR UPDATE`,
+      [req.params.id]);
+    // A loss cannot take the account below zero. Margin, equity and position sizing all
+    // assume a floor of nothing, the same reason the debit route refuses to overdraw.
+    if (amount < 0 && Number(account.balance) + amount < 0) {
+      return { short: Number(account.balance) } as const;
+    }
+
+    await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1',
+      [account.id, amount]);
+    const shown = `${amount > 0 ? '+' : '−'}${Math.abs(amount)} USD`;
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'pnl', actor: req.principal.sub,
+      summary: `P&L adjusted by ${shown}${note ? ` — ${note}` : ''}`,
+      // `realized` is the field the earnings series reads, the same one a fill writes.
+      data: { realized: amount, note: note ?? null },
+    });
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'credit',
+      title: `Your profit and loss was adjusted by ${shown}`,
+      body: note ?? undefined,
+    });
+    return { amount, balance: round8(Number(account.balance) + amount) } as const;
+  });
+
+  if ('short' in out) {
+    return reply.code(422).send({ error: `balance is ${out.short} USD; a loss cannot overdraw it` });
+  }
+  return out;
 });
 
 // ------------------------------------------------------- currency converter
