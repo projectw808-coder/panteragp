@@ -1615,6 +1615,305 @@ await step('the firm-wide feed is staff-only', async () => {
   assert.equal(await status('/admin/overview', { token: T }), 403);
 });
 
+console.log('\nPhase 8 — IPO offerings');
+
+// Every offering this phase creates is its own, so the checks are deltas against a book
+// nobody else is touching, the way the rest of this file works.
+const ipoSlug = (name) => `accept-${name}-${Date.now()}-${++seq}`;
+const DAY = 86400000;
+const nowMs = () => Date.now();
+const when = (ms) => new Date(ms).toISOString();
+
+/** A published offering, open now, with the window and bounds the caller asks for. */
+const offering = async (over = {}) => {
+  const made = await get('/admin/ipos', {
+    token: A, method: 'POST',
+    body: {
+      slug: ipoSlug('deal'), name: 'Acceptance Offering', summary: 'For the acceptance run.',
+      asset: 'ACC', currency: 'USD', target_amount: 10_000, min_subscription: 100,
+      roi_rate: 7.25, term_days: 90,
+      opens_at: when(nowMs() - DAY), closes_at: when(nowMs() + DAY),
+      matures_at: when(nowMs() + 91 * DAY),
+      ...over,
+    },
+  });
+  assert.ok(made.id, `the offering was not created: ${JSON.stringify(made).slice(0, 200)}`);
+  await get(`/admin/ipos/${made.id}`, { token: A, method: 'PATCH', body: { status: 'upcoming' } });
+  return made;
+};
+
+const usdOf = async (token) => {
+  const accounts = await get('/accounts', { token });
+  return Number(accounts.cash.find((c) => c.currency === 'USD')?.balance ?? 0);
+};
+
+// The trader needs approved KYC and money before any of this can be exercised.
+await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'approved' } });
+await get(`/clients/${client.id}/credit`, { token: A, method: 'POST', body: { currency: 'USD', amount: 100_000 } });
+
+await step('a draft is invisible to a client and visible to the desk', async () => {
+  const made = await get('/admin/ipos', {
+    token: A, method: 'POST',
+    body: {
+      slug: ipoSlug('draft'), name: 'Unpublished', summary: 'Still being written.',
+      asset: 'ACC', currency: 'USD', target_amount: 1_000, roi_rate: 5, term_days: 30,
+    },
+  });
+  assert.equal(made.stored_status, 'draft');
+  const mine = await get('/ipos', { token: T });
+  assert.ok(!mine.some((i) => i.id === made.id), 'a draft reached the client list');
+  assert.equal(await status(`/ipos/${made.id}`, { token: T }), 404, 'a draft was readable by id');
+  const desk = await get('/admin/ipos', { token: A });
+  assert.ok(desk.some((i) => i.id === made.id), 'the desk cannot see its own draft');
+});
+
+await step('the status follows the dates rather than a column somebody sets', async () => {
+  const soon = await offering({
+    opens_at: when(nowMs() + 5 * DAY), closes_at: when(nowMs() + 10 * DAY),
+    matures_at: when(nowMs() + 100 * DAY),
+  });
+  const upcoming = await get(`/ipos/${soon.id}`, { token: T });
+  assert.equal(upcoming.status, 'upcoming', 'before its window it is not open');
+  assert.equal(upcoming.stored_status, 'upcoming');
+  assert.equal(upcoming.group, 'incoming');
+
+  const live = await offering();
+  const open = await get(`/ipos/${live.id}`, { token: T });
+  assert.equal(open.status, 'open', 'inside its window it is open, with nobody having said so');
+  assert.equal(open.stored_status, 'upcoming', 'and the stored column never changed');
+});
+
+await step('subscribing debits exactly once, and the allocation is held', async () => {
+  const deal = await offering({ target_amount: 5_000 });
+  const before = await usdOf(T);
+  const sub = await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 1_234.56 } });
+  assert.ok(sub.subscription, `subscribe failed: ${JSON.stringify(sub).slice(0, 200)}`);
+  const after = await usdOf(T);
+  assert.ok(Math.abs(before - after - 1234.56) < 1e-6,
+    `the balance moved by ${before - after} rather than 1234.56`);
+  // The money is not gone, it is held: /accounts has to say so or the client's total drops.
+  const accounts = await get('/accounts', { token: T });
+  assert.ok(accounts.ipos.some((x) => Math.abs(Number(x.balance) - 1234.56) < 1e-6),
+    'the allocation is missing from /accounts');
+});
+
+await step('a client cannot see another client’s subscription', async () => {
+  const deal = await offering();
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
+  // A second trader, with their own account, must see the offering but not the position.
+  const other = await get('/auth/register', {
+    method: 'POST',
+    body: { name: 'Acceptance Bob', email: unique('bob'), password: 'devpassword' },
+  });
+  const seen = await get(`/ipos/${deal.id}`, { token: other.token });
+  assert.equal(seen.subscription, null, "another client's position was disclosed");
+  assert.equal(await status(`/admin/ipos/${deal.id}/subscriptions`, { token: other.token }), 403);
+  const theirs = await get('/me/ipo-subscriptions', { token: other.token });
+  assert.equal(theirs.length, 0, 'a client saw subscriptions that were not theirs');
+});
+
+await step('a client cannot subscribe while unverified, and the attempt is flagged', async () => {
+  const deal = await offering();
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'pending' } });
+  const cash = await usdOf(T);
+  const before = (await get(`/flags?status=open&client_id=${client.id}`, { token: A })).length;
+
+  const refused = await call(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
+  assert.equal(refused.status, 403);
+  const body = await j(refused);
+  assert.match(String(body.error), /verified/, 'the refusal should point at verification');
+  assert.equal(await usdOf(T), cash, 'a refused subscription moved money');
+
+  const flags = await get(`/flags?status=open&client_id=${client.id}`, { token: A });
+  assert.ok(flags.length > before, 'the attempt raised no flag');
+  assert.ok(flags.some((f) => f.rule === 'subscription_without_kyc'));
+  await get(`/clients/${client.id}`, { token: A, method: 'PATCH', body: { kyc_status: 'approved' } });
+});
+
+await step('the cap cannot be exceeded, even by requests arriving together', async () => {
+  const deal = await offering({ target_amount: 300, min_subscription: 100 });
+  // Ten at once against room for three. A check and a debit that were not one locked step
+  // would let more than three through and leave the book over its target.
+  const results = await Promise.all(Array.from({ length: 10 }, () =>
+    call(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 100 } })));
+  const taken = results.filter((r) => r.status === 200).length;
+  assert.equal(taken, 3, `${taken} subscriptions were taken against room for three`);
+  const book = await get(`/admin/ipos/${deal.id}/subscriptions`, { token: A });
+  const raised = book.reduce((n, s) => n + Number(s.amount), 0);
+  assert.equal(raised, 300, `the book raised ${raised} against a target of 300`);
+  // And the refusal is useful: it names what is left rather than failing generically.
+  const refused = await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 100 } });
+  assert.match(String(refused.error), /fully subscribed/);
+});
+
+await step('an exact fill is allowed, and the bounds are enforced', async () => {
+  const deal = await offering({ target_amount: 1_000, min_subscription: 100, max_subscription: 600 });
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 99 } }), 422);
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 601 } }), 422);
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 600 } });
+  // 400 is exactly what remains. Refusing it would leave every book short of full.
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 400 } }), 200);
+});
+
+await step('an upcoming or active offering takes no money', async () => {
+  const soon = await offering({
+    opens_at: when(nowMs() + 5 * DAY), closes_at: when(nowMs() + 10 * DAY),
+    matures_at: when(nowMs() + 100 * DAY),
+  });
+  assert.equal(await status(`/ipos/${soon.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } }), 409);
+
+  const deal = await offering();
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
+  // Pull the close into the past: the offering becomes active and the window is shut.
+  await get(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH',
+    body: { opens_at: when(nowMs() - 3 * DAY), closes_at: when(nowMs() - 2 * DAY) },
+  });
+  const active = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(active.status, 'active');
+  assert.equal(active.group, 'running', 'money that is working must not be filed as finished');
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 100 } }), 409);
+});
+
+await step('accrual posts nothing on the day a subscription was taken, however often it runs', async () => {
+  // The same property the portfolio accrual is held to, and for the same reason: ROI is
+  // paid per whole day elapsed, so a subscription taken today has earned no days yet. That
+  // is what makes the job safe to run on a loop. How much a day is worth, and that a week
+  // paid at once equals seven days paid singly, are covered in test/ipo.test.ts, which can
+  // move the clock — an API-only run cannot, and a test that pretends to is a test that
+  // passes on two zeros.
+  const deal = await offering({ roi_rate: 36.5 });
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 1_000 } });
+  const held = () => get('/me/ipo-subscriptions', { token: T })
+    .then((all) => Number(all.find((s) => s.ipo_id === deal.id).accrued));
+
+  assert.equal(await held(), 0, 'a subscription taken today has earned nothing yet');
+  for (let i = 0; i < 3; i++) await get('/admin/accrue-ipos', { token: A, method: 'POST' });
+  assert.equal(await held(), 0, 'three runs in one day credited something');
+});
+
+await step('accrual and settlement are admin-only', async () => {
+  assert.equal(await status('/admin/accrue-ipos', { token: T, method: 'POST' }), 403);
+  const shape = await get('/admin/accrue-ipos', { token: A, method: 'POST' });
+  // It reports what it looked at and what it paid, so an operator re-running it can tell
+  // the difference between "nothing was due" and "nothing happened".
+  for (const key of ['subscriptions', 'posted', 'offerings', 'settled']) {
+    assert.ok(Number.isFinite(Number(shape[key])), `the accrual did not report ${key}`);
+  }
+});
+
+await step('cancelling refunds the exact amount debited', async () => {
+  const deal = await offering();
+  const before = await usdOf(T);
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 777.77 } });
+  assert.ok(Math.abs(before - (await usdOf(T)) - 777.77) < 1e-6);
+
+  const out = await get(`/admin/ipos/${deal.id}/cancel`, { token: A, method: 'POST' });
+  assert.equal(out.refunded, 1);
+  assert.ok(Math.abs((await usdOf(T)) - before) < 1e-6, 'the refund was not the amount debited');
+  const after = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(after.status, 'cancelled');
+  assert.equal(after.group, 'finished');
+  // Cancelling again must not refund again.
+  assert.equal(await status(`/admin/ipos/${deal.id}/cancel`, { token: A, method: 'POST' }), 409);
+});
+
+await step('settling returns the principal in full, and only once', async () => {
+  const deal = await offering({ roi_rate: 36.5 });
+  const before = await usdOf(T);
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 1_000 } });
+  await get(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH',
+    body: { opens_at: when(nowMs() - 6 * DAY), closes_at: when(nowMs() - 5 * DAY) },
+  });
+  await get('/admin/accrue-ipos', { token: A, method: 'POST' });
+  const held = await get('/me/ipo-subscriptions', { token: T });
+  const accrued = Number(held.find((s) => s.ipo_id === deal.id).accrued);
+
+  const out = await get(`/admin/ipos/${deal.id}/settle`, { token: A, method: 'POST' });
+  assert.equal(out.settled, 1);
+  const after = await usdOf(T);
+  // Principal back in full plus whatever accrued, less only the dust the floor kept. On a
+  // same-day run accrued is zero, which still proves the principal is returned exactly.
+  assert.ok(Math.abs((after - before) - accrued) < 0.01,
+    `settled ${after - before} against ${accrued} accrued`);
+  const done = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(done.status, 'completed');
+  assert.equal(done.group, 'finished');
+  assert.equal((await get('/me/ipo-subscriptions', { token: T }))
+    .find((s) => s.ipo_id === deal.id).status, 'settled');
+  // Settling again pays nothing: there is no active subscription left to pay.
+  assert.equal((await get(`/admin/ipos/${deal.id}/settle`, { token: A, method: 'POST' })).settled, 0);
+});
+
+await step('a non-admin cannot change a rate or move an offering', async () => {
+  const deal = await offering();
+  assert.equal(await status(`/admin/ipos/${deal.id}`, { token: T, method: 'PATCH', body: { roi_rate: 99 } }), 403);
+  assert.equal(await status(`/admin/ipos/${deal.id}/cancel`, { token: T, method: 'POST' }), 403);
+  assert.equal(await status(`/admin/ipos/${deal.id}/settle`, { token: T, method: 'POST' }), 403);
+  assert.equal(await status('/admin/accrue-ipos', { token: T, method: 'POST' }), 403);
+  assert.equal(await status('/admin/ipos', { token: T }), 403);
+  // Sales holds crm:write and still may not touch the rate: it is funds:credit-shaped power.
+  const sales = await get('/staff', {
+    token: A, method: 'POST',
+    body: { name: 'Acceptance Sam', email: unique('sam'), role: 'sales', password: 'devpassword-long' },
+  });
+  const S = (await login(sales.email, 'devpassword-long', 'staff')).token;
+  assert.equal(await status(`/admin/ipos/${deal.id}`, { token: S, method: 'PATCH', body: { roi_rate: 9 } }), 403);
+  assert.equal(await status('/admin/ipos', { token: S }), 200, 'but sales may read the shelf');
+});
+
+await step('a per-client rate is the desk’s and never reaches the client', async () => {
+  const deal = await offering();
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
+  const book = await get(`/admin/ipos/${deal.id}/subscriptions`, { token: A });
+  const set = await get(`/admin/ipo-subscriptions/${book[0].id}`, {
+    token: A, method: 'PATCH', body: { roi_override: 12.5 },
+  });
+  assert.ok(set.id, `the override was refused: ${JSON.stringify(set).slice(0, 160)}`);
+  const after = await get(`/admin/ipos/${deal.id}/subscriptions`, { token: A });
+  assert.ok(Math.abs(Number(after[0].effective_rate) - 0.125) < 1e-9);
+  // The client page keeps showing the offering's public rate, not the agreement.
+  const shown = await get(`/ipos/${deal.id}`, { token: T });
+  assert.ok(Math.abs(Number(shown.roi_rate) - 0.0725) < 1e-9);
+  assert.equal(await status(`/admin/ipo-subscriptions/${book[0].id}`, {
+    token: T, method: 'PATCH', body: { roi_override: 99 },
+  }), 403);
+});
+
+await step('the picture refuses a disallowed type and an oversized file', async () => {
+  const deal = await offering();
+  const send = async (bytes, type, name) => {
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type }), name);
+    const r = await fetch(`${B}/admin/ipos/${deal.id}/image`, {
+      method: 'POST', headers: { authorization: `Bearer ${A}` }, body: form,
+    });
+    return r.status;
+  };
+  assert.equal(await send(new Uint8Array(16), 'application/pdf', 'deck.pdf'), 415,
+    'a PDF is a document, not marketing imagery');
+  assert.equal(await send(new Uint8Array(16), 'image/gif', 'loop.gif'), 415);
+  // Over the multipart ceiling, so the upload is cut off rather than stored.
+  assert.equal(await send(new Uint8Array(11 * 1024 * 1024), 'image/png', 'huge.png'), 413);
+  assert.equal(await send(new Uint8Array(64), 'image/png', 'fine.png'), 200);
+  const withImage = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(withImage.has_image, true);
+  // Served through a route, and only to someone signed in.
+  assert.equal((await fetch(`${B}/ipos/${deal.id}/image`)).status, 401);
+  assert.equal(await status(`/ipos/${deal.id}/image`, { token: T }), 200);
+});
+
+await step('an allocation reaches the desk-side holdings and the timeline', async () => {
+  const deal = await offering();
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 250 } });
+  const holdings = await get(`/clients/${client.id}/holdings`, { token: A });
+  assert.ok(holdings.ipos.some((x) => Math.abs(Number(x.amount) - 250) < 1e-6),
+    'the workspace cannot see the allocation');
+  const timeline = await get(`/clients/${client.id}/timeline?kind=ipo&limit=20`, { token: A });
+  assert.ok(timeline.some((e) => e.kind === 'ipo'), 'the subscription is not on the timeline');
+});
+
 console.log('\nCross-cutting');
 await step('a token for a deleted subject is unauthorised, not a crash', async () => {
   const forged = await forge({ kind: 'client', role: 'trader' }, '00000000-0000-0000-0000-000000000000');
@@ -1643,4 +1942,4 @@ await step('the trader sees no CRM, the client record is its own', async () => {
   assert.equal(await status(`/clients/${client.id}`, { token: T }), 200);
 });
 
-console.log(`\n${passed} checks passed across all seven phases.\n`);
+console.log(`\n${passed} checks passed across all eight phases.\n`);

@@ -4222,6 +4222,20 @@ if (existsSync(join(WEB_DIST, 'index.html'))) {
 // The return is the ROI and not the share price. A subscription is not equity, confers no
 // interest in any company named, and moves the same simulated balances as everything else
 // here. See the README.
+//
+// What is deliberately left undone, so `grep -rn "ponytail:" src web/src` stays the list:
+// ponytail: offering images sit on the container disk under UPLOAD_DIR. They belong in
+//   object storage — without a mounted volume every deploy loses them, the same trap the
+//   KYC documents already carry a warning about.
+// ponytail: no secondary market and no transfer of an allocation. A subscription is held
+//   by the client who made it until it is refunded or settled.
+// ponytail: no partial allocation or pro-rata scale-back on oversubscription. First come,
+//   first served, and the overflow is refused rather than trimmed.
+// ponytail: no per-offering document attachments — a prospectus or term sheet would want
+//   the KYC upload path rather than this one, since those are documents, not marketing.
+// ponytail: the ROI accrual runs on the same in-process timer as the others, so several
+//   API instances would each run it. Harmless while it is idempotent; move it to a single
+//   scheduled job at that point.
 
 /** Marketing imagery, so the formats a browser renders and nothing else. */
 const IPO_IMAGE_TYPES = new Map([
@@ -4416,12 +4430,15 @@ app.post('/ipos/:id/subscribe', { preHandler: auth() }, async (req: any, reply) 
     }
 
     await moveBalance(c, holding, -amount);
-    // last_accrued_on starts at the close, not today: ROI is for the term, and a
-    // subscription taken on day one of an open window has not earned the window.
+    // last_accrued_on is only the high-water mark of what has been paid. Where accrual
+    // *starts* is the offering's close, applied by the accrual itself against whatever the
+    // close is at the time — not snapshotted here. Snapshotting it meant an offering whose
+    // close the desk later pulled earlier never began paying, because this column sat in
+    // the future and the accrual skips anything not yet due.
     const { rows: [sub] } = await c.query(
-      `INSERT INTO ipo_subscriptions (ipo_id, client_id, amount, currency, last_accrued_on)
-       VALUES ($1,$2,$3,$4, greatest(current_date, $5::date)) RETURNING *`,
-      [ipo.id, subject, amount, ipo.currency, ipo.closes_at]);
+      `INSERT INTO ipo_subscriptions (ipo_id, client_id, amount, currency)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [ipo.id, subject, amount, ipo.currency]);
 
     // Measured against what this client has subscribed before, excluding the row just
     // written. Only the size rules can fire: the KYC one already returned above, so it is
@@ -4849,9 +4866,10 @@ async function accrueIpos(): Promise<{ subscriptions: number; posted: number }> 
   const { rows } = await pool.query<{
     id: string; client_id: string; amount: number; accrued: number; currency: string;
     rate: number; name: string; last_accrued_on: string; matures_at: Date | null;
+    closes_on: string;
   }>(`
     SELECT s.id, s.client_id, s.amount, s.accrued, s.currency, s.last_accrued_on,
-           i.name, i.matures_at,
+           i.name, i.matures_at, i.closes_at::date AS closes_on,
            -- The rate agreed on this subscription wins over the offering's. One
            -- expression, used by the job that pays and by the screens that promise.
            coalesce(s.roi_override, i.roi_rate) AS rate
@@ -4865,7 +4883,12 @@ async function accrueIpos(): Promise<{ subscriptions: number; posted: number }> 
 
   let posted = 0;
   for (const s of rows) {
-    const days = accruableDays({ lastAccruedOn: s.last_accrued_on, maturesAt: s.matures_at });
+    // Accrual runs from the later of what has already been paid and the offering's close,
+    // read fresh each time. Both are plain YYYY-MM-DD, so the string comparison is the
+    // date comparison. A subscription taken during the window earns from the close, not
+    // from the day it was taken — the ROI is for the term.
+    const from = s.last_accrued_on > s.closes_on ? s.last_accrued_on : s.closes_on;
+    const days = accruableDays({ lastAccruedOn: from, maturesAt: s.matures_at });
     if (days <= 0) {
       // Past maturity with nothing left to pay: claim the day so this row stops being
       // reconsidered on every sweep.

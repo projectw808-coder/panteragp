@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 80 acceptance checks against the running stack
+    npm run test:e2e # 125 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -45,7 +45,7 @@ at it, `npm run db:reset`, then `src/seed.ts <email> <password> [role]` for the 
 account.
 
 ## Enforced by the database, not the app
-- `audit_log` is written by an AFTER trigger on all 11 mutable tables, with `password_hash`
+- `audit_log` is written by an AFTER trigger on all 13 mutable tables, with `password_hash`
   stripped and the actor taken from `app.actor` (set per transaction by `tx()`).
 - `audit_log` and `activity_log` reject UPDATE and DELETE.
 - Order type/price coherence, demo-vs-live account mode, KYC and pipeline values: CHECK constraints.
@@ -65,7 +65,11 @@ Tickets: `GET|POST /tickets` · `GET /tickets/:id` · `POST /tickets/:id/message
 `PATCH /tickets/:id` (staff triage)
 Notifications: `GET /notifications` · `GET /notifications/unread-count`
 `POST /notifications/:id/read` · `POST /notifications/read-all` · `POST /clients/:id/notify` (staff)
-Accrual: `POST /admin/accrue` (idempotent; also runs hourly)
+Accrual: `POST /admin/accrue` · `POST /admin/accrue-ipos` (idempotent; both also run hourly)
+IPO offerings: `GET /ipos` · `GET /ipos/:id` · `POST /ipos/:id/subscribe` · `GET /me/ipo-subscriptions`
+`GET|POST /admin/ipos` · `PATCH /admin/ipos/:id` · `POST /admin/ipos/:id/image`
+`GET /admin/ipos/:id/subscriptions` · `PATCH /admin/ipo-subscriptions/:id`
+`POST /admin/ipos/:id/cancel` · `POST /admin/ipos/:id/settle`
 Portfolios: `GET /portfolio-types` · `GET|POST /portfolios` · `PATCH /portfolios/:id`
 `POST /portfolios/:id/contribute` · `POST /portfolios/:id/withdraw`
 `POST /wallets/:id/withdraw` · `GET /wallet-transactions` · `POST /wallet-transactions/:id/decide`
@@ -205,6 +209,128 @@ all. The fraction stays in the balance (`numeric(38,18)`) and the display rounds
 
 A pot cannot go negative (a CHECK constraint, not just a guard), and closing one that still
 holds money is refused rather than stranding it — take the balance out first.
+
+
+## IPO offerings
+
+A deal the desk publishes, a window clients subscribe through, and a fixed return accrued
+daily until it matures. `POST /admin/ipos` · `PATCH /admin/ipos/:id` · `GET /ipos` ·
+`POST /ipos/:id/subscribe` · `POST /admin/ipos/:id/cancel` · `POST /admin/ipos/:id/settle`
+
+**It pays an ROI, not a share price.** A subscription is not equity, carries no interest in
+any company an offering names, and is not transferable. What a subscriber receives is
+`roi_rate` accrued over `term_days` — so an offering yielding 7.25% over 180 days pays about
+3.5%, whatever the underlying stock did on its first day. Quoting a listing's day-one move
+as the return would describe a product this desk is not selling.
+
+### The lifecycle is the dates
+
+**draft → upcoming → open → closed → active → completed**, with **cancelled** reachable from
+any state before `active`.
+
+Only the desk's own decisions are stored: `draft` is unpublished, `cancelled` is withdrawn,
+`closed` is the desk holding the book while it settles allocation, and `completed` is a
+settlement. Everything else is computed on read from `opens_at`, `closes_at` and
+`matures_at` — a status that changes only when somebody clicks is a status that is wrong
+every weekend. An offering missing any of its three dates reads as a draft however it is
+stored, which is what keeps a half-prepared one off the client page without anybody
+remembering to hide it.
+
+The client page groups these: **incoming** is `upcoming` + `open`, **finished** is
+`completed` + `cancelled`, and `active` sits between them as **running**. A client with
+money working in an offering needs it prominent, not filed under history.
+
+### Money
+
+**Subscribing debits immediately**, in one transaction that takes two locks. The client's
+holding, because a balance check and a debit that are not one atomic step let two concurrent
+subscriptions both pass a check only one can afford. And the offering row, because the cap is
+a shared resource: two clients racing for the last of a target must not both get it. The
+acceptance run fires ten simultaneous subscriptions at a book with room for three and
+asserts that three are taken and the book finishes exactly full.
+
+A refusal names what is actually left. Somebody told "only 400 USD is left in this offering"
+can subscribe for 400; somebody told "that did not work" tries the same number again. An
+exact fill is allowed — refusing the amount that lands precisely on the target would leave
+every book a penny short.
+
+Allocation is first come, first served. There is no pro-rata scale-back: the overflow is
+refused rather than trimmed.
+
+**Refunds are the amount originally debited**, never recomputed from a rate. Cancelling
+refunds every active subscription, each in its own transaction so a failure on one cannot
+leave another client's money in neither place.
+
+**Maturity pays principal plus accrued**, floored to the currency's minor unit with the dust
+reported rather than hidden — rounding up across many settlements is money created from
+nothing.
+
+### The ROI accrual
+
+The same mechanism as portfolio interest, not a second one. Each day is claimed by moving
+`last_accrued_on` inside the transaction that credits it, so running twice in a day pays
+once, a rolled-back transaction leaves the day unclaimed, and a week lost to an outage is
+paid as one compounded step equal to seven daily ones. Compounded at the 365th root of the
+annual rate, so a full year lands on the headline figure rather than overshooting it the way
+`rate/365` would.
+
+Accrual runs from the later of what has already been paid and the offering's close, read
+fresh each time — so a subscription taken mid-window earns from the close rather than from
+the day it was taken, and moving a close date does not strand an offering that never starts
+paying. It stops at `matures_at`: settling a week late pays the term, not the delay.
+
+It rides the same hourly sweep as portfolio interest and staking, and
+`POST /admin/accrue-ipos` re-runs it by hand. Being idempotent, a double-click costs nothing.
+
+### Who may do what
+
+| | trader | sales / support | compliance | admin |
+|---|---|---|---|---|
+| See published offerings | ✓ | ✓ | ✓ | ✓ |
+| Subscribe | ✓ | | | ✓ |
+| See any client's book | | ✓ | ✓ | ✓ |
+| Create, edit, set the ROI | | | | ✓ |
+| Per-client ROI override | | | | ✓ |
+
+Rate changes sit behind `admin` rather than ordinary `crm:write`: changing the ROI on a live
+offering changes what every subscriber is paid, which is the same shape of power as
+`funds:credit` and should not sit with sales. The edit form says how many subscribers a
+change affects and from when, because a number that silently changes what people are paid
+deserves a sentence of friction.
+
+The headline `roi_rate` is public — it is the offering's pitch and the thing a client is
+deciding on, which is why it is shown here when portfolio and staking rates are not. A
+per-client `roi_override` is the desk's agreement with one client and appears only on the
+desk side.
+
+### Verification, and what gets recorded
+
+**Subscription requires approved KYC.** Taking investment money from an unverified client is
+the single most obvious compliance failure this feature could ship with. The refusal points
+at verification rather than being a bare 403, and the attempt raises a flag even though it
+was refused — an attempt is what compliance wants to see, and a refusal nobody records is a
+refusal nobody can count. An unusually large subscription is flagged against the client's own
+history, the way the daily-volume rule works.
+
+Subscription, refund, settlement, ROI credited and every desk-side rate change land on the
+client's timeline as `ipo`. Notifications follow the rule the rest of the app follows: things
+done *to* a client generate one, things they did themselves do not — so their own act of
+subscribing is silent, and a rate change, a cancellation, a settlement or money the desk
+moved for them is not. Staff are told when an offering fills its cap. A compliance flag is
+never disclosed to the client.
+
+An allocation is money the client holds, so it counts in `/accounts`, in the desk-side
+`/clients/:id/holdings`, and in the USD valuation — with anything unpriced named rather than
+quietly valued at zero.
+
+### Demo money, and the line this does not cross
+
+Offerings move the same simulated balances everything else here moves. Nothing in this
+feature is a securities offering, a prospectus, a transferable instrument, or an interest in
+any company named. A tokenised offering that took real client money would be a regulated
+securities issue carrying obligations — prospectus, suitability, custody, licensing — that no
+amount of application code satisfies. The mechanism is here; the claim is deliberately
+unmade, and the client-facing screens say so.
 
 
 ## Notifications
