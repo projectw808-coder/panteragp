@@ -17,7 +17,10 @@ import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
 } from './trading.ts';
-import { RULES, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
+import { RULES, subscriptionFlags, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
+import {
+  accruableDays, allocation, effectiveStatus, group as ipoGroup, settlement, type Status as IpoStatus,
+} from './ipo.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -2204,7 +2207,7 @@ app.get('/clients/:id/holdings', { preHandler: auth('trade:read') }, async (req:
   const q = async <T extends pg.QueryResultRow>(sql: string, params: unknown[] = [id]) =>
     (await pool.query<T>(sql, params)).rows;
 
-  const [accounts, wallets, portfolios, positions, orders, trades, cash] = await Promise.all([
+  const [accounts, wallets, portfolios, positions, orders, trades, cash, ipos] = await Promise.all([
     q<{ currency: string; balance: number }>(
       `SELECT id, currency, balance, mode, leverage FROM trading_accounts
         WHERE client_id = $1 ORDER BY currency`),
@@ -2225,18 +2228,31 @@ app.get('/clients/:id/holdings', { preHandler: auth('trade:read') }, async (req:
         WHERE o.client_id = $1 ORDER BY f.filled_at DESC LIMIT 50`),
     q(`SELECT id, kind, amount, status, created_at FROM cash_transactions
         WHERE client_id = $1 ORDER BY created_at DESC LIMIT 50`),
+    // An allocation is money the client holds, so the workspace has to see it or the
+    // assets tab is short by whatever they have subscribed.
+    q<{ name: string; currency: string; balance: number }>(
+      `SELECT s.id, i.name, i.asset, s.currency, s.amount, s.accrued, s.status,
+              (s.amount + s.accrued) AS balance, i.matures_at,
+              coalesce(s.roi_override, i.roi_rate) AS effective_rate
+         FROM ipo_subscriptions s JOIN ipos i ON i.id = s.ipo_id
+        WHERE s.client_id = $1 ORDER BY s.status, i.name`),
   ]);
 
   // Value everything in USD so the workspace can show one number for the relationship.
+  // Only live allocations count: a refunded or settled one is already back in the cash
+  // above, and counting both would show the same money twice.
+  // ponytail: stakes are still missing from this total, which predates the IPO work.
+  const liveIpos = ipos.filter((x: any) => x.status === 'active');
   const priced = await totalUsd([
     ...accounts.map((a) => ({ code: a.currency, amount: Number(a.balance) })),
     ...wallets.map((w) => ({ code: w.asset, amount: Number(w.balance) })),
     ...portfolios.map((p) => ({ code: p.currency, amount: Number(p.balance) })),
+    ...liveIpos.map((x: any) => ({ code: x.currency, amount: Number(x.balance) })),
   ]);
   const openPnl = positions.reduce((sum, p) => sum + unrealized(p, spot(p.symbol)), 0);
 
   return {
-    accounts, wallets, portfolios, cash,
+    accounts, wallets, portfolios, cash, ipos,
     positions: positions.map((p) => {
       const price = spot(p.symbol);
       return { ...p, price, unrealized: unrealized(p, price) };
@@ -2537,18 +2553,28 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
        FROM stakes s JOIN staking_products p ON p.code = s.product_code
       WHERE s.client_id = $1 AND s.status = 'active' ORDER BY p.name`, [req.principal.sub]);
 
+  // Money in an offering is the client's money, in a place they cannot spend from until it
+  // matures. Left out of the total it would read as the subscription disappearing, which is
+  // the mistake portfolios made before they were counted and staking made after them.
+  const { rows: ipos } = await pool.query<{ name: string; currency: string; balance: number }>(
+    `SELECT s.id, i.name, s.currency, (s.amount + s.accrued) AS balance
+       FROM ipo_subscriptions s JOIN ipos i ON i.id = s.ipo_id
+      WHERE s.client_id = $1 AND s.status = 'active' ORDER BY i.name`, [req.principal.sub]);
+
   const cash = await Promise.all(accounts.map((a) => priced(a, a.currency)));
   const crypto = await Promise.all(wallets.map((w) => priced(w, w.asset)));
   const pots = await Promise.all(portfolios.map((p) => priced(p, p.currency)));
   const staked = await Promise.all(stakes.map((x) => priced(x, x.currency)));
+  const offerings = await Promise.all(ipos.map((x) => priced(x, x.currency)));
   const total = await totalUsd([
     ...accounts.map((a) => ({ code: a.currency, amount: a.balance })),
     ...wallets.map((w) => ({ code: w.asset, amount: w.balance })),
     ...portfolios.map((p) => ({ code: p.currency, amount: p.balance })),
     ...stakes.map((x) => ({ code: x.currency, amount: x.balance })),
+    ...ipos.map((x) => ({ code: x.currency, amount: x.balance })),
   ]);
   return {
-    cash, wallets: crypto, portfolios: pots, stakes: staked,
+    cash, wallets: crypto, portfolios: pots, stakes: staked, ipos: offerings,
     total_usd: total.usd, unpriced: total.unpriced,
   };
 });
@@ -4186,6 +4212,727 @@ if (existsSync(join(WEB_DIST, 'index.html'))) {
   app.log.info('no web/dist — API only, run the Vite dev server for the front end');
 }
 
+// ------------------------------------------------------------- IPO offerings
+//
+// A deal the desk publishes, a window clients subscribe through, and a fixed ROI accrued
+// daily until maturity. The money mechanics are the portfolio ones — debit on subscribe
+// inside one locked transaction, credit back on refund or settlement — with one addition
+// portfolios do not have: a cap the whole book shares, so the offering row is locked too.
+//
+// The return is the ROI and not the share price. A subscription is not equity, confers no
+// interest in any company named, and moves the same simulated balances as everything else
+// here. See the README.
+
+/** Marketing imagery, so the formats a browser renders and nothing else. */
+const IPO_IMAGE_TYPES = new Map([
+  ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp'],
+]);
+const IPO_IMAGE_MAX = 5 * 1024 * 1024;
+
+/** What the client page and the desk list both need on top of the stored columns. */
+type IpoRow = {
+  id: string; slug: string; name: string; summary: string; description: string | null;
+  asset: string; currency: string; target_amount: number; min_subscription: number;
+  max_subscription: number | null; roi_rate: number; term_days: number;
+  opens_at: Date | null; closes_at: Date | null; matures_at: Date | null;
+  status: string; image_key: string | null; sort_order: number;
+  raised: number; subscribers: number;
+};
+
+/**
+ * Raised counts money that is still in: a refunded subscription freed its slot in the cap
+ * and must not go on holding it. Settled ones stay counted, because the book they filled
+ * was filled.
+ */
+const RAISED_JOIN = `
+  LEFT JOIN (SELECT ipo_id, sum(amount) AS raised, count(*)::int AS subscribers
+               FROM ipo_subscriptions WHERE status <> 'refunded' GROUP BY ipo_id) r
+         ON r.ipo_id = i.id`;
+
+const ipoSelect = (where: string) => `
+  SELECT i.*, coalesce(r.raised, 0) AS raised, coalesce(r.subscribers, 0) AS subscribers
+    FROM ipos i ${RAISED_JOIN}
+   ${where}
+   ORDER BY i.sort_order, i.created_at DESC`;
+
+/** The offering as the API talks about it: stored columns plus what today makes of them. */
+function shapeIpo(row: IpoRow, now = new Date()) {
+  const status = effectiveStatus(row, now);
+  const raised = Number(row.raised);
+  const target = Number(row.target_amount);
+  return {
+    ...row,
+    status,                                   // computed, never the stored column
+    stored_status: row.status,                // what the desk set, for the desk's own screen
+    group: ipoGroup(status),
+    raised,
+    remaining: round8(Math.max(0, target - raised)),
+    progress: progress(raised, target),
+    // Absolute and in UTC. The page corrects for clock skew against these; it never uses
+    // its own clock to decide whether a window is open, and neither does the server.
+    server_time: now.toISOString(),
+    has_image: row.image_key !== null,
+  };
+}
+
+/** A client's own positions, keyed by offering, for stitching onto a list. */
+async function subscriptionsOf(clientId: string, ipoIds: string[]) {
+  if (!ipoIds.length) return new Map<string, any>();
+  const { rows } = await pool.query(
+    `SELECT * FROM ipo_subscriptions WHERE client_id = $1 AND ipo_id = ANY($2::uuid[])
+      ORDER BY created_at`, [clientId, ipoIds]);
+  const by = new Map<string, any>();
+  for (const s of rows) {
+    const prior = by.get(s.ipo_id);
+    // One client can subscribe more than once; the page wants the position, not the rows.
+    by.set(s.ipo_id, prior
+      ? { ...prior, amount: round8(Number(prior.amount) + Number(s.amount)),
+          accrued: round8(Number(prior.accrued) + Number(s.accrued)) }
+      : { ...s, amount: Number(s.amount), accrued: Number(s.accrued) });
+  }
+  return by;
+}
+
+/**
+ * Everything a client may see: every offering except a draft, with their own position.
+ * Staff with crm:read may read it as a named client, the same scope portfolios use.
+ */
+app.get('/ipos', { preHandler: auth() }, async (req: any, reply) => {
+  const subject = await portfolioScope(req, reply);
+  if (!subject) return;
+  const { rows } = await pool.query<IpoRow>(ipoSelect(`WHERE i.status <> 'draft'`));
+  // A row with a missing date computes to draft however it is stored, which is what keeps
+  // a half-prepared offering off this page without the desk remembering to hide it.
+  const visible = rows.map((r) => shapeIpo(r)).filter((r) => r.group !== 'hidden');
+  const mine = await subscriptionsOf(subject, visible.map((r) => r.id));
+  return visible.map((r) => ({ ...r, subscription: mine.get(r.id) ?? null }));
+});
+
+app.get('/ipos/:id', { preHandler: auth() }, async (req: any, reply) => {
+  const subject = await portfolioScope(req, reply);
+  if (!subject) return;
+  const { rows } = await pool.query<IpoRow>(ipoSelect('WHERE i.id = $1'), [req.params.id]);
+  if (!rows[0]) return reply.code(404).send({ error: 'no such offering' });
+  const shaped = shapeIpo(rows[0]);
+  if (shaped.group === 'hidden') return reply.code(404).send({ error: 'no such offering' });
+  const mine = await subscriptionsOf(subject, [shaped.id]);
+  return { ...shaped, subscription: mine.get(shaped.id) ?? null };
+});
+
+/** The client's own positions across every offering, including ones now finished. */
+app.get('/me/ipo-subscriptions', { preHandler: trader }, async (req: any) => {
+  const { rows } = await pool.query(`
+    SELECT s.*, i.name, i.slug, i.asset, i.term_days, i.matures_at, i.roi_rate,
+           i.status AS ipo_stored_status, i.opens_at, i.closes_at,
+           coalesce(s.roi_override, i.roi_rate) AS effective_rate
+      FROM ipo_subscriptions s JOIN ipos i ON i.id = s.ipo_id
+     WHERE s.client_id = $1 ORDER BY s.created_at DESC`, [req.principal.sub]);
+  return rows.map((r) => ({
+    ...r,
+    ipo_status: effectiveStatus({
+      status: r.ipo_stored_status, opens_at: r.opens_at, closes_at: r.closes_at, matures_at: r.matures_at,
+    }),
+  }));
+});
+
+const subscribeBody = z.object({
+  amount: z.number().positive().finite().max(1e12),
+  client_id: z.string().uuid().optional(),      // staff acting for a client
+});
+
+/**
+ * Subscribe: debit now, allocate against the cap, and refuse clearly when it will not fit.
+ *
+ * Two locks, and both are necessary. The client's holding, because a balance check and a
+ * debit that are not one atomic step let two concurrent subscriptions both pass a check
+ * only one can afford. And the offering row, because the cap is a shared resource: two
+ * clients racing for the last of a target must not both get it.
+ *
+ * The window is re-checked here from the server's own clock. Whatever the page's countdown
+ * says, this is the only thing that decides.
+ */
+app.post('/ipos/:id/subscribe', { preHandler: auth() }, async (req: any, reply) => {
+  const body = subscribeBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { amount } = body.data;
+
+  // A client subscribes for themselves; staff need funds:credit and must name the client,
+  // exactly as acting on a portfolio does.
+  let subject: string;
+  let onBehalf = false;
+  if (req.principal.kind === 'client') {
+    subject = req.principal.sub;
+  } else {
+    if (!can(req.principal.role, 'funds:credit')) {
+      return reply.code(403).send({ error: 'subscribing for a client needs funds:credit' });
+    }
+    if (!body.data.client_id) return reply.code(400).send({ error: 'staff must name the client: client_id' });
+    subject = body.data.client_id;
+    onBehalf = true;
+  }
+
+  const { rows: [client] } = await pool.query<{ kyc_status: string }>(
+    'SELECT kyc_status FROM clients WHERE id = $1', [subject]);
+  if (!client) return reply.code(404).send({ error: 'no such client' });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    // The offering first, and locked: everything after this reads the book.
+    const { rows: [ipo] } = await c.query<IpoRow>(
+      `SELECT i.*, 0 AS raised, 0 AS subscribers FROM ipos i WHERE i.id = $1 FOR UPDATE`,
+      [req.params.id]);
+    if (!ipo) return { kind: 'missing' } as const;
+
+    const status = effectiveStatus(ipo);
+    if (status !== 'open') return { kind: 'not-open', status } as const;
+
+    // Taking investment money from an unverified client is the single most obvious
+    // compliance failure this feature could ship with. The attempt is flagged even though
+    // it is refused: a refusal nobody records is a refusal nobody can count.
+    if (client.kyc_status !== 'approved') {
+      const { rows: previous } = await c.query<{ amount: number }>(
+        'SELECT amount FROM ipo_subscriptions WHERE client_id = $1', [subject]);
+      await raiseFlags(c, subject, subscriptionFlags({
+        amount, kycStatus: client.kyc_status, previous,
+      }));
+      return { kind: 'unverified', kyc: client.kyc_status } as const;
+    }
+
+    const { rows: [book] } = await c.query<{ raised: number }>(
+      `SELECT coalesce(sum(amount), 0) AS raised FROM ipo_subscriptions
+        WHERE ipo_id = $1 AND status <> 'refunded'`, [ipo.id]);
+
+    const fit = allocation({
+      target: Number(ipo.target_amount), raised: Number(book.raised), amount,
+      min: Number(ipo.min_subscription), max: ipo.max_subscription === null ? null : Number(ipo.max_subscription),
+    });
+    if (!fit.ok) return { kind: 'refused', fit, currency: ipo.currency } as const;
+
+    const ccy = (await currencies()).get(ipo.currency);
+    if (!ccy) return { kind: 'unknown-currency', currency: ipo.currency } as const;
+    const holding = await lockHolding(c, subject, ipo.currency, ccy.kind, false);
+    if (!holding) return { kind: 'no-holding', currency: ipo.currency } as const;
+    if (Number(holding.balance) < amount) {
+      return { kind: 'insufficient', balance: Number(holding.balance), currency: ipo.currency } as const;
+    }
+
+    await moveBalance(c, holding, -amount);
+    // last_accrued_on starts at the close, not today: ROI is for the term, and a
+    // subscription taken on day one of an open window has not earned the window.
+    const { rows: [sub] } = await c.query(
+      `INSERT INTO ipo_subscriptions (ipo_id, client_id, amount, currency, last_accrued_on)
+       VALUES ($1,$2,$3,$4, greatest(current_date, $5::date)) RETURNING *`,
+      [ipo.id, subject, amount, ipo.currency, ipo.closes_at]);
+
+    // Measured against what this client has subscribed before, excluding the row just
+    // written. Only the size rules can fire: the KYC one already returned above, so it is
+    // dropped rather than raised twice for the same attempt.
+    const { rows: previous } = await c.query<{ amount: number }>(
+      'SELECT amount FROM ipo_subscriptions WHERE client_id = $1 AND id <> $2', [subject, sub.id]);
+    await raiseFlags(c, subject, subscriptionFlags({
+      amount, kycStatus: client.kyc_status, previous,
+    }).filter((f) => f.rule !== 'subscription_without_kyc'));
+
+    await logActivity(c, {
+      client_id: subject, kind: 'ipo', actor: req.principal.sub,
+      summary: onBehalf
+        ? `Desk subscribed ${amount} ${ipo.currency} to ${ipo.name}`
+        : `Subscribed ${amount} ${ipo.currency} to ${ipo.name}`,
+      ref_table: 'ipos', ref_id: ipo.id,
+      data: { amount, currency: ipo.currency, offering: ipo.name, on_behalf: onBehalf },
+    });
+
+    // Their own act of subscribing is not notified — they were there. Money the desk moved
+    // for them is, because that is money they did not move.
+    if (onBehalf) {
+      await notifyClientOf(c, {
+        client_id: subject, kind: 'ipo',
+        title: `${amount} ${ipo.currency} subscribed to ${ipo.name}`,
+        body: 'Moved by the desk from your balance.',
+        ref_table: 'ipos', ref_id: ipo.id,
+      });
+    }
+
+    const raisedNow = round8(Number(book.raised) + amount);
+    if (raisedNow >= Number(ipo.target_amount)) {
+      await notifyStaff(c, { roles: ['sales', 'admin'] }, {
+        kind: 'ipo.filled',
+        title: `${ipo.name} is fully subscribed`,
+        body: `${raisedNow} ${ipo.currency} against a target of ${ipo.target_amount}.`,
+        ref_table: 'ipos', ref_id: ipo.id,
+      });
+    }
+
+    return {
+      kind: 'ok', subscription: sub, remaining: round8(Number(ipo.target_amount) - raisedNow),
+    } as const;
+  });
+
+  flushNotifications();
+  switch (out.kind) {
+    case 'missing': return reply.code(404).send({ error: 'no such offering' });
+    case 'not-open': return reply.code(409).send({
+      error: out.status === 'upcoming' ? 'this offering has not opened yet'
+        : out.status === 'draft' ? 'no such offering'
+        : `this offering is ${out.status} and is not taking subscriptions`,
+    });
+    case 'unverified': return reply.code(403).send({
+      error: 'subscriptions are open to verified accounts — send your identity documents '
+        + 'from Documents and the desk will review them',
+      kyc_status: out.kyc,
+    });
+    case 'refused': return reply.code(422).send({
+      error: out.fit.reason === 'below-min' ? `the minimum is ${out.fit.min} ${out.currency}`
+        : out.fit.reason === 'above-max' ? `the maximum is ${out.fit.max} ${out.currency}`
+        : out.fit.available > 0
+          ? `only ${out.fit.available} ${out.currency} is left in this offering`
+          : 'this offering is fully subscribed',
+    });
+    case 'unknown-currency': return reply.code(409).send({ error: `no rate for ${out.currency}` });
+    case 'no-holding': return reply.code(422).send({ error: `you hold no ${out.currency}` });
+    case 'insufficient': return reply.code(422).send({
+      error: `you hold ${out.balance} ${out.currency}`,
+    });
+    default: return out;
+  }
+});
+
+/** The offering's picture. Served through a route, never as a guessable static path. */
+app.get('/ipos/:id/image', { preHandler: auth() }, async (req: any, reply) => {
+  const { rows } = await pool.query<{ image_key: string | null }>(
+    'SELECT image_key FROM ipos WHERE id = $1', [req.params.id]);
+  if (!rows[0]?.image_key) return reply.code(404).send({ error: 'no picture' });
+  // Generated by us, but resolved and re-checked anyway.
+  const path = join(UPLOAD_DIR, basename(rows[0].image_key));
+  if (!path.startsWith(UPLOAD_DIR) || !existsSync(path)) {
+    return reply.code(404).send({ error: 'no picture' });
+  }
+  const ext = extname(path);
+  return reply
+    .type(ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg')
+    .send(createReadStream(path));
+});
+
+// --------------------------------------------------------------- the desk side
+
+/** Every offering including drafts, which the client list never shows. */
+app.get('/admin/ipos', { preHandler: auth('crm:read') }, async () => {
+  const { rows } = await pool.query<IpoRow>(ipoSelect(''));
+  return rows.map((r) => shapeIpo(r));
+});
+
+const ipoBody = z.object({
+  slug: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/, 'lower case, digits and dashes'),
+  name: z.string().min(1).max(200),
+  summary: z.string().min(1).max(500),
+  description: z.string().max(5000).nullable().optional(),
+  asset: z.string().min(1).max(20),
+  currency: z.string().min(2).max(10),
+  target_amount: z.number().positive().finite().max(1e15),
+  min_subscription: z.number().min(0).finite().max(1e15).default(0),
+  max_subscription: z.number().positive().finite().max(1e15).nullable().optional(),
+  // Taken as a percentage and stored as a fraction, the same way the desk types every
+  // other rate in this product.
+  roi_rate: z.number().min(0).max(100),
+  term_days: z.number().int().min(1).max(3650),
+  opens_at: z.coerce.date().nullable().optional(),
+  closes_at: z.coerce.date().nullable().optional(),
+  matures_at: z.coerce.date().nullable().optional(),
+  sort_order: z.number().int().min(-32768).max(32767).default(0),
+});
+
+app.post('/admin/ipos', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = ipoBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  if (!(await currencies()).get(b.currency)) {
+    return reply.code(404).send({ error: 'unknown currency' });
+  }
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows: [ipo] } = await c.query(
+        `INSERT INTO ipos (slug, name, summary, description, asset, currency, target_amount,
+                           min_subscription, max_subscription, roi_rate, term_days,
+                           opens_at, closes_at, matures_at, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [b.slug, b.name, b.summary, b.description ?? null, b.asset, b.currency, b.target_amount,
+         b.min_subscription, b.max_subscription ?? null, b.roi_rate / 100, b.term_days,
+         b.opens_at ?? null, b.closes_at ?? null, b.matures_at ?? null, b.sort_order]);
+      return reply.code(201).send(shapeIpo({ ...ipo, raised: 0, subscribers: 0 }));
+    });
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'that slug is taken' });
+    if (err?.code === '23514') return reply.code(400).send({ error: `the dates or bounds are not valid: ${err.constraint}` });
+    throw err;
+  }
+});
+
+const ipoPatch = ipoBody.partial().extend({
+  // The desk's explicit decisions. Everything else about the lifecycle is the dates'.
+  status: z.enum(['draft', 'upcoming', 'open', 'closed', 'active', 'cancelled']).optional(),
+}).refine((o) => Object.keys(o).length > 0, 'no fields to update');
+
+/**
+ * Edit an offering, including its ROI.
+ *
+ * Behind `admin` rather than ordinary crm:write: changing the ROI on a live offering
+ * changes what every subscriber is paid, which is the same shape of power as funds:credit
+ * and should not sit with sales.
+ *
+ * Settling and cancelling are not here — they move money, so they have their own routes.
+ */
+app.patch('/admin/ipos/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = ipoPatch.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const patch: Record<string, unknown> = { ...body.data };
+  if (patch.roi_rate !== undefined) patch.roi_rate = (patch.roi_rate as number) / 100;
+
+  const entries = Object.entries(patch);
+  const set = entries.map(([k], i) => `${k} = $${i + 2}`).join(', ');
+  try {
+    const out = await tx(req.principal.sub, async (c) => {
+      const { rows: [before] } = await c.query<IpoRow>(
+        'SELECT * FROM ipos WHERE id = $1 FOR UPDATE', [req.params.id]);
+      if (!before) return null;
+      const { rows: [after] } = await c.query<IpoRow>(
+        `UPDATE ipos SET ${set} WHERE id = $1 RETURNING *`,
+        [req.params.id, ...entries.map(([, v]) => v)]);
+
+      // A rate change is told to everybody it affects, because it changes what they are
+      // paid. Silent is how a number nobody agreed to becomes a number nobody disputes.
+      if (patch.roi_rate !== undefined && Number(after.roi_rate) !== Number(before.roi_rate)) {
+        const { rows: holders } = await c.query<{ client_id: string }>(
+          `SELECT DISTINCT client_id FROM ipo_subscriptions
+            WHERE ipo_id = $1 AND status = 'active' AND roi_override IS NULL`, [after.id]);
+        for (const h of holders) {
+          await notifyClientOf(c, {
+            client_id: h.client_id, kind: 'ipo',
+            title: `${after.name} now pays ${(Number(after.roi_rate) * 100).toFixed(2)}%`,
+            body: 'Applies from the next daily accrual. Nothing already credited changes.',
+            ref_table: 'ipos', ref_id: after.id,
+          });
+          await logActivity(c, {
+            client_id: h.client_id, kind: 'ipo', actor: req.principal.sub,
+            summary: `${after.name} ROI changed from ${(Number(before.roi_rate) * 100).toFixed(2)}%`
+              + ` to ${(Number(after.roi_rate) * 100).toFixed(2)}%`,
+            ref_table: 'ipos', ref_id: after.id,
+            data: { from: Number(before.roi_rate), to: Number(after.roi_rate) },
+          });
+        }
+      }
+      return after;
+    });
+    if (!out) return reply.code(404).send({ error: 'no such offering' });
+    flushNotifications();
+    const { rows } = await pool.query<IpoRow>(ipoSelect('WHERE i.id = $1'), [out.id]);
+    return shapeIpo(rows[0]);
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'that slug is taken' });
+    if (err?.code === '23514') return reply.code(400).send({ error: `the dates or bounds are not valid: ${err.constraint}` });
+    throw err;
+  }
+});
+
+app.post('/admin/ipos/:id/image', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const { rows: [ipo] } = await pool.query<{ id: string; image_key: string | null }>(
+    'SELECT id, image_key FROM ipos WHERE id = $1', [req.params.id]);
+  if (!ipo) return reply.code(404).send({ error: 'no such offering' });
+
+  const file = await req.file();
+  if (!file) return reply.code(400).send({ error: 'no file' });
+  const ext = IPO_IMAGE_TYPES.get(file.mimetype);
+  if (!ext) return reply.code(415).send({ error: 'only jpeg, png or webp' });
+
+  // The stored name is generated: an uploaded filename never reaches the filesystem.
+  const key = `ipo-${randomUUID()}${ext}`;
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  await pipeline(file.file, createWriteStream(join(UPLOAD_DIR, key)));
+  if (file.file.truncated) {
+    await rm(join(UPLOAD_DIR, key), { force: true });
+    return reply.code(413).send({ error: 'that picture is larger than 5 MB' });
+  }
+  // The multipart ceiling is set for KYC documents, so this limit is enforced here too.
+  const { size } = await import('node:fs/promises').then((m) => m.stat(join(UPLOAD_DIR, key)));
+  if (size > IPO_IMAGE_MAX) {
+    await rm(join(UPLOAD_DIR, key), { force: true });
+    return reply.code(413).send({ error: 'that picture is larger than 5 MB' });
+  }
+
+  await tx(req.principal.sub, (c) => c.query('UPDATE ipos SET image_key = $2 WHERE id = $1', [ipo.id, key]));
+  // Replaced, so the old file is no longer referenced by anything.
+  if (ipo.image_key) await rm(join(UPLOAD_DIR, basename(ipo.image_key)), { force: true });
+  return { ok: true, image_key: key };
+});
+
+/** The book: who subscribed, how much, when, and what they are actually paid. */
+app.get('/admin/ipos/:id/subscriptions', { preHandler: auth('crm:read') }, async (req: any) => {
+  const { rows } = await pool.query(`
+    SELECT s.*, c.name AS client_name, c.email AS client_email, c.tier,
+           coalesce(s.roi_override, i.roi_rate) AS effective_rate, i.roi_rate AS offering_rate
+      FROM ipo_subscriptions s
+      JOIN clients c ON c.id = s.client_id
+      JOIN ipos i ON i.id = s.ipo_id
+     WHERE s.ipo_id = $1 ORDER BY s.created_at`, [req.params.id]);
+  return rows;
+});
+
+/** The rate agreed with one client on one subscription. Never shown on a client screen. */
+app.patch('/admin/ipo-subscriptions/:id', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = z.object({
+    roi_override: z.number().min(0).max(100).nullable(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const next = body.data.roi_override === null ? null : body.data.roi_override / 100;
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [sub] } = await c.query(
+      `UPDATE ipo_subscriptions s SET roi_override = $2 WHERE s.id = $1 RETURNING s.*`,
+      [req.params.id, next]);
+    if (!sub) return null;
+    const { rows: [ipo] } = await c.query<{ name: string; roi_rate: number }>(
+      'SELECT name, roi_rate FROM ipos WHERE id = $1', [sub.ipo_id]);
+    const shown = `${((next ?? Number(ipo.roi_rate)) * 100).toFixed(2)}%`;
+    await logActivity(c, {
+      client_id: sub.client_id, kind: 'ipo', actor: req.principal.sub,
+      summary: next === null
+        ? `Desk put ${ipo.name} back on the offering's rate`
+        : `Desk set ${ipo.name} to ${shown} a year for this client`,
+      ref_table: 'ipos', ref_id: sub.ipo_id,
+      data: { roi_override: next },
+    });
+    await notifyClientOf(c, {
+      client_id: sub.client_id, kind: 'ipo',
+      title: `Your ${ipo.name} subscription now earns ${shown}`,
+      body: 'Applies from the next daily accrual.',
+      ref_table: 'ipos', ref_id: sub.ipo_id,
+    });
+    return sub;
+  });
+  if (!out) return reply.code(404).send({ error: 'no such subscription' });
+  flushNotifications();
+  return out;
+});
+
+/**
+ * Cancel an offering and refund every subscription in full.
+ *
+ * Refunds are the amount originally debited, never a figure recomputed from a rate: the
+ * client put in a number and that is the number that comes back. Each refund is its own
+ * transaction so a failure on one cannot leave another client's money in neither place.
+ */
+app.post('/admin/ipos/:id/cancel', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const { rows: [ipo] } = await pool.query<IpoRow>(
+    'SELECT *, 0 AS raised, 0 AS subscribers FROM ipos WHERE id = $1', [req.params.id]);
+  if (!ipo) return reply.code(404).send({ error: 'no such offering' });
+  const status = effectiveStatus(ipo);
+  if (status === 'cancelled') return reply.code(409).send({ error: 'already cancelled' });
+  // Cancellation is reachable from any state before active: after that, money has been
+  // working and the way out is a settlement rather than a refund.
+  if (status === 'active' || status === 'completed') {
+    return reply.code(409).send({ error: `an ${status} offering is settled, not cancelled` });
+  }
+
+  const { rows: subs } = await pool.query<{ id: string; client_id: string; amount: number; currency: string }>(
+    `SELECT id, client_id, amount, currency FROM ipo_subscriptions
+      WHERE ipo_id = $1 AND status = 'active'`, [ipo.id]);
+
+  let refunded = 0;
+  for (const s of subs) {
+    await tx(req.principal.sub, async (c) => {
+      const { rowCount } = await c.query(
+        `UPDATE ipo_subscriptions SET status = 'refunded' WHERE id = $1 AND status = 'active'`, [s.id]);
+      if (!rowCount) return;                       // another run got there first
+      const ccy = (await currencies()).get(s.currency)!;
+      const holding = await lockHolding(c, s.client_id, s.currency, ccy.kind, true);
+      if (!holding) throw new Error(`no ${s.currency} holding to refund into`);
+      await moveBalance(c, holding, Number(s.amount));
+      await logActivity(c, {
+        client_id: s.client_id, kind: 'ipo', actor: req.principal.sub,
+        summary: `${ipo.name} cancelled — ${s.amount} ${s.currency} refunded`,
+        ref_table: 'ipos', ref_id: ipo.id,
+        data: { refunded: Number(s.amount), currency: s.currency },
+      });
+      await notifyClientOf(c, {
+        client_id: s.client_id, kind: 'ipo',
+        title: `${ipo.name} was cancelled`,
+        body: `${s.amount} ${s.currency} has been returned to your balance in full.`,
+        ref_table: 'ipos', ref_id: ipo.id,
+      });
+      refunded++;
+    });
+  }
+
+  await tx(req.principal.sub, (c) =>
+    c.query(`UPDATE ipos SET status = 'cancelled' WHERE id = $1`, [ipo.id]));
+  flushNotifications();
+  return { cancelled: ipo.id, refunded };
+});
+
+/**
+ * Settle: pay principal plus accrued back, and mark the subscription settled.
+ *
+ * Runs at maturity from the sweep, and by hand when the desk settles early. Accrual is
+ * brought up to the earlier of today and maturity first, so an early settlement pays what
+ * was earned and a late one does not pay for the delay.
+ */
+async function settleIpo(ipoId: string, actor: string): Promise<{ settled: number; dust: number }> {
+  const { rows: [ipo] } = await pool.query<IpoRow>(
+    'SELECT *, 0 AS raised, 0 AS subscribers FROM ipos WHERE id = $1', [ipoId]);
+  if (!ipo) return { settled: 0, dust: 0 };
+  const ccy = (await currencies()).get(ipo.currency);
+  const decimals = ccy?.decimals ?? 2;
+
+  const { rows: subs } = await pool.query<{
+    id: string; client_id: string; amount: number; accrued: number; currency: string;
+  }>(`SELECT id, client_id, amount, accrued, currency FROM ipo_subscriptions
+       WHERE ipo_id = $1 AND status = 'active'`, [ipoId]);
+
+  let settled = 0;
+  let dust = 0;
+  for (const s of subs) {
+    await tx(actor, async (c) => {
+      const { rowCount } = await c.query(
+        `UPDATE ipo_subscriptions SET status = 'settled' WHERE id = $1 AND status = 'active'`, [s.id]);
+      if (!rowCount) return;
+      const paid = settlement({ amount: Number(s.amount), accrued: Number(s.accrued), decimals });
+      const holding = await lockHolding(c, s.client_id, s.currency, ccy!.kind, true);
+      if (!holding) throw new Error(`no ${s.currency} holding to settle into`);
+      await moveBalance(c, holding, paid.paid);
+      await logActivity(c, {
+        client_id: s.client_id, kind: 'ipo', actor,
+        summary: `${ipo.name} matured — ${paid.paid} ${s.currency} paid`
+          + ` (${s.amount} subscribed, ${s.accrued} earned)`
+          + (paid.dust > 0 ? `, ${paid.dust} kept as dust` : ''),
+        ref_table: 'ipos', ref_id: ipo.id,
+        data: { paid: paid.paid, principal: Number(s.amount), accrued: Number(s.accrued), dust: paid.dust },
+      });
+      await notifyClientOf(c, {
+        client_id: s.client_id, kind: 'ipo',
+        title: `${ipo.name} has matured`,
+        body: `${paid.paid} ${s.currency} is back on your balance — ${s.amount} subscribed`
+          + ` plus ${s.accrued} earned.`,
+        ref_table: 'ipos', ref_id: ipo.id,
+      });
+      settled++;
+      dust = round8(dust + paid.dust);
+    });
+  }
+  await tx(actor, (c) => c.query(`UPDATE ipos SET status = 'completed' WHERE id = $1`, [ipoId]));
+  flushNotifications();
+  return { settled, dust };
+}
+
+app.post('/admin/ipos/:id/settle', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const { rows: [ipo] } = await pool.query<IpoRow>(
+    'SELECT *, 0 AS raised, 0 AS subscribers FROM ipos WHERE id = $1', [req.params.id]);
+  if (!ipo) return reply.code(404).send({ error: 'no such offering' });
+  const status = effectiveStatus(ipo);
+  if (status !== 'active' && status !== 'closed' && status !== 'completed') {
+    return reply.code(409).send({ error: `an ${status} offering has nothing to settle` });
+  }
+  // Bring accrual up to date first, so an early settlement pays what was actually earned.
+  await accrueIpos();
+  return settleIpo(ipo.id, req.principal.sub);
+});
+
+/**
+ * Credit a day's ROI on every active subscription of an active offering.
+ *
+ * Modelled on accrueInterest and deliberately not a second mechanism: claim the day by
+ * moving last_accrued_on inside the same transaction that credits it, so running twice in
+ * a day pays once, a rolled-back transaction leaves the day unclaimed, and a week lost to
+ * an outage is paid as one compounded step equal to seven daily ones.
+ *
+ * Accrual stops at matures_at. A subscription is only ever paid for its term, whenever the
+ * job happens to run.
+ */
+async function accrueIpos(): Promise<{ subscriptions: number; posted: number }> {
+  const { rows } = await pool.query<{
+    id: string; client_id: string; amount: number; accrued: number; currency: string;
+    rate: number; name: string; last_accrued_on: string; matures_at: Date | null;
+  }>(`
+    SELECT s.id, s.client_id, s.amount, s.accrued, s.currency, s.last_accrued_on,
+           i.name, i.matures_at,
+           -- The rate agreed on this subscription wins over the offering's. One
+           -- expression, used by the job that pays and by the screens that promise.
+           coalesce(s.roi_override, i.roi_rate) AS rate
+      FROM ipo_subscriptions s JOIN ipos i ON i.id = s.ipo_id
+     WHERE s.status = 'active'
+       AND s.amount > 0
+       AND s.last_accrued_on < current_date
+       AND i.status NOT IN ('draft', 'cancelled')
+       AND i.closes_at IS NOT NULL AND i.matures_at IS NOT NULL
+       AND i.closes_at <= now()`);
+
+  let posted = 0;
+  for (const s of rows) {
+    const days = accruableDays({ lastAccruedOn: s.last_accrued_on, maturesAt: s.matures_at });
+    if (days <= 0) {
+      // Past maturity with nothing left to pay: claim the day so this row stops being
+      // reconsidered on every sweep.
+      await pool.query('UPDATE ipo_subscriptions SET last_accrued_on = current_date WHERE id = $1', [s.id]);
+      continue;
+    }
+    // ROI is earned on what was subscribed plus what it has already earned — the same
+    // compounding the client was promised.
+    const roi = accrue({
+      balance: round8(Number(s.amount) + Number(s.accrued)),
+      annualRate: Number(s.rate), days,
+    });
+    if (roi <= 0) {
+      await pool.query('UPDATE ipo_subscriptions SET last_accrued_on = current_date WHERE id = $1', [s.id]);
+      continue;
+    }
+    await tx('system', async (c) => {
+      const { rowCount } = await c.query(
+        `UPDATE ipo_subscriptions
+            SET accrued = accrued + $2,
+                last_accrued_on = least(current_date, coalesce($3::date, current_date))
+          WHERE id = $1 AND last_accrued_on < current_date`,
+        [s.id, roi, s.matures_at]);
+      if (!rowCount) return;                     // another run got there first
+      await logActivity(c, {
+        client_id: s.client_id, kind: 'ipo', actor: 'system',
+        summary: `ROI of ${roi} ${s.currency} on ${s.name}`,
+        ref_table: 'ipos', ref_id: null as unknown as string,
+        data: { days, rate: Number(s.rate), roi, subscription: s.id },
+      });
+      await notifyClientOf(c, {
+        client_id: s.client_id, kind: 'ipo',
+        title: `ROI on ${s.name}`,
+        body: `${roi} ${s.currency} credited for ${days} day(s).`,
+      });
+      posted++;
+    });
+  }
+  flushNotifications();
+  return { subscriptions: rows.length, posted };
+}
+
+/**
+ * Run the accrual now, and settle anything that has matured.
+ *
+ * Exists for the same reason /admin/accrue does: operations can re-run after an incident
+ * and the day rollover can be exercised without waiting for one. Idempotent, so an
+ * accidental double-click costs nothing.
+ */
+app.post('/admin/accrue-ipos', { preHandler: auth('admin') }, async (req: any) => {
+  const accrued = await accrueIpos();
+  const matured = await maturedIpos(req.principal.sub);
+  return { ...accrued, ...matured };
+});
+
+/** Settle every offering whose maturity has passed. Safe to run repeatedly. */
+async function maturedIpos(actor: string): Promise<{ offerings: number; settled: number }> {
+  const { rows } = await pool.query<{ id: string }>(`
+    SELECT i.id FROM ipos i
+     WHERE i.status NOT IN ('draft', 'cancelled', 'completed')
+       AND i.matures_at IS NOT NULL AND i.matures_at <= now()
+       AND EXISTS (SELECT 1 FROM ipo_subscriptions s WHERE s.ipo_id = i.id AND s.status = 'active')`);
+  let settled = 0;
+  for (const r of rows) settled += (await settleIpo(r.id, actor)).settled;
+  return { offerings: rows.length, settled };
+}
+
 if (process.argv[1]?.endsWith('server.ts')) {
   // Refuse to start misconfigured, rather than serving 500s at the login screen.
   try {
@@ -4206,12 +4953,23 @@ if (process.argv[1]?.endsWith('server.ts')) {
   // because the accrual is idempotent, but move it to a single scheduled job at that point.
   // Staking rides the same sweep as portfolio interest: one schedule, so a day that pays
   // one pays the other, and a failure in either is logged rather than silently skipping.
-  const sweep = () => Promise.allSettled([accrueInterest(), accrueStaking()])
-    .then(([interest, staking]) => {
+  // IPO ROI rides the same sweep, for the same reason staking does: one schedule, so a day
+  // that pays one pays them all. Maturity settlement runs after the accrual rather than
+  // beside it, so a subscription is paid its last day before the principal goes back.
+  const sweep = () => Promise.allSettled([
+    accrueInterest(),
+    accrueStaking(),
+    accrueIpos().then(async (a) => ({ ...a, ...await maturedIpos('system') })),
+  ])
+    .then(([interest, staking, ipos]) => {
       if (interest.status === 'rejected') app.log.error({ err: interest.reason }, 'interest accrual failed');
       else if (interest.value.posted) app.log.info({ posted: interest.value.posted }, 'interest accrued');
       if (staking.status === 'rejected') app.log.error({ err: staking.reason }, 'staking accrual failed');
       else if (staking.value.posted) app.log.info({ posted: staking.value.posted }, 'staking rewards accrued');
+      if (ipos.status === 'rejected') app.log.error({ err: ipos.reason }, 'IPO accrual failed');
+      else if (ipos.value.posted || ipos.value.settled) {
+        app.log.info({ posted: ipos.value.posted, settled: ipos.value.settled }, 'IPO ROI accrued');
+      }
     });
   setTimeout(sweep, 5_000).unref();          // once shortly after boot
   setInterval(sweep, 3600_000).unref();

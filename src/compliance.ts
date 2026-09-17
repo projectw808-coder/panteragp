@@ -17,6 +17,12 @@ export const RULES = {
   volumeSpikeFloor: 25_000,
   /** With no trading history, this much in one day is worth a look on its own. */
   noBaselineVolume: 250_000,
+  /** A subscription this many times the client's own average is unusual for them. */
+  subscriptionSpikeMultiple: 5,
+  /** Below this, a large subscription is a funded account taking an allocation. */
+  subscriptionSpikeFloor: 10_000,
+  /** With nothing subscribed before, this much at once is worth a look on its own. */
+  noBaselineSubscription: 100_000,
 };
 
 export function withdrawalFlags(w: {
@@ -67,6 +73,60 @@ export function volumeFlags(v: { today: number; avgDaily: number }): Flag[] {
     rule: 'volume_spike', severity: v.today >= v.avgDaily * 10 ? 'high' : 'medium',
     details: { today: v.today, average_daily: v.avgDaily, multiple: Number((v.today / v.avgDaily).toFixed(2)) },
   }];
+}
+
+/**
+ * Subscribing to an IPO offering, measured the same way a withdrawal is.
+ *
+ * Unverified investment money is the flag that matters here, and it is raised even though
+ * the route refuses the subscription outright: an attempt is the thing compliance wants to
+ * see, and a refusal nobody records is a refusal nobody can count.
+ *
+ * Size is judged against the client's own history rather than a flat number, the way
+ * volumeFlags does it — 50,000 from an account that subscribes 50,000 every month is not
+ * the same event as 50,000 from one that has never subscribed at all.
+ */
+export function subscriptionFlags(s: {
+  amount: number;
+  kycStatus: string;
+  /** What this client has subscribed before, in the same currency, any status. */
+  previous: { amount: number }[];
+}): Flag[] {
+  const flags: Flag[] = [];
+  const amount = Math.abs(s.amount);
+
+  if (s.kycStatus !== 'approved') {
+    flags.push({
+      rule: 'subscription_without_kyc', severity: 'high',
+      details: { amount, kyc_status: s.kycStatus },
+    });
+  }
+
+  if (amount < RULES.subscriptionSpikeFloor) return flags;
+
+  const priced = s.previous.map((p) => Math.abs(Number(p.amount))).filter((n) => n > 0);
+  if (!priced.length) {
+    if (amount >= RULES.noBaselineSubscription) {
+      flags.push({
+        rule: 'subscription_no_baseline', severity: 'medium',
+        details: { amount, threshold: RULES.noBaselineSubscription },
+      });
+    }
+    return flags;
+  }
+
+  const average = priced.reduce((n, x) => n + x, 0) / priced.length;
+  if (amount >= average * RULES.subscriptionSpikeMultiple) {
+    flags.push({
+      rule: 'subscription_spike',
+      severity: amount >= average * 10 ? 'high' : 'medium',
+      details: {
+        amount, average_subscription: Number(average.toFixed(2)),
+        multiple: Number((amount / average).toFixed(2)),
+      },
+    });
+  }
+  return flags;
 }
 
 // ------------------------------------------------------------------- export
