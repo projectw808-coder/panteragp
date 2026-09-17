@@ -270,6 +270,15 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
 
         <span className="ml-auto flex items-center gap-6">
           <span className="text-right">
+            <span className="metric-label block">Return</span>
+            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
+              {p.indicative_rate === null ? '—' : pct(p.indicative_rate)}
+            </span>
+            {p.rate_override !== null && (
+              <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">agreed</span>
+            )}
+          </span>
+          <span className="text-right">
             <span className="metric-label block">Earned</span>
             <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-up">
               {Number(p.earned) > 0 ? `+${money(p.earned, p.currency)}` : `0 ${p.currency}`}
@@ -507,13 +516,15 @@ function NewPortfolio({ types, currencies, on, onCancel, onDone }: {
 }
 
 /**
- * The kinds of pot that can be opened.
+ * The kinds of pot that can be opened, with the return each indicates.
  *
- * The return on a pot is agreed per client with the desk, so the shelf names the kinds and
- * leaves the number to that conversation. Ordered by the indicative rate still, because it
- * is the desk's own sense of which pot leads — it is simply no longer shown.
+ * Indicative, and it says so: the rate on a pot is agreed per client, so a type's number is
+ * where that conversation starts rather than a promise. Bars are read against the best
+ * indicative rate on the shelf, so they compare the types with each other.
  */
 function Shelf({ types, onPick }: { types: PortfolioType[]; onPick: () => void }) {
+  const priced = types.filter((t) => t.indicative_rate !== null);
+  const topRate = Math.max(...priced.map((t) => Number(t.indicative_rate)), 0.0001);
   const order = [...types].sort(
     (a, b) => Number(b.indicative_rate ?? 0) - Number(a.indicative_rate ?? 0));
 
@@ -522,7 +533,7 @@ function Shelf({ types, onPick }: { types: PortfolioType[]; onPick: () => void }
       <div className="flex flex-wrap items-baseline gap-3">
         <h3 className="section-title">What you can open</h3>
         <span className="text-xs text-slate-ink">
-          the return on a pot is agreed with the desk
+          indicative annual returns — the rate on a pot is agreed with the desk
         </span>
       </div>
 
@@ -538,9 +549,18 @@ function Shelf({ types, onPick }: { types: PortfolioType[]; onPick: () => void }
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{t.name}</span>
               </span>
+              <span className="font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
+                {t.indicative_rate === null ? '—' : pct(t.indicative_rate)}
+              </span>
             </span>
             {t.description && (
               <span className="mt-2 block text-xs text-slate-ink">{t.description}</span>
+            )}
+            {t.indicative_rate !== null && (
+              <span className="mt-2.5 block h-[3px] overflow-hidden rounded-full bg-slate-ink/20" aria-hidden>
+                <span className="bar-x block h-[3px] rounded-full bg-ember"
+                  style={{ width: `${(Number(t.indicative_rate) / topRate) * 100}%` }} />
+              </span>
             )}
           </button>
         ))}
