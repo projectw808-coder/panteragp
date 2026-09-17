@@ -60,7 +60,12 @@ export function OverviewView() {
 
   const a = account.data;
   const held = positions.data ?? [];
-  const openPnl = held.reduce((n, p) => n + Number(p.unrealized), 0);
+  // From /account, not re-summed from /positions. Both count the same positions, but they
+  // are two fetches at two moments and the price moves between them, so the amount shown
+  // at the top and the amount shown at the bottom disagreed by whatever the market did in
+  // between. One request supplies the amount and the percentage, and they are of the same
+  // instant by construction.
+  const openPnl = a ? Number(a.unrealized) : 0;
   // Margin is what the leverage is actually carrying, not what it could.
   const exposure = held.reduce((n, p) => n + Math.abs(Number(p.qty)) * Number(p.price), 0);
   const margin = a?.leverage ? exposure / Number(a.leverage) : exposure;
@@ -95,12 +100,14 @@ export function OverviewView() {
           note={native ? `Everything held, in ${native}` : 'Everything held, valued in dollars'} />
         {/* A proportion of what the open positions cost, computed server-side so this and
             the balance strip cannot arrive at it two different ways. A null basis is a
-            dash, not a skeleton: the card is loaded, there is simply nothing open. */}
+            dash, not a skeleton: the card is loaded, there is simply nothing open.
+            The amount rides in the note, because it is the same P&L the Result card
+            states below and the two should be recognisable as one figure. */}
         <StatCard label="Open P&L" icon="↗" i={1}
           format={(n) => (openPct === null ? '—' : pct(n))}
           count={a ? openPct ?? 0 : null}
           tone={openPct === null ? undefined : openPct < 0 ? 'down' : 'up'}
-          note={`${held.length} position${held.length === 1 ? '' : 's'} open`} />
+          note={`${a ? `${signed(openPnl)} · ` : ''}${held.length} position${held.length === 1 ? '' : 's'} open`} />
         {/* /account is one account. A client whose cash is in GBP was shown the balance of
             an empty USD one, which read $0.00 while they held 222 GBP. Where there is a
             single currency, this is their cash in it. */}
@@ -126,6 +133,13 @@ export function OverviewView() {
                   perf.data.pct === null ? 'text-slate-ink'
                     : perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
                   {perf.data.pct === null ? '—' : pct(perf.data.pct)}
+                </span>
+                {/* The amount beside the proportion, because the Result card below states
+                    this same figure and a reader should not have to work out that the two
+                    are the same thing. */}
+                <span className={`font-mono text-sm tabular-nums ${
+                  perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
+                  {signed(perf.data.earned)}
                 </span>
                 <span className="text-xs text-slate-ink">
                   over the last {range.label === '1W' ? 'week'
@@ -166,7 +180,7 @@ export function OverviewView() {
           <Allocation accounts={accounts.data} />
         </div>
         <div className="enter" style={{ '--i': 7 } as CSSProperties}>
-          <Breakdown perf={perf.data} openPnl={openPnl} />
+          <Breakdown perf={perf.data} openPnl={openPnl} openPct={openPct} />
         </div>
       </div>
     </div>
@@ -382,7 +396,17 @@ function Donut({ groups, total, format }: {
   );
 }
 
-function Breakdown({ perf, openPnl }: { perf?: Performance | null; openPnl: number }) {
+/**
+ * The same figures the cards above state, with their counterpart alongside.
+ *
+ * Every P&L and every earning appears in two places on this page. Each place used to show
+ * one half of it — a proportion at the top, an amount at the bottom — so the two read as
+ * unrelated numbers. Each now carries both, from the same fetch, so a reader can see that
+ * −0.11% and −$139,486.60 are one fact rather than two.
+ */
+function Breakdown({ perf, openPnl, openPct }: {
+  perf?: Performance | null; openPnl: number; openPct: number | null;
+}) {
   const cell = (label: string, value: string, note?: string, tone?: 'up' | 'down') => (
     <div className="rounded-lg border border-pebble p-3 dark:border-white/10">
       <p className="metric-label">{label}</p>
@@ -399,8 +423,10 @@ function Breakdown({ perf, openPnl }: { perf?: Performance | null; openPnl: numb
       <h2 className="section-title">Result</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {cell('Earned', perf ? signed(perf.earned) : '—',
-          'Trading, interest and rewards', perf && perf.earned < 0 ? 'down' : 'up')}
-        {cell('Open P&L', signed(openPnl), 'On positions still held',
+          `${perf && perf.pct !== null ? `${pct(perf.pct)} · ` : ''}Trading, interest and rewards`,
+          perf && perf.earned < 0 ? 'down' : 'up')}
+        {cell('Open P&L', signed(openPnl),
+          `${openPct === null ? '' : `${pct(openPct)} · `}On positions still held`,
           openPnl < 0 ? 'down' : 'up')}
         {cell('Best day', perf?.best ? signed(perf.best.earned) : '—',
           perf?.best ? day(perf.best.day) : 'Nothing earned yet', 'up')}

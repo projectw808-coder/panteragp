@@ -3,6 +3,7 @@ import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm, DepositForm, PnlForm } from './wallet.tsx';
+import { CopyButton } from './copy.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
 import { ResetPassword } from './settings.tsx';
@@ -172,7 +173,10 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
           <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
           {/* Contact details are read aloud off this screen, so they are set at the full
               ink rather than the muted grey the rest of the metadata uses. */}
-          <p className="mt-2 font-mono text-sm text-ember-ink">{c.email}</p>
+          <p className="mt-2 flex flex-wrap items-center gap-2 font-mono text-sm text-ember-ink">
+            {c.email}
+            <CopyButton text={c.email} />
+          </p>
           <p className="font-mono text-sm text-obsidian dark:text-vellum">
             {c.phone ?? 'no phone'}
             <span className="text-slate-ink"> · </span>{c.country ?? '—'}

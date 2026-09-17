@@ -4,6 +4,7 @@ import { api, token, useApi, type ClientRow as Client, type Stage } from './api.
 import { PortfoliosPanel } from './portfolio.tsx';
 import { ClientWallets } from './wallet-connect.tsx';
 import { ResetPassword } from './settings.tsx';
+import { CopyButton } from './copy.tsx';
 
 /**
  * A client row that unfolds in place: the essentials and their money without leaving the
@@ -58,7 +59,15 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
           </span>
         </td>
         {/* Contact details and timestamps read as data, so they take the mono face. */}
-        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{c.email}</td>
+        {/* The address is the thing staff actually need off this screen — to paste into a
+            mail client, a ticket or a search. Selecting it out of a row that unfolds when
+            clicked is a fight, so there is a button. */}
+        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>
+          <span className="flex items-center gap-2">
+            <span className="min-w-0 truncate">{c.email}</span>
+            <CopyButton text={c.email} className="shrink-0" />
+          </span>
+        </td>
         {/* A select, not a label: moving somebody down the pipeline is the commonest edit
             on this screen, and it should not cost two navigations. The click is stopped
             here so choosing a stage does not also unfold the row underneath it. */}

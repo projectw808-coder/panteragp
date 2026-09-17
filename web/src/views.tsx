@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi, type Stage, type Task } from './api.ts';
 import { ClientRow } from './client-row.tsx';
+import { CopyButton } from './copy.tsx';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 const qs = (o: Record<string, string | number | undefined>) => {
@@ -109,6 +110,16 @@ export function ClientList() {
             className="rounded-full border border-pebble px-2.5 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
             Clear
           </button>
+        )}
+        {/* Whatever the filters have narrowed to, comma separated for a To: field. The
+            list as shown, not the whole book — the filters are how somebody says who they
+            meant, so copying past them would hand over addresses they did not ask for. */}
+        {!!rows.length && (
+          <CopyButton className="px-2.5 py-1 text-xs normal-case"
+            text={rows.map((c) => c.email).join(', ')}
+            label={`Copy ${rows.length} email${rows.length === 1 ? '' : 's'}`}
+            done={`${rows.length} copied`}
+            title="Copy the email addresses of everyone listed below" />
         )}
       </div>
 
