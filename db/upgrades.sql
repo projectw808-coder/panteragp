@@ -261,3 +261,103 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_key text;
 -- rows written before this it is still the name of a file on disk (see the read path).
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_image bytea;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS avatar_type  text;
+
+-- ------------------------------------------------------------- IPO offerings
+
+-- Tokenised IPO offerings: the desk publishes a deal, clients subscribe with money they
+-- already hold, and the subscription pays a fixed ROI accrued daily until it matures.
+--
+-- The shape follows portfolios and staking on purpose — a catalogue the desk offers,
+-- positions clients open against it, and a rate the desk can negotiate on one position
+-- without touching the product everybody else holds. What makes it not a staking product:
+-- it has a window that opens and closes, a cap that the whole book shares, and a maturity
+-- date after which nothing accrues however late settlement happens.
+--
+-- The return is the ROI, not the share price. A subscription is not equity and confers no
+-- interest in the company named: see the README section for why that line matters.
+CREATE TABLE IF NOT EXISTS ipos (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug             text UNIQUE NOT NULL,
+  name             text NOT NULL,
+  summary          text NOT NULL,
+  description      text,
+  -- What is being issued, as a label. Deliberately not a currencies FK: an offering can be
+  -- announced before any instrument exists to reference.
+  asset            text NOT NULL,
+  -- What subscriptions are paid in, which is a real currency and must exist.
+  currency         text NOT NULL REFERENCES currencies(code),
+  target_amount    numeric(38,18) NOT NULL CHECK (target_amount > 0),
+  min_subscription numeric(38,18) NOT NULL DEFAULT 0 CHECK (min_subscription >= 0),
+  max_subscription numeric(38,18)
+                   CHECK (max_subscription IS NULL OR max_subscription >= min_subscription),
+  -- A fraction, so 0.0725 is 7.25% a year — the same convention as portfolios and staking.
+  -- Bounded for the same reason every other rate here is: it multiplies somebody's money.
+  roi_rate         numeric(6,4) NOT NULL CHECK (roi_rate >= 0 AND roi_rate <= 1),
+  term_days        smallint NOT NULL CHECK (term_days > 0 AND term_days <= 3650),
+  opens_at         timestamptz,
+  closes_at        timestamptz,
+  matures_at       timestamptz,
+  -- Stored status carries only what cannot be computed: the desk's explicit decisions.
+  -- Everything else is derived from the timestamps on read — see effectiveStatus in
+  -- src/server.ts. A status that changes only when a human clicks is wrong every weekend.
+  status           text NOT NULL DEFAULT 'draft'
+                   CHECK (status IN ('draft','upcoming','open','closed','active','completed','cancelled')),
+  image_key        text,
+  sort_order       smallint NOT NULL DEFAULT 0,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  -- Time has to run forwards. A window that closes before it opens, or matures before it
+  -- closes, is not a deal anybody can price, and the database is the right place to say so.
+  CONSTRAINT ipos_window   CHECK (opens_at IS NULL OR closes_at IS NULL OR closes_at > opens_at),
+  CONSTRAINT ipos_maturity CHECK (closes_at IS NULL OR matures_at IS NULL OR matures_at > closes_at)
+);
+
+-- Lets a subscription reference the offering AND its currency as one foreign key, so the
+-- two can never disagree. A CHECK cannot see another table; this can.
+DO $do$ BEGIN
+  ALTER TABLE ipos ADD CONSTRAINT ipos_id_currency UNIQUE (id, currency);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;
+
+CREATE TABLE IF NOT EXISTS ipo_subscriptions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ipo_id          uuid NOT NULL REFERENCES ipos(id),
+  client_id       uuid NOT NULL REFERENCES clients(id),
+  amount          numeric(38,18) NOT NULL CHECK (amount > 0),
+  currency        text NOT NULL REFERENCES currencies(code),
+  -- The rate agreed on this one subscription. Null means the offering's, which is what
+  -- every subscription means until the desk says otherwise.
+  roi_override    numeric(6,4) CHECK (roi_override IS NULL OR (roi_override >= 0 AND roi_override <= 1)),
+  -- Never negative: ROI is credited, never clawed back.
+  accrued         numeric(38,18) NOT NULL DEFAULT 0 CHECK (accrued >= 0),
+  -- ROI is posted per whole day elapsed since this date, which is what makes the accrual
+  -- safe to run twice, to retry, or to catch up after an outage.
+  last_accrued_on date NOT NULL DEFAULT current_date,
+  status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active','refunded','settled')),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  -- Paid in the offering's own currency, enforced rather than trusted.
+  CONSTRAINT ipo_subscriptions_currency_matches
+    FOREIGN KEY (ipo_id, currency) REFERENCES ipos (id, currency)
+);
+-- The client's page and the desk's book are the two reads that matter.
+CREATE INDEX IF NOT EXISTS ipo_subscriptions_by_client ON ipo_subscriptions (client_id);
+CREATE INDEX IF NOT EXISTS ipo_subscriptions_by_ipo    ON ipo_subscriptions (ipo_id);
+
+-- Covered by the audit trigger like every other mutable table, and ipos takes touch() so
+-- updated_at means something. Guarded on pg_trigger because this file runs every start.
+-- ponytail: staking_products, stakes and portfolio_requests were added in this file
+-- without their audit triggers and are still uncovered. Same three lines would fix it.
+DO $do$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['ipos','ipo_subscriptions'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = t || '_audit') THEN
+      EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
+                      FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
+    END IF;
+  END LOOP;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ipos_touch') THEN
+    EXECUTE 'CREATE TRIGGER ipos_touch BEFORE UPDATE ON ipos
+             FOR EACH ROW EXECUTE FUNCTION touch()';
+  END IF;
+END $do$;
