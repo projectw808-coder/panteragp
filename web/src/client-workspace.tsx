@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { DocumentsPanel, FlagList } from './compliance.tsx';
-import { CreditForm } from './wallet.tsx';
+import { CreditForm, DepositForm } from './wallet.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
 import { ResetPassword } from './settings.tsx';
@@ -337,6 +337,7 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
         </div>
       </div>
       <div className="space-y-4">
+        {admin && <DepositForm clientId={id} onDone={onChanged} />}
         {admin && <CreditForm clientId={id} onDone={onChanged} />}
         {admin && <ClientPassword id={id} name={c.name} />}
       </div>

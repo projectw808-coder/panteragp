@@ -2515,6 +2515,57 @@ app.post('/clients/:id/credit', { preHandler: auth('funds:credit') }, async (req
 });
 
 /**
+ * Record a deposit the client made, on their behalf.
+ *
+ * Distinct from crediting, and the distinction is the point. A credit writes an
+ * `adjustment` — money the desk put there — and the client's Deposits figure and
+ * net_deposits both count only `deposit` rows, so a credit is deliberately invisible to
+ * them. Money that genuinely arrived from the client has to be recorded as what it is, or
+ * their own summary of what they have paid in disagrees with the desk's.
+ *
+ * Booked as approved rather than pending: a deposit reaching this route is one somebody has
+ * already seen land, and a staff member cannot usefully approve their own record of it.
+ * That matches the decide route, where an approved deposit is the one that moves the
+ * balance. Same permission as crediting, because it is the same power.
+ */
+app.post('/clients/:id/deposit', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = creditBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { currency, amount, note } = body.data;
+
+  const ccy = (await currencies()).get(currency);
+  if (!ccy) return reply.code(404).send({ error: 'unknown currency' });
+  if (ccy.kind !== 'fiat') return reply.code(400).send({ error: 'a deposit is cash; use the wallet credit route for crypto' });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+
+  return tx(req.principal.sub, async (c) => {
+    // As with crediting, the account for this currency may not exist yet.
+    const { rows: [account] } = await c.query(
+      `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo',$2,0)
+       ON CONFLICT (client_id, mode, currency) DO UPDATE SET client_id = excluded.client_id
+       RETURNING *`, [req.params.id, currency]);
+    await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [account.id, amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
+       VALUES ($1,$2,'deposit',$3,'approved',$4) RETURNING *`,
+      [account.id, req.params.id, amount, req.principal.sub]);
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'deposit',
+      title: `Deposit of ${amount} ${currency} recorded`,
+      body: note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id),
+    });
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'deposit', actor: req.principal.sub,
+      summary: `Deposit of ${amount} ${currency} recorded by staff${note ? ` — ${note}` : ''}`,
+      ref_table: 'cash_transactions', ref_id: String(entry.id),
+      data: { currency, amount, note: note ?? null },
+    });
+    return { transaction: entry, currency, amount };
+  });
+});
+
+/**
  * The other direction: take funds off a client's account — correcting a mistaken credit,
  * settling a fee, or removing a balance that should not be there.
  *

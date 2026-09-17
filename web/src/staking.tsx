@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { alertBox, btn, btnGhost, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
+import { AssetArt } from './asset-art.tsx';
 
 /**
  * Staking: locking crypto for a term and earning a yield in the same asset.
@@ -275,6 +276,11 @@ function NewStake({ products, on, onCancel, onDone }: {
                   <span className="font-mono text-[10px] tracking-wide text-slate-ink uppercase">
                     {term(p.lock_days)}
                   </span>
+                </span>
+                {/* Fills the room the rate used to take, and gives the grid something to
+                    be scanned by other than twelve near-identical lines of text. */}
+                <span className={`flex flex-1 items-center justify-center ${active ? 'text-ember-ink' : 'text-slate-ink'}`}>
+                  <AssetArt code={p.asset} size={40} />
                 </span>
                 <span className="text-xs leading-tight font-medium text-obsidian dark:text-vellum">
                   {p.name}

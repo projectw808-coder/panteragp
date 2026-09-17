@@ -319,3 +319,67 @@ export function CreditForm({ clientId, onDone }: { clientId: string; onDone: () 
     </form>
   );
 }
+
+/**
+ * Admin-only: record money the client actually paid in.
+ *
+ * Kept apart from "Adjust this account" on purpose. A credit is the desk putting money on
+ * an account and books an adjustment; a deposit is the client's own money arriving, and it
+ * is the only kind that reaches their Deposits figure. Two buttons in one form would make
+ * that difference a dropdown nobody reads.
+ */
+export function DepositForm({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const currencies = useApi<Currency[]>('/currencies');
+  const [code, setCode] = useState('GBP');
+  const [amt, setAmt] = useState('');
+  const [note, setNote] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Cash only. Coin arriving is a wallet credit, which has its own route and its own record.
+  const fiat = currencies.data?.filter((c) => c.kind === 'fiat') ?? [];
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      await api(`/clients/${clientId}/deposit`, {
+        method: 'POST',
+        body: JSON.stringify({ currency: code, amount: Number(amt), note: note || undefined }),
+      });
+      setResult(`Recorded a deposit of ${amt} ${code}`);
+      setAmt(''); setNote('');
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit} className={`${card} space-y-2`}>
+      <h2 className="text-sm font-semibold">Add funds to a deposit</h2>
+      <div className="flex gap-2">
+        <select className={`${field} w-40`} value={code} onChange={(e) => setCode(e.target.value)}>
+          {fiat.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+        </select>
+        <input className={input} type="number" step="any" min="0" required placeholder="Amount"
+          value={amt} onChange={(e) => setAmt(e.target.value)} />
+      </div>
+      <input className={input} maxLength={500} placeholder="Reference (appears on the timeline)"
+        value={note} onChange={(e) => setNote(e.target.value)} />
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+      {result && <p className="text-sm text-slate-ink">{result}</p>}
+      <button className={`${btn} w-full`} disabled={busy}>
+        {busy ? 'Working…' : 'Record deposit'}
+      </button>
+      <p className="text-xs text-slate-ink">
+        Books an approved deposit and adds it to the balance, so it counts towards the
+        client's Deposits rather than reading as an adjustment by the desk. Audited, on
+        their timeline, and they are notified.
+      </p>
+    </form>
+  );
+}
