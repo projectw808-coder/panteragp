@@ -498,6 +498,26 @@ app.get('/clients/:id/timeline', { preHandler: clientScope }, async (req: any) =
   return rows;
 });
 
+/**
+ * A calendar date, carried as the text it already is.
+ *
+ * Deliberately not coerced to a Date. Coercion turns 1988-04-02 into an instant at UTC
+ * midnight; the driver then sends that instant in the server's own timezone, and casting
+ * it to a `date` column anywhere behind UTC lands on the day before. A birth date entered
+ * as the 2nd was stored as the 1st on every machine west of Greenwich, silently — the
+ * acceptance suite catches it and says as much where it asserts.
+ *
+ * A date has no timezone, so it is never given one: it reaches Postgres as a string and
+ * comes back as one, the DATE parser at the top of this file having been set to leave it
+ * alone. Only genuine instants — a task due_at, for example — become Dates.
+ */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine((v) => {
+    // The regex admits 2023-02-30; the round trip is what rejects it.
+    const t = Date.parse(`${v}T00:00:00Z`);
+    return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v;
+  }, 'not a date on the calendar');
+
 const patchBody = z.object({
   name: z.string().min(1).max(200).optional(),
   email: z.string().email().max(320).optional(),
@@ -506,7 +526,7 @@ const patchBody = z.object({
   tier: z.string().max(40).optional(),
   // Personal details are clearable: a birth date entered wrong should be removable, not
   // correctable only to another wrong date.
-  date_of_birth: z.coerce.date().nullable().optional(),
+  date_of_birth: isoDate.nullable().optional(),
   address: z.string().max(400).nullable().optional(),
   // What this client pays to trade. Null puts them back on the desk default.
   commission_bps: z.number().min(0).max(MAX_BPS).nullable().optional(),
@@ -911,7 +931,7 @@ const profileBody = z.object({
   name: z.string().min(1).max(200).optional(),
   phone: z.string().max(40).nullable().optional(),
   country: z.string().length(2).nullable().optional(),
-  date_of_birth: z.coerce.date().nullable().optional(),
+  date_of_birth: isoDate.nullable().optional(),
   address: z.string().max(400).nullable().optional(),
 }).refine((o) => Object.keys(o).length > 0, 'no fields to update');
 
@@ -3192,7 +3212,7 @@ const portfolioBody = z.object({
   // A target date still shapes the projection — "what will this be worth by then" needs a
   // then. A target amount asked people to commit to a number before they had any, and
   // measured them against it every time they opened the page, so it is gone.
-  target_date: z.coerce.date().optional(),
+  target_date: isoDate.optional(),
 });
 
 app.post('/portfolios', { preHandler: auth() }, async (req: any, reply) => {
@@ -3313,7 +3333,7 @@ app.patch('/portfolios/:id', { preHandler: auth() }, async (req: any, reply) => 
     // money, and 35 typed for 3.5 is a hundredfold.
     rate_override: z.number().min(0).max(1).nullable().optional(),
     name: z.string().min(1).max(80).optional(),
-    target_date: z.coerce.date().nullable().optional(),
+    target_date: isoDate.nullable().optional(),
     status: z.enum(['open', 'closed']).optional(),
   }).transform(({ client_id: _ignored, ...rest }) => rest)
     .refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
