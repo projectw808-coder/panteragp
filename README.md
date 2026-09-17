@@ -357,7 +357,7 @@ always calls `/api/...` — Vite proxies that away in development, and `rewriteU
 `src/server.ts` strips it in production.
 
 1. **New project → Deploy from GitHub repo**, pointing at this repository. `railway.json`
-   supplies the build and start commands; `engines.node` pins Node 24, which the API needs
+   supplies the build and start commands; `engines.node` pins Node 22, which the API needs
    for `--experimental-strip-types`.
 2. **Add the Postgres plugin** to the same project. Railway injects `DATABASE_URL`.
    Use the **internal** host it provides — traffic stays on the private network, so no TLS
