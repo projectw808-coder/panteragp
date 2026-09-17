@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { alertBox, card, PageTitle } from './App.tsx';
 import { useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
-import type { Accounts } from './balance.tsx';
+import { headline, unit, type Accounts } from './balance.tsx';
 
 /**
  * The client's own front page: what they have, what it has done, and what it is in.
@@ -19,7 +19,11 @@ import type { Accounts } from './balance.tsx';
  * from a library's defaults is how a design system quietly stops being one.
  */
 
-type Account = { balance: number; equity: number; unrealized: number; currency: string; leverage: number };
+type Account = {
+  balance: number; equity: number; unrealized: number; currency: string; leverage: number;
+  /** The move on open positions over what they cost. Null when nothing is open. */
+  open_pct: number | null;
+};
 type Position = { symbol: string; qty: number; avg_price: number; price: number; unrealized: number };
 type Point = { day: string; earned: number; cumulative: number; moved_in: number; moved_out: number };
 type Performance = {
@@ -61,6 +65,16 @@ export function OverviewView() {
   const exposure = held.reduce((n, p) => n + Math.abs(Number(p.qty)) * Number(p.price), 0);
   const margin = a?.leverage ? exposure / Number(a.leverage) : exposure;
 
+  // The same rule the balance strip uses, from the same endpoint, so the two cannot
+  // disagree about what somebody has: one currency is reported as itself, several convert.
+  const openPct = a?.open_pct ?? null;
+  const acc = accounts.data;
+  const u = acc ? unit(acc) : null;
+  const native = u?.code ?? null;
+  const cashHeld = acc && native
+    ? acc.cash.filter((x) => x.currency === native).reduce((n, x) => n + Number(x.balance), 0)
+    : null;
+
   if (account.error) return <p role="alert" className={alertBox}>{account.error}</p>;
 
   return (
@@ -71,16 +85,29 @@ export function OverviewView() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total equity" icon="◈" i={0} format={usd}
-          count={perf.data ? perf.data.equity : a ? Number(a.equity) : null}
-          note="Everything held, valued in dollars" />
-        <StatCard label="Open P&L" icon="↗" i={1} format={signed}
-          count={a ? openPnl : null}
-          tone={openPnl < 0 ? 'down' : openPnl > 0 ? 'up' : undefined}
+        {/* On a single currency this is that currency's own total, taken from /accounts —
+            the same number and the same unit as the strip above. Converting one currency
+            into dollars showed a figure the client never held. */}
+        <StatCard label="Total equity" icon="◈" i={0}
+          format={native && acc ? headline(acc).format : usd}
+          count={native && acc ? headline(acc).value
+            : perf.data ? perf.data.equity : a ? Number(a.equity) : null}
+          note={native ? `Everything held, in ${native}` : 'Everything held, valued in dollars'} />
+        {/* A proportion of what the open positions cost, computed server-side so this and
+            the balance strip cannot arrive at it two different ways. A null basis is a
+            dash, not a skeleton: the card is loaded, there is simply nothing open. */}
+        <StatCard label="Open P&L" icon="↗" i={1}
+          format={(n) => (openPct === null ? '—' : pct(n))}
+          count={a ? openPct ?? 0 : null}
+          tone={openPct === null ? undefined : openPct < 0 ? 'down' : 'up'}
           note={`${held.length} position${held.length === 1 ? '' : 's'} open`} />
-        <StatCard label="Available" icon="≡" i={2} format={usd}
-          count={a ? Number(a.balance) : null}
-          note={a ? `Cash in ${a.currency}` : ''} />
+        {/* /account is one account. A client whose cash is in GBP was shown the balance of
+            an empty USD one, which read $0.00 while they held 222 GBP. Where there is a
+            single currency, this is their cash in it. */}
+        <StatCard label="Available" icon="≡" i={2}
+          format={native && u ? u.format : usd}
+          count={cashHeld ?? (a ? Number(a.balance) : null)}
+          note={native ? `Cash in ${native}` : a ? `Cash in ${a.currency}` : ''} />
         <StatCard label="Margin used" icon="⊞" i={3} format={usd}
           count={a ? margin : null}
           note={a ? `${a.leverage}× on ${usd(exposure)} exposure` : ''} />
@@ -90,18 +117,16 @@ export function OverviewView() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0">
             <h2 className="section-title">Earnings</h2>
+            {/* The proportion leads, not the amount: the amount is in dollars whatever the
+                account holds, and pct is already null when there was nothing to earn on —
+                a percentage of an opening balance of zero is not a return. */}
             {perf.data ? (
               <p className="mt-1 flex flex-wrap items-baseline gap-2">
                 <span className={`font-mono text-2xl leading-none font-medium tabular-nums ${
-                  perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
-                  {signed(perf.data.earned)}
+                  perf.data.pct === null ? 'text-slate-ink'
+                    : perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
+                  {perf.data.pct === null ? '—' : pct(perf.data.pct)}
                 </span>
-                {perf.data.pct !== null && (
-                  <span className={`font-mono text-sm tabular-nums ${
-                    perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
-                    {pct(perf.data.pct)}
-                  </span>
-                )}
                 <span className="text-xs text-slate-ink">
                   over the last {range.label === '1W' ? 'week'
                     : range.label === '1M' ? 'month'
@@ -280,10 +305,15 @@ function EarningsChart({ points }: { points: Point[] }) {
  * currency slices nobody can read.
  */
 function Allocation({ accounts }: { accounts?: Accounts | null }) {
+  const fmt = accounts ? unit(accounts).format : usd;
   const groups = useMemo(() => {
     if (!accounts) return [];
-    const sum = (xs: { usd_value: number | null }[]) =>
-      xs.reduce((n, x) => n + Number(x.usd_value ?? 0), 0);
+    // With one currency the slices are that currency's own amounts. Converting them would
+    // put a different unit on this card than on the two above it, for no gain: the shares
+    // are identical either way, since one currency converts at one rate.
+    const asNative = unit(accounts).code !== null;
+    const sum = (xs: { usd_value: number | null; balance: number }[]) =>
+      xs.reduce((n, x) => n + Number(asNative ? x.balance : x.usd_value ?? 0), 0);
     return [
       { name: 'Cash', value: sum(accounts.cash), colour: 'var(--color-cat-1)' },
       { name: 'Crypto', value: sum(accounts.wallets), colour: 'var(--color-cat-2)' },
@@ -304,7 +334,7 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-6">
-          <Donut groups={groups} total={total} />
+          <Donut groups={groups} total={total} format={fmt} />
           <ul className="min-w-40 flex-1 space-y-2">
             {groups.map((g) => (
               <li key={g.name} className="flex items-center gap-2 text-sm">
@@ -313,7 +343,7 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
                 <span className="ml-auto font-mono tabular-nums text-slate-ink">
                   {((g.value / total) * 100).toFixed(1)}%
                 </span>
-                <span className="w-24 text-right font-mono tabular-nums">{usd(g.value)}</span>
+                <span className="w-24 text-right font-mono tabular-nums">{fmt(g.value)}</span>
               </li>
             ))}
           </ul>
@@ -324,8 +354,9 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
 }
 
 /** Arc segments on one circle, drawn with stroke-dasharray so there is no path maths. */
-function Donut({ groups, total }: {
+function Donut({ groups, total, format }: {
   groups: { name: string; value: number; colour: string }[]; total: number;
+  format: (n: number) => string;
 }) {
   const R = 54;
   const C = 2 * Math.PI * R;
@@ -346,7 +377,7 @@ function Donut({ groups, total }: {
       <text x="70" y="66" textAnchor="middle"
         className="fill-slate-ink font-mono text-[9px] tracking-[0.14em] uppercase">Total</text>
       <text x="70" y="82" textAnchor="middle"
-        className="fill-current font-mono text-[13px] font-medium">{usd(total)}</text>
+        className="fill-current font-mono text-[13px] font-medium">{format(total)}</text>
     </svg>
   );
 }

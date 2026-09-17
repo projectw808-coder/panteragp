@@ -1168,8 +1168,18 @@ app.get('/account', { preHandler: trader }, async (req) => {
   const a = await demoAccount(req.principal.sub);
   const { rows: pos } = await pool.query<{ symbol: string; qty: number; avg_price: number }>(
     'SELECT symbol, qty, avg_price FROM positions WHERE account_id = $1', [a.id]);
-  const equity = pos.reduce((sum, p) => sum + unrealized(p, spot(p.symbol)), 0);
-  return { ...a, unrealized: round8(equity), equity: round8(Number(a.balance) + equity) };
+  const open = pos.reduce((sum, p) => sum + unrealized(p, spot(p.symbol)), 0);
+  // What the open positions cost, so the move on them can be stated as a proportion of
+  // itself rather than as an amount in a currency the account may not even be held in.
+  // Null when nothing is open: a percentage of no basis is not zero, it is nothing — the
+  // same rule /me/performance uses for its own pct.
+  const cost = pos.reduce((sum, p) => sum + Math.abs(Number(p.qty)) * Number(p.avg_price), 0);
+  return {
+    ...a,
+    unrealized: round8(open),
+    equity: round8(Number(a.balance) + open),
+    open_pct: cost > 0 ? round8(open / cost) : null,
+  };
 });
 
 const orderBody = z.object({

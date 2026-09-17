@@ -16,7 +16,23 @@ import { useCountUp, useTick } from './count-up.ts';
 
 type Held = { balance: number; usd_value: number | null };
 type Cash = { kind: string; amount: number; status: string; currency: string };
-type Account = { balance: number; equity: number; unrealized: number; currency: string };
+type Account = {
+  balance: number; equity: number; unrealized: number; currency: string;
+  /** The move on open positions as a proportion of what they cost. Null with none open. */
+  open_pct: number | null;
+};
+
+/**
+ * A move on open positions, as a proportion.
+ *
+ * A proportion rather than an amount because the amount is in dollars whatever the account
+ * is held in, and a client holding GBP read it as a figure in their own currency. The
+ * percentage is the same number in every currency. Null is shown as a dash: no open
+ * position is not a 0.00% return, it is no return to report.
+ */
+const percent = (n: number | null | undefined) => n === null || n === undefined
+  ? '—'
+  : `${n >= 0 ? '+' : '−'}${Math.abs(n * 100).toFixed(2)}%`;
 
 export type Accounts = {
   cash: (Held & { id: string; currency: string; mode: string; leverage: number })[];
@@ -91,16 +107,24 @@ function paidIn(cash: Cash[]) {
  * moves on its own. So one currency is reported as itself. USD is already the common unit,
  * so it keeps the symbol rather than reading "222 USD".
  */
-function headline(a: Accounts): { value: number; format: (n: number) => string } {
+export function unit(a: Accounts): { code: string | null; format: (n: number) => string } {
   const rows = held(a);
-  if (rows.length !== 1) return { value: Number(a.total_usd), format: usd };
-  const [code, n] = rows[0];
-  if (code === 'USD') return { value: n, format: usd };
-  return { value: n, format: (x) => `${amount(x)} ${code}` };
+  // `code: null` means the figure is a conversion and reads in dollars. USD-only holdings
+  // are already in the common unit, so they take that path and keep the symbol.
+  if (rows.length !== 1 || rows[0][0] === 'USD') return { code: null, format: usd };
+  const code = rows[0][0];
+  return { code, format: (n) => `${amount(n)} ${code}` };
+}
+
+/** What every holding adds up to, in whichever unit `unit` chose. */
+export function headline(a: Accounts): { value: number; format: (n: number) => string } {
+  const { code, format } = unit(a);
+  if (!code) return { value: Number(a.total_usd), format };
+  return { value: held(a)[0][1], format };
 }
 
 /** True while the total is a conversion, and so while its caveats are worth printing. */
-const converting = (a: Accounts) => held(a).length > 1;
+const converting = (a: Accounts) => unit(a).code === null;
 
 /** What is locked in staking, per asset, for the strip's own line. */
 function staked(a: Accounts) {
@@ -126,7 +150,7 @@ export function BalanceBar() {
   if (!a) return null;
   const rows = held(a);
   const deposits = paidIn(cash.data ?? []);
-  const open = Number(account.data?.unrealized ?? 0);
+  const open = account.data?.open_pct ?? null;
 
   return (
     <div className="glow grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
@@ -176,8 +200,8 @@ export function BalanceBar() {
         <span className="flex items-baseline gap-1.5">
           <span className="bal-label">Open P&amp;L</span>
           <span className={`bal-value ${
-            open < 0 ? 'text-down' : 'text-up'}`}>
-            {open >= 0 ? '+' : ''}{usd(open)}
+            open === null ? 'text-slate-ink' : open < 0 ? 'text-down' : 'text-up'}`}>
+            {percent(open)}
           </span>
         </span>
         <span className="flex items-baseline gap-2">
