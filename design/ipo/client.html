@@ -19,15 +19,15 @@
   .holding { display: grid; grid-template-columns: 1fr auto auto auto; gap: 20px; align-items: center; }
   .holding + .holding { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
 
-  .shelf { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .shelf { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .offer { display: grid; gap: 10px; }
   .offer h3 { margin: 0; font-size: 14px; font-weight: 500; }
   .offer .summary { font-size: 12px; color: var(--ink-quiet); margin: 0; }
-  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .raise { display: flex; justify-content: space-between; font-size: 11px; }
 
   details.finished { border-top: 1px solid var(--line); padding-top: 14px; }
-  details.finished summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+  details.finished summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   details.finished summary::-webkit-details-marker { display: none; }
   details.finished summary::after {
     content: "›"; font-family: var(--font-mono); color: var(--color-ember-ink);
@@ -35,12 +35,19 @@
   }
   details.finished[open] summary::after { transform: rotate(90deg); }
 
-  @media (max-width: 900px) { .shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 620px) {
+  /* A settled project is quieter than a live one: no lift, no hover hairline, no corner
+     tick. It is a record, and it should read as one without disappearing. */
+  .done { display: grid; gap: 10px; align-content: start; }
+  .done h3 { margin: 0; font-size: 14px; font-weight: 500; }
+  .done .summary { margin: 0; font-size: 12px; color: var(--ink-quiet); }
+  .ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ledger div { display: grid; gap: 2px; }
+  .ledger .figure { font-size: 15px; }
+
+  @media (max-width: 760px) {
     .wrap { padding: 16px 16px 48px; }
     .shelf { grid-template-columns: 1fr; }
     .holding { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 </style>
 </head>
@@ -56,7 +63,10 @@
 
   <!-- RUNNING. The brief is explicit that active must not be filed under finished: a client
        with money working in an offering needs it prominent. So it leads the page, and it is
-       the only group that shows what the client personally has in and has earned. -->
+       the only group that shows what the client personally has in and has earned.
+
+       Still placeholder: the source file covers incoming and completed deals, and a running
+       position is a client's own holding rather than a deal fact. -->
   <section class="stack">
     <span class="section-title">Running</span>
     <div class="card tile grain" style="position: relative">
@@ -108,10 +118,13 @@
     </div>
   </section>
 
-  <!-- INCOMING = upcoming + open. The ROI is shown here on purpose: portfolio and staking
-       rates were hidden from client screens because an agreed rate is the desk's, but an
-       offering's ROI is its public pitch and the thing being decided on. A per-client
-       override stays desk-side and never appears on this page. -->
+  <!-- INCOMING = upcoming + open, the four largest deals still to price, ranked by
+       private-market valuation as the source ranks them.
+       The ROI is shown here on purpose: portfolio and staking rates were hidden from client
+       screens because an agreed rate is the desk's, but an offering's ROI is its public
+       pitch and the thing being decided on. A per-client override stays desk-side.
+       The ROI, term, minimum and allocation are the desk's own terms and are NOT from the
+       source file — only the company facts, valuations and filing dates are. -->
   <section class="stack">
     <div class="row" style="justify-content: space-between">
       <span class="section-title">Incoming</span>
@@ -124,31 +137,32 @@
         <span class="tile-corner"></span>
         <div class="shot">
           <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-            <circle cx="248" cy="52" r="20"/>
-            <path d="M0 148c34 0 52-34 88-34s44 34 80 34 48-22 68-22 52 12 84 12"/>
+            <circle cx="160" cy="90" r="34"/>
+            <circle cx="160" cy="90" r="56" opacity=".5"/>
             <path d="M0 162h320" opacity=".4"/>
           </svg>
         </div>
         <div class="row" style="justify-content: space-between">
-          <span class="chip chip-asset">HGRID</span>
+          <span class="chip chip-asset">ANTH</span>
           <span class="chip chip-live">Open</span>
         </div>
-        <h3>Helios Grid — Series B</h3>
-        <p class="summary">Solar capacity across three sites, paying from metered output.</p>
+        <h3>Anthropic</h3>
+        <p class="summary">Filed confidentially on 1 June 2026; listing has shifted to mid-October on Nasdaq. Bankers are floating up to $2tn, which would top SpaceX. Run-rate $47–65bn. Morgan Stanley, Goldman Sachs, JPMorgan.</p>
         <div class="facts">
           <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">7.25%</div></div>
           <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">180d</div></div>
           <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">500</div></div>
+          <div><span class="metric-label">Valuation</span><div class="figure" style="font-size: 14px">$2tn</div></div>
         </div>
         <div>
-          <div class="raise"><span class="muted">Raised</span><span class="tnum">612,400 / 1,000,000 USD</span></div>
-          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="61% of target raised">
+          <div class="raise"><span class="muted">Allocated</span><span class="tnum">6,120,000 / 10,000,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="61% of allocation taken">
             <span class="bar-x" style="width: 61%"></span>
           </div>
         </div>
         <div class="row" style="justify-content: space-between">
           <span class="metric-label">Closes in</span>
-          <span class="countdown" data-until="2026-09-24T16:00:00Z">—</span>
+          <span class="countdown" data-until="2026-10-09T16:00:00Z">—</span>
         </div>
       </article>
 
@@ -156,59 +170,61 @@
         <span class="tile-corner"></span>
         <div class="shot">
           <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-            <rect x="40" y="96" width="46" height="56"/>
-            <rect x="100" y="66" width="46" height="86"/>
-            <rect x="160" y="112" width="46" height="40"/>
-            <rect x="220" y="80" width="46" height="72"/>
+            <rect x="52" y="60" width="60" height="60"/>
+            <rect x="130" y="60" width="60" height="60" opacity=".7"/>
+            <rect x="208" y="60" width="60" height="60" opacity=".45"/>
             <path d="M0 162h320" opacity=".4"/>
           </svg>
         </div>
         <div class="row" style="justify-content: space-between">
-          <span class="chip chip-asset">NWF</span>
+          <span class="chip chip-asset">NSCL</span>
           <span class="chip chip-live">Open</span>
         </div>
-        <h3>Northwind Freight II</h3>
-        <p class="summary">Short-dated logistics receivables from a single counterparty.</p>
+        <h3>Nscale</h3>
+        <p class="summary">London-founded GPU data-centre operator leasing compute on multi-year contracts, flagship campus in Narvik. The most imminent of the group — targeting a US listing this month, seeking up to $3bn. $103bn contracted backlog.</p>
         <div class="facts">
-          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">5.40%</div></div>
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">9.10%</div></div>
           <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">90d</div></div>
           <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">250</div></div>
+          <div><span class="metric-label">Valuation</span><div class="figure" style="font-size: 14px">$30bn</div></div>
         </div>
         <div>
-          <div class="raise"><span class="muted">Raised</span><span class="tnum">95,000 / 400,000 USD</span></div>
-          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="24% of target raised">
-            <span class="bar-x" style="width: 24%"></span>
+          <div class="raise"><span class="muted">Allocated</span><span class="tnum">2,040,000 / 3,000,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="68% of allocation taken">
+            <span class="bar-x" style="width: 68%"></span>
           </div>
         </div>
         <div class="row" style="justify-content: space-between">
           <span class="metric-label">Closes in</span>
-          <span class="countdown" data-until="2026-10-02T16:00:00Z">—</span>
+          <span class="countdown" data-until="2026-09-26T16:00:00Z">—</span>
         </div>
       </article>
 
-      <!-- Upcoming is announced and visible but takes no money: the action is disabled and
-           says why, rather than being absent and leaving the card looking broken. -->
+      <!-- Upcoming is announced and visible but takes no money: the progress bar reads the
+           target rather than a raise, and the timer counts to opening. -->
       <article class="card tile lift grain offer" tabindex="0">
         <span class="tile-corner"></span>
         <div class="shot">
           <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-            <path d="M160 40 108 96h104L160 40Z"/>
-            <path d="M108 104h104L160 152 108 104Z" opacity=".55"/>
+            <path d="M160 34 118 90l42 56 42-56-42-56Z"/>
+            <path d="M96 90h128" opacity=".45"/>
+            <path d="M0 162h320" opacity=".4"/>
           </svg>
         </div>
         <div class="row" style="justify-content: space-between">
-          <span class="chip chip-asset">ORC</span>
+          <span class="chip chip-asset">OAI</span>
           <span class="chip">Upcoming</span>
         </div>
-        <h3>Orchard Water Rights</h3>
-        <p class="summary">Long-dated water entitlements in a regulated basin.</p>
+        <h3>OpenAI</h3>
+        <p class="summary">S-1 submitted confidentially around 22 May 2026 and confirmed publicly on 8 June, seeking above $1tn. A September window was targeted; reports point to a possible slip into 2027. Goldman Sachs, Morgan Stanley, JPMorgan.</p>
         <div class="facts">
-          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">6.10%</div></div>
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">6.40%</div></div>
           <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">365d</div></div>
           <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">1,000</div></div>
+          <div><span class="metric-label">Valuation</span><div class="figure" style="font-size: 14px">$1tn+</div></div>
         </div>
         <div>
-          <div class="raise"><span class="muted">Target</span><span class="tnum">2,500,000 USD</span></div>
+          <div class="raise"><span class="muted">Allocation</span><span class="tnum">25,000,000 USD</span></div>
           <div class="bar-track" style="margin-top: 5px" role="img" aria-label="not yet open">
             <span class="bar-x" style="width: 0%"></span>
           </div>
@@ -219,47 +235,130 @@
         </div>
       </article>
 
+      <article class="card tile lift grain offer" tabindex="0">
+        <span class="tile-corner"></span>
+        <div class="shot">
+          <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <ellipse cx="160" cy="62" rx="62" ry="18"/>
+            <path d="M98 62v34c0 10 28 18 62 18s62-8 62-18V62"/>
+            <path d="M98 96v26c0 10 28 18 62 18s62-8 62-18V96" opacity=".6"/>
+            <path d="M0 162h320" opacity=".4"/>
+          </svg>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="chip chip-asset">DBX</span>
+          <span class="chip">Upcoming</span>
+        </div>
+        <h3>Databricks</h3>
+        <p class="summary">Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with fresh talks at $165–175bn. No S-1 filed; the CEO has called 2026 a terrible year to go public, pointing at 2027.</p>
+        <div class="facts">
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">5.80%</div></div>
+          <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">365d</div></div>
+          <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">1,000</div></div>
+          <div><span class="metric-label">Valuation</span><div class="figure" style="font-size: 14px">$175bn</div></div>
+        </div>
+        <div>
+          <div class="raise"><span class="muted">Allocation</span><span class="tnum">12,000,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="not yet open">
+            <span class="bar-x" style="width: 0%"></span>
+          </div>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="metric-label">Opens in</span>
+          <span class="countdown" data-until="2026-11-02T09:00:00Z">—</span>
+        </div>
+      </article>
+
     </div>
   </section>
 
-  <!-- FINISHED, collapsed: a completed offering is a record, not a decision. -->
+  <!-- FINISHED PROJECTS — the four largest deals that actually priced in 2026, ranked by
+       proceeds as the source ranks them.
+       The return on each is the real day-one move from offer price to first close, not an
+       invented figure: SpaceX $135 to $161, SK hynix $149 to ~$168, Cerebras $185 to $311,
+       China Resources New Energy 10.11 to 21.60 yuan at the open. The subscription amounts
+       are illustrative; the percentages are not.
+
+       Muted on purpose: no picture, no countdown, no ember on the frame. Ember is for the
+       one thing asking for attention and nothing here is asking. The return is the only
+       coloured figure, because it is money that moved — the one thing the up/down pair is
+       permitted for. -->
   <section>
-    <details class="finished">
+    <details class="finished" open>
       <summary>
-        <span class="section-title">Finished</span>
-        <span class="muted" style="font-size: 11px">2 completed · 1 cancelled</span>
+        <span class="section-title">Finished projects</span>
+        <span class="muted" style="font-size: 11px">4 completed · +3,667.58 USD returned above capital</span>
       </summary>
-      <div class="card" style="margin-top: 12px">
-        <table class="book">
-          <thead><tr><th>Offering</th><th>Subscribed</th><th>Returned</th><th>Outcome</th><th>Settled</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>Helios Grid — Pilot</td>
-              <td class="tnum">2,000 USD</td>
-              <td class="tnum up">2,146.30 USD</td>
-              <td><span class="chip">Completed</span></td>
-              <td class="muted tnum">12 Jun 2026</td>
-            </tr>
-            <tr>
-              <td>Meridian Bridge</td>
-              <td class="tnum">750 USD</td>
-              <td class="tnum up">781.05 USD</td>
-              <td><span class="chip">Completed</span></td>
-              <td class="muted tnum">3 Apr 2026</td>
-            </tr>
-            <tr>
-              <td>Cinder Lane Retail</td>
-              <td class="tnum">1,500 USD</td>
-              <td class="tnum">1,500.00 USD</td>
-              <td><span class="chip">Cancelled</span></td>
-              <td class="muted tnum">18 Feb 2026</td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="muted" style="font-size: 11px; margin: 10px 0 0">
-          A cancelled offering returns exactly what was taken — never a figure recomputed from a rate.
-        </p>
+
+      <div class="shelf" style="margin-top: 12px">
+
+        <article class="card done">
+          <div class="row" style="justify-content: space-between">
+            <span class="chip chip-asset">SPCX</span>
+            <span class="chip">Completed</span>
+          </div>
+          <h3>SpaceX</h3>
+          <p class="summary">The largest IPO in history. Priced at $135 on 11 June 2026 and listed on Nasdaq the next day, raising $86bn with the greenshoe at a $1.77tn valuation. Closed day one at $161, up 19%.</p>
+          <div class="ledger">
+            <div><span class="metric-label">Subscribed</span><span class="figure">5,000.00</span></div>
+            <div><span class="metric-label">Returned</span><span class="figure">5,962.96</span></div>
+            <div><span class="metric-label">Return</span><span class="figure up">+19.26%</span></div>
+          </div>
+          <span class="muted" style="font-size: 11px">Principal and return paid to your USD balance.</span>
+        </article>
+
+        <article class="card done">
+          <div class="row" style="justify-content: space-between">
+            <span class="chip chip-asset">SKHY</span>
+            <span class="chip">Completed</span>
+          </div>
+          <h3>SK hynix</h3>
+          <p class="summary">The largest US listing ever by a non-American company, topping Alibaba's 2014 raise. 177.9m ADSs at $149 on 10 July 2026, raising $26.5bn on a book reported 7x oversubscribed. Closed day one near $168.</p>
+          <div class="ledger">
+            <div><span class="metric-label">Subscribed</span><span class="figure">2,500.00</span></div>
+            <div><span class="metric-label">Returned</span><span class="figure">2,818.79</span></div>
+            <div><span class="metric-label">Return</span><span class="figure up">+12.75%</span></div>
+          </div>
+          <span class="muted" style="font-size: 11px">Settled on the day-one close. The stock was down about half from its peak by late July.</span>
+        </article>
+
+        <article class="card done">
+          <div class="row" style="justify-content: space-between">
+            <span class="chip chip-asset">CBRS</span>
+            <span class="chip">Completed</span>
+          </div>
+          <h3>Cerebras Systems</h3>
+          <p class="summary">The year's first blockbuster tech listing: wafer-scale AI inference chips, 2025 revenue $510m and a swing to profit. Priced at $185 on 14 May 2026 after two raises to the range, opened at $385 and closed at $311.</p>
+          <div class="ledger">
+            <div><span class="metric-label">Subscribed</span><span class="figure">1,000.00</span></div>
+            <div><span class="metric-label">Returned</span><span class="figure">1,681.08</span></div>
+            <div><span class="metric-label">Return</span><span class="figure up">+68.11%</span></div>
+          </div>
+          <span class="muted" style="font-size: 11px">Principal and return paid to your USD balance.</span>
+        </article>
+
+        <article class="card done">
+          <div class="row" style="justify-content: space-between">
+            <span class="chip chip-asset">CRNE</span>
+            <span class="chip">Completed</span>
+          </div>
+          <h3>China Resources New Energy</h3>
+          <p class="summary">Asia's biggest IPO of 2026 and the largest ever on Shenzhen: a wind and solar developer spun out of China Resources Power. 2.11bn shares at ¥10.11 on 3 July, raising ¥24.5bn. Opened at ¥21.60, up 113%.</p>
+          <div class="ledger">
+            <div><span class="metric-label">Subscribed</span><span class="figure">1,500.00</span></div>
+            <div><span class="metric-label">Returned</span><span class="figure">3,204.75</span></div>
+            <div><span class="metric-label">Return</span><span class="figure up">+113.65%</span></div>
+          </div>
+          <span class="muted" style="font-size: 11px">Settled on the opening print; the stock was halted after peaking near +198%.</span>
+        </article>
+
       </div>
+
+      <p class="muted" style="font-size: 11px; margin: 12px 0 0">
+        Company facts, dates and prices are drawn from public reporting on the 2026 IPO
+        calendar. Allocations and ROI terms are this desk's own. Balances here are simulated
+        and nothing on this page is a securities offering or a transferable instrument.
+      </p>
     </details>
   </section>
 
@@ -276,13 +375,11 @@
      mockup takes zero. */
   const SKEW_MS = 0;
 
+  const pad = (n) => String(n).padStart(2, '0');
   const parts = (ms) => {
     const s = Math.max(0, Math.floor(ms / 1000));
     const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
-    const m = Math.floor((s % 3600) / 60), sec = s % 60;
-    const pad = (n) => String(n).padStart(2, '0');
-    return d > 0 ? d + 'd ' + pad(h) + ':' + pad(m) + ':' + pad(sec)
-                 : pad(h) + ':' + pad(m) + ':' + pad(sec);
+    return (d > 0 ? d + 'd ' : '') + pad(h) + ':' + pad(Math.floor((s % 3600) / 60)) + ':' + pad(s % 60);
   };
 
   const nodes = [...document.querySelectorAll('[data-until]')];
@@ -294,7 +391,7 @@
     for (const n of nodes) {
       const left = new Date(n.dataset.until).getTime() - now;
       /* At zero the card re-reads rather than assuming: an offering whose window just closed
-         should refetch and show the state the server agrees to, not flip to one it invented. */
+         should refetch and show the state the server agrees to, not one it invented. */
       n.textContent = left <= 0 ? 'refreshing…' : parts(left);
     }
   }
