@@ -496,7 +496,13 @@ const WHY: Record<string, string> = {
   other: 'Anything the desk has asked you for by name.',
 };
 
-export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canUpload: boolean }) {
+export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
+  clientId: string;
+  canUpload: boolean;
+  /** Staff uploading for a client rather than a client uploading their own. Same form and
+   *  the same route — the panel only stops addressing the reader as the document's owner. */
+  onBehalf?: boolean;
+}) {
   const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
   const [kind, setKind] = useState('id_front');
   const [file, setFile] = useState<File | null>(null);
@@ -599,7 +605,13 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
 
       {canUpload && (
         <div className={`${card} space-y-3`}>
-          <h2 className="section-title">Upload</h2>
+          <h2 className="section-title">{onBehalf ? 'Upload for this client' : 'Upload'}</h2>
+          {onBehalf && (
+            <p className="text-xs text-slate-ink">
+              Filed against their record exactly as their own upload would be: it lands on
+              their timeline, and an identity document moves them to pending verification.
+            </p>
+          )}
 
           {/* A drop target that is also a file picker: dragging is the fast path and the
               click is the one that works on a phone and with a keyboard. */}
@@ -648,9 +660,11 @@ export function DocumentsPanel({ clientId, canUpload }: { clientId: string; canU
               to find and then remember to set. */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-baseline gap-3">
-              <h3 className="section-title">What else you can send</h3>
+              <h3 className="section-title">{onBehalf ? 'What else can be filed' : 'What else you can send'}</h3>
               <span className="text-xs text-slate-ink">
-                none of these are required — they answer questions before the desk has to ask
+                {onBehalf
+                  ? 'none of these are required — they answer questions before they have to be asked'
+                  : 'none of these are required — they answer questions before the desk has to ask'}
               </span>
             </div>
 

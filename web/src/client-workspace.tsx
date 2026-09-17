@@ -58,6 +58,9 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
   const tickets = useApi<Ticket[]>(`/tickets?client_id=${id}`);
   const admin = me?.role === 'admin';
   const compliance = me?.role === 'compliance' || admin;
+  // The roles the server grants crm:write, which is what uploading for a client needs.
+  // Compliance reviews documents but does not file them, so it is deliberately not here.
+  const canWrite = me?.role === 'sales' || me?.role === 'support' || admin;
 
   if (client.error) return <p role="alert" className={`${alertBox} `}>{client.error}</p>;
   if (!client.data) return <p className="text-sm text-slate-ink">Loading…</p>;
@@ -89,7 +92,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
         {tab === 'assets' && <Assets id={id} h={holdings.data} admin={admin} onChanged={refresh} />}
         {tab === 'trading' && <Trading id={id} c={c} h={holdings.data} admin={admin} onChanged={refresh} />}
         {tab === 'funding' && <Funding id={id} h={holdings.data} compliance={compliance} onChanged={refresh} />}
-        {tab === 'documents' && <DocumentsPanel clientId={id} canUpload={false} />}
+        {tab === 'documents' && <DocumentsPanel clientId={id} canUpload={canWrite} onBehalf />}
         {tab === 'tickets' && <Tickets rows={tickets.data ?? []} />}
         {tab === 'activity' && <ActivityTab id={id} />}
         {tab === 'audit' && <AuditTab id={id} />}
