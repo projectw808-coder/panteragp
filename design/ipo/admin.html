@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPO offerings — desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 24px 64px; }
+  .cols { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; align-items: start; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .form-grid .wide { grid-column: 1 / -1; }
+  label { display: block; }
+  label .metric-label { display: block; margin-bottom: 5px; }
+  .friction {
+    border-left: 2px solid var(--color-ember);
+    padding: 8px 0 8px 10px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--color-ember) 7%, transparent);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+  .statuses { display: flex; flex-wrap: wrap; gap: 8px; }
+  .raise-cell { min-width: 132px; }
+  .raise-cell .bar-track { margin-top: 5px; }
+  @media (max-width: 980px) {
+    .cols { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<button class="btn btn-ghost btn-sm theme-toggle focus-ring" onclick="document.documentElement.classList.toggle('dark')">Theme</button>
+
+<div class="wrap stack">
+
+  <div class="row" style="justify-content: space-between; flex-wrap: wrap; gap: 12px">
+    <h1 class="page-title">IPO offerings</h1>
+    <button class="btn focus-ring">New offering</button>
+  </div>
+
+  <!-- The desk list shows drafts too; the client list never does. Raised-against-target,
+       subscriber count and the three dates are the columns the desk actually reads. -->
+  <section class="card" style="padding: 0; overflow: hidden">
+    <table class="book">
+      <thead>
+        <tr>
+          <th>Offering</th>
+          <th>Status</th>
+          <th>Raised</th>
+          <th>Subs</th>
+          <th>ROI</th>
+          <th>Opens</th>
+          <th>Closes</th>
+          <th>Matures</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="font-weight: 500">Helios Grid — Series B</strong><div class="muted" style="font-size: 11px">HGRID · USD</div></td>
+          <td><span class="chip chip-live">Open</span></td>
+          <td class="raise-cell">
+            <span class="tnum" style="font-size: 12px">612,400 / 1,000,000</span>
+            <div class="bar-track"><span class="bar-x" style="width: 61%"></span></div>
+          </td>
+          <td class="tnum">148</td>
+          <td class="tnum">7.25%</td>
+          <td class="muted tnum" style="font-size: 12px">17 Sep</td>
+          <td class="muted tnum" style="font-size: 12px">24 Sep</td>
+          <td class="muted tnum" style="font-size: 12px">23 Mar</td>
+          <td><button class="btn btn-ghost btn-sm focus-ring">Edit</button></td>
+        </tr>
+        <tr>
+          <td><strong style="font-weight: 500">Northwind Freight II</strong><div class="muted" style="font-size: 11px">NWF · USD</div></td>
+          <td><span class="chip chip-live">Open</span></td>
+          <td class="raise-cell">
+            <span class="tnum" style="font-size: 12px">95,000 / 400,000</span>
+            <div class="bar-track"><span class="bar-x" style="width: 24%"></span></div>
+          </td>
+          <td class="tnum">31</td>
+          <td class="tnum">5.40%</td>
+          <td class="muted tnum" style="font-size: 12px">12 Sep</td>
+          <td class="muted tnum" style="font-size: 12px">02 Oct</td>
+          <td class="muted tnum" style="font-size: 12px">31 Dec</td>
+          <td><button class="btn btn-ghost btn-sm focus-ring">Edit</button></td>
+        </tr>
+        <tr>
+          <td><strong style="font-weight: 500">Orchard Water Rights</strong><div class="muted" style="font-size: 11px">ORC · USD</div></td>
+          <td><span class="chip">Upcoming</span></td>
+          <td class="raise-cell">
+            <span class="tnum" style="font-size: 12px">0 / 2,500,000</span>
+            <div class="bar-track"><span class="bar-x" style="width: 0%"></span></div>
+          </td>
+          <td class="tnum">0</td>
+          <td class="tnum">6.10%</td>
+          <td class="muted tnum" style="font-size: 12px">29 Sep</td>
+          <td class="muted tnum" style="font-size: 12px">20 Oct</td>
+          <td class="muted tnum" style="font-size: 12px">20 Oct 27</td>
+          <td><button class="btn btn-ghost btn-sm focus-ring">Edit</button></td>
+        </tr>
+        <tr>
+          <td><strong style="font-weight: 500">Helios Grid — Series A</strong><div class="muted" style="font-size: 11px">HGRID · USD</div></td>
+          <td><span class="chip chip-live">Active</span></td>
+          <td class="raise-cell">
+            <span class="tnum" style="font-size: 12px">1,000,000 / 1,000,000</span>
+            <div class="bar-track"><span class="bar-x" style="width: 100%"></span></div>
+          </td>
+          <td class="tnum">402</td>
+          <td class="tnum">7.25%</td>
+          <td class="muted tnum" style="font-size: 12px">02 Mar</td>
+          <td class="muted tnum" style="font-size: 12px">16 Mar</td>
+          <td class="muted tnum" style="font-size: 12px">14 Mar</td>
+          <td><button class="btn btn-ghost btn-sm focus-ring">Edit</button></td>
+        </tr>
+        <tr>
+          <td><strong style="font-weight: 500">Cinder Lane Retail II</strong><div class="muted" style="font-size: 11px">CLR · GBP</div></td>
+          <!-- Draft is desk-only and invisible to clients. -->
+          <td><span class="chip">Draft</span></td>
+          <td class="raise-cell muted" style="font-size: 12px">—</td>
+          <td class="tnum muted">0</td>
+          <td class="tnum">4.80%</td>
+          <td class="muted tnum" style="font-size: 12px">—</td>
+          <td class="muted tnum" style="font-size: 12px">—</td>
+          <td class="muted tnum" style="font-size: 12px">—</td>
+          <td><button class="btn btn-ghost btn-sm focus-ring">Edit</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="cols">
+
+    <!-- Edit form. Every input labelled. Rate and ROI sit behind admin rather than crm:write:
+         changing the ROI on a live offering changes what every subscriber is paid. -->
+    <form class="card tile grain stack" style="position: relative" onsubmit="return false">
+      <span class="tile-corner"></span>
+      <div class="row" style="justify-content: space-between">
+        <span class="section-title">Edit — Helios Grid Series B</span>
+        <span class="chip chip-live">Open</span>
+      </div>
+
+      <div class="form-grid">
+        <label class="wide"><span class="metric-label">Name</span>
+          <input class="field" value="Helios Grid — Series B"></label>
+        <label class="wide"><span class="metric-label">Summary</span>
+          <input class="field" value="Solar capacity across three sites, paying from metered output."></label>
+        <label class="wide"><span class="metric-label">Description</span>
+          <textarea class="field" rows="3">Helios Grid Series B funds three metered solar installations already under contract.</textarea></label>
+
+        <label><span class="metric-label">Asset</span><input class="field" value="HGRID"></label>
+        <label><span class="metric-label">Currency</span>
+          <select class="field"><option>USD — US Dollar</option><option>GBP — Pound Sterling</option></select></label>
+
+        <label><span class="metric-label">Target amount</span><input class="field tnum" value="1000000"></label>
+        <label><span class="metric-label">Minimum subscription</span><input class="field tnum" value="500"></label>
+        <label><span class="metric-label">Maximum subscription</span><input class="field tnum" placeholder="none"></label>
+        <label><span class="metric-label">Term (days)</span><input class="field tnum" value="180"></label>
+
+        <label><span class="metric-label">ROI rate</span>
+          <input class="field tnum" value="7.25"><span class="muted" style="font-size: 11px">% a year</span></label>
+        <label><span class="metric-label">Picture</span>
+          <input class="field" type="file" accept="image/jpeg,image/png,image/webp"><span class="muted" style="font-size: 11px">JPEG, PNG or WebP, up to 5 MB</span></label>
+
+        <label><span class="metric-label">Opens at</span><input class="field" type="datetime-local" value="2026-09-17T09:00"></label>
+        <label><span class="metric-label">Closes at</span><input class="field" type="datetime-local" value="2026-09-24T16:00"></label>
+        <label><span class="metric-label">Matures at</span><input class="field" type="datetime-local" value="2027-03-23T16:00"></label>
+      </div>
+
+      <!-- A number that silently changes what people are paid deserves a sentence of
+           friction, so the form says how many it affects and from when. -->
+      <p class="friction">
+        Changing the ROI affects <strong>148 subscribers</strong> holding
+        <strong>612,400 USD</strong>. The new rate applies from tomorrow's accrual; nothing
+        already credited is recalculated. Subscribers with an agreed override keep it.
+      </p>
+
+      <div class="statuses">
+        <button class="btn focus-ring">Save</button>
+        <button class="btn btn-ghost focus-ring">Settle early</button>
+        <button class="btn btn-ghost focus-ring">Cancel offering</button>
+      </div>
+      <p class="muted" style="font-size: 11px; margin: 0">
+        Cancelling refunds every active subscription in full, at the amount originally
+        debited. Settling early pays principal plus accrued to date.
+      </p>
+    </form>
+
+    <!-- The book. Effective rate is the per-client one, which never appears on a client
+         screen — the headline ROI is public, an override is not. -->
+    <section class="card stack">
+      <div class="row" style="justify-content: space-between">
+        <span class="section-title">Book</span>
+        <span class="muted" style="font-size: 11px">148 subscribers · 612,400 USD</span>
+      </div>
+      <table class="book">
+        <thead><tr><th>Client</th><th>Amount</th><th>Effective</th><th>When</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Aoife Brennan<div class="muted" style="font-size: 11px">tier: premier</div></td>
+            <td class="tnum">50,000</td>
+            <td class="tnum">8.10% <span class="chip" style="margin-left: 4px">agreed</span></td>
+            <td class="muted tnum" style="font-size: 12px">17 Sep</td>
+            <td><button class="btn btn-ghost btn-sm focus-ring">Override</button></td>
+          </tr>
+          <tr>
+            <td>Demo Client<div class="muted" style="font-size: 11px">tier: standard</div></td>
+            <td class="tnum">5,000</td>
+            <td class="tnum">7.25%</td>
+            <td class="muted tnum" style="font-size: 12px">17 Sep</td>
+            <td><button class="btn btn-ghost btn-sm focus-ring">Override</button></td>
+          </tr>
+          <tr>
+            <td>Tomas K. Lindqvist<div class="muted" style="font-size: 11px">tier: standard</div></td>
+            <td class="tnum">1,200</td>
+            <td class="tnum">7.25%</td>
+            <td class="muted tnum" style="font-size: 12px">18 Sep</td>
+            <td><button class="btn btn-ghost btn-sm focus-ring">Override</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted" style="font-size: 11px; margin: 0">
+        An override is the desk's agreement with one client and stays desk-side. Setting one
+        needs funds:credit and lands on that client's timeline.
+      </p>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

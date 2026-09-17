@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPO offerings — client</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 24px 24px 64px; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px;
+          padding: 3px 10px; background: color-mix(in srgb, var(--ink-quiet) 14%, transparent);
+          font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .live i { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-up); }
+
+  /* Running sits above everything: money already working is not history. */
+  .holding { display: grid; grid-template-columns: 1fr auto auto auto; gap: 20px; align-items: center; }
+  .holding + .holding { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+
+  .shelf { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .offer { display: grid; gap: 10px; }
+  .offer h3 { margin: 0; font-size: 14px; font-weight: 500; }
+  .offer .summary { font-size: 12px; color: var(--ink-quiet); margin: 0; }
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .raise { display: flex; justify-content: space-between; font-size: 11px; }
+
+  details.finished { border-top: 1px solid var(--line); padding-top: 14px; }
+  details.finished summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+  details.finished summary::-webkit-details-marker { display: none; }
+  details.finished summary::after {
+    content: "›"; font-family: var(--font-mono); color: var(--color-ember-ink);
+    transition: transform 0.2s var(--ease-enter);
+  }
+  details.finished[open] summary::after { transform: rotate(90deg); }
+
+  @media (max-width: 900px) { .shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 620px) {
+    .wrap { padding: 16px 16px 48px; }
+    .shelf { grid-template-columns: 1fr; }
+    .holding { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<button class="btn btn-ghost btn-sm theme-toggle focus-ring" onclick="document.documentElement.classList.toggle('dark')">Theme</button>
+
+<div class="wrap stack">
+
+  <div class="head">
+    <h1 class="page-title">IPO offerings</h1>
+    <span class="live"><i></i> Live</span>
+  </div>
+
+  <!-- RUNNING. The brief is explicit that active must not be filed under finished: a client
+       with money working in an offering needs it prominent. So it leads the page, and it is
+       the only group that shows what the client personally has in and has earned. -->
+  <section class="stack">
+    <span class="section-title">Running</span>
+    <div class="card tile grain" style="position: relative">
+      <span class="tile-corner"></span>
+
+      <div class="holding">
+        <div>
+          <div class="row" style="gap: 8px">
+            <strong style="font-weight: 500">Helios Grid — Series A</strong>
+            <span class="chip chip-live">Active</span>
+          </div>
+          <p class="summary" style="margin: 2px 0 0">Tokenised solar capacity. 180-day term, matures 14 Mar 2027.</p>
+        </div>
+        <div>
+          <span class="metric-label">Subscribed</span>
+          <div class="figure" style="font-size: 18px">5,000<span class="muted" style="font-size: 12px"> USD</span></div>
+        </div>
+        <div>
+          <span class="metric-label">Earned</span>
+          <div class="figure up" style="font-size: 18px">+128.44</div>
+        </div>
+        <div>
+          <span class="metric-label">Matures in</span>
+          <div class="countdown" data-until="2027-03-14T09:00:00Z">—</div>
+        </div>
+      </div>
+
+      <div class="holding">
+        <div>
+          <div class="row" style="gap: 8px">
+            <strong style="font-weight: 500">Northwind Freight</strong>
+            <span class="chip chip-live">Active</span>
+          </div>
+          <p class="summary" style="margin: 2px 0 0">Logistics receivables. 90-day term, matures 2 Dec.</p>
+        </div>
+        <div>
+          <span class="metric-label">Subscribed</span>
+          <div class="figure" style="font-size: 18px">1,200<span class="muted" style="font-size: 12px"> USD</span></div>
+        </div>
+        <div>
+          <span class="metric-label">Earned</span>
+          <div class="figure up" style="font-size: 18px">+9.07</div>
+        </div>
+        <div>
+          <span class="metric-label">Matures in</span>
+          <div class="countdown" data-until="2026-12-02T09:00:00Z">—</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INCOMING = upcoming + open. The ROI is shown here on purpose: portfolio and staking
+       rates were hidden from client screens because an agreed rate is the desk's, but an
+       offering's ROI is its public pitch and the thing being decided on. A per-client
+       override stays desk-side and never appears on this page. -->
+  <section class="stack">
+    <div class="row" style="justify-content: space-between">
+      <span class="section-title">Incoming</span>
+      <span class="muted" style="font-size: 11px">annual ROI, paid daily on what you put in</span>
+    </div>
+
+    <div class="shelf">
+
+      <article class="card tile lift grain offer" tabindex="0">
+        <span class="tile-corner"></span>
+        <div class="shot">
+          <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <circle cx="248" cy="52" r="20"/>
+            <path d="M0 148c34 0 52-34 88-34s44 34 80 34 48-22 68-22 52 12 84 12"/>
+            <path d="M0 162h320" opacity=".4"/>
+          </svg>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="chip chip-asset">HGRID</span>
+          <span class="chip chip-live">Open</span>
+        </div>
+        <h3>Helios Grid — Series B</h3>
+        <p class="summary">Solar capacity across three sites, paying from metered output.</p>
+        <div class="facts">
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">7.25%</div></div>
+          <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">180d</div></div>
+          <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">500</div></div>
+        </div>
+        <div>
+          <div class="raise"><span class="muted">Raised</span><span class="tnum">612,400 / 1,000,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="61% of target raised">
+            <span class="bar-x" style="width: 61%"></span>
+          </div>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="metric-label">Closes in</span>
+          <span class="countdown" data-until="2026-09-24T16:00:00Z">—</span>
+        </div>
+      </article>
+
+      <article class="card tile lift grain offer" tabindex="0">
+        <span class="tile-corner"></span>
+        <div class="shot">
+          <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <rect x="40" y="96" width="46" height="56"/>
+            <rect x="100" y="66" width="46" height="86"/>
+            <rect x="160" y="112" width="46" height="40"/>
+            <rect x="220" y="80" width="46" height="72"/>
+            <path d="M0 162h320" opacity=".4"/>
+          </svg>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="chip chip-asset">NWF</span>
+          <span class="chip chip-live">Open</span>
+        </div>
+        <h3>Northwind Freight II</h3>
+        <p class="summary">Short-dated logistics receivables from a single counterparty.</p>
+        <div class="facts">
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">5.40%</div></div>
+          <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">90d</div></div>
+          <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">250</div></div>
+        </div>
+        <div>
+          <div class="raise"><span class="muted">Raised</span><span class="tnum">95,000 / 400,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="24% of target raised">
+            <span class="bar-x" style="width: 24%"></span>
+          </div>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="metric-label">Closes in</span>
+          <span class="countdown" data-until="2026-10-02T16:00:00Z">—</span>
+        </div>
+      </article>
+
+      <!-- Upcoming is announced and visible but takes no money: the action is disabled and
+           says why, rather than being absent and leaving the card looking broken. -->
+      <article class="card tile lift grain offer" tabindex="0">
+        <span class="tile-corner"></span>
+        <div class="shot">
+          <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <path d="M160 40 108 96h104L160 40Z"/>
+            <path d="M108 104h104L160 152 108 104Z" opacity=".55"/>
+          </svg>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="chip chip-asset">ORC</span>
+          <span class="chip">Upcoming</span>
+        </div>
+        <h3>Orchard Water Rights</h3>
+        <p class="summary">Long-dated water entitlements in a regulated basin.</p>
+        <div class="facts">
+          <div><span class="metric-label">ROI</span><div class="figure" style="color: var(--color-ember-ink); font-size: 20px">6.10%</div></div>
+          <div><span class="metric-label">Term</span><div class="figure" style="font-size: 14px">365d</div></div>
+          <div><span class="metric-label">Min</span><div class="figure" style="font-size: 14px">1,000</div></div>
+        </div>
+        <div>
+          <div class="raise"><span class="muted">Target</span><span class="tnum">2,500,000 USD</span></div>
+          <div class="bar-track" style="margin-top: 5px" role="img" aria-label="not yet open">
+            <span class="bar-x" style="width: 0%"></span>
+          </div>
+        </div>
+        <div class="row" style="justify-content: space-between">
+          <span class="metric-label">Opens in</span>
+          <span class="countdown" data-until="2026-09-29T09:00:00Z">—</span>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- FINISHED, collapsed: a completed offering is a record, not a decision. -->
+  <section>
+    <details class="finished">
+      <summary>
+        <span class="section-title">Finished</span>
+        <span class="muted" style="font-size: 11px">2 completed · 1 cancelled</span>
+      </summary>
+      <div class="card" style="margin-top: 12px">
+        <table class="book">
+          <thead><tr><th>Offering</th><th>Subscribed</th><th>Returned</th><th>Outcome</th><th>Settled</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Helios Grid — Pilot</td>
+              <td class="tnum">2,000 USD</td>
+              <td class="tnum up">2,146.30 USD</td>
+              <td><span class="chip">Completed</span></td>
+              <td class="muted tnum">12 Jun 2026</td>
+            </tr>
+            <tr>
+              <td>Meridian Bridge</td>
+              <td class="tnum">750 USD</td>
+              <td class="tnum up">781.05 USD</td>
+              <td><span class="chip">Completed</span></td>
+              <td class="muted tnum">3 Apr 2026</td>
+            </tr>
+            <tr>
+              <td>Cinder Lane Retail</td>
+              <td class="tnum">1,500 USD</td>
+              <td class="tnum">1,500.00 USD</td>
+              <td><span class="chip">Cancelled</span></td>
+              <td class="muted tnum">18 Feb 2026</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size: 11px; margin: 10px 0 0">
+          A cancelled offering returns exactly what was taken — never a figure recomputed from a rate.
+        </p>
+      </div>
+    </details>
+  </section>
+
+</div>
+
+<script>
+  /* ONE ticker for the page, not one per card — a dozen intervals in a dozen components is
+     how a list of offerings becomes a warm laptop.
+     Time is the server's: the API sends absolute ISO timestamps and the page measures the
+     offset between server and local clock once, then renders every countdown against the
+     corrected clock. A skewed browser must never make an offering look open. The timer is a
+     display and never an authorisation — the server re-checks the window on subscribe.
+     In the real page the offset comes from a Date header or a field on the payload; the
+     mockup takes zero. */
+  const SKEW_MS = 0;
+
+  const parts = (ms) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return d > 0 ? d + 'd ' + pad(h) + ':' + pad(m) + ':' + pad(sec)
+                 : pad(h) + ':' + pad(m) + ':' + pad(sec);
+  };
+
+  const nodes = [...document.querySelectorAll('[data-until]')];
+  /* aria-live off: a value changing every second must not be announced every second. */
+  nodes.forEach((n) => n.setAttribute('aria-live', 'off'));
+
+  function tick() {
+    const now = Date.now() + SKEW_MS;
+    for (const n of nodes) {
+      const left = new Date(n.dataset.until).getTime() - now;
+      /* At zero the card re-reads rather than assuming: an offering whose window just closed
+         should refetch and show the state the server agrees to, not flip to one it invented. */
+      n.textContent = left <= 0 ? 'refreshing…' : parts(left);
+    }
+  }
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

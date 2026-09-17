@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helios Grid — Series B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 24px 24px 64px; }
+  .back { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+          text-transform: uppercase; color: var(--ink-quiet); text-decoration: none; }
+  .back:hover { color: var(--ink); }
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
+  .hero { aspect-ratio: 21 / 9; }
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .prose { font-size: 13px; line-height: 1.65; color: var(--ink-quiet); }
+  .prose p { margin: 0 0 10px; }
+  .dates { display: grid; gap: 8px; }
+  .dates div { display: flex; justify-content: space-between; font-size: 12px; }
+  .note { border-left: 2px solid color-mix(in srgb, var(--color-ember) 55%, transparent);
+          padding-left: 10px; font-size: 12px; color: var(--ink-quiet); }
+  label { display: block; }
+  @media (max-width: 860px) {
+    .cols { grid-template-columns: 1fr; }
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<button class="btn btn-ghost btn-sm theme-toggle focus-ring" onclick="document.documentElement.classList.toggle('dark')">Theme</button>
+
+<div class="wrap stack">
+
+  <a class="back" href="client.html">‹ All offerings</a>
+
+  <div class="row" style="gap: 12px; flex-wrap: wrap">
+    <h1 class="page-title">Helios Grid — Series B</h1>
+    <span class="chip chip-live">Open</span>
+    <span class="chip chip-asset">HGRID</span>
+  </div>
+
+  <div class="cols">
+
+    <div class="stack">
+      <div class="shot hero">
+        <!-- alt lives on the real <img>; the placeholder is decorative and hidden from AT.
+             A null image_key renders this frame rather than a broken image. -->
+        <svg viewBox="0 0 420 180" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <circle cx="330" cy="48" r="22"/>
+          <path d="M0 150c44 0 68-36 116-36s58 36 106 36 62-24 88-24 68 12 110 12"/>
+          <path d="M0 164h420" opacity=".4"/>
+        </svg>
+      </div>
+
+      <div class="card tile grain" style="position: relative">
+        <span class="tile-corner"></span>
+        <div class="facts">
+          <div>
+            <span class="metric-label">ROI</span>
+            <div class="figure" style="color: var(--color-ember-ink); font-size: 24px">7.25%</div>
+            <span class="muted" style="font-size: 11px">a year, credited daily</span>
+          </div>
+          <div>
+            <span class="metric-label">Term</span>
+            <div class="figure" style="font-size: 24px">180<span style="font-size: 13px"> days</span></div>
+            <span class="muted" style="font-size: 11px">from close to maturity</span>
+          </div>
+          <div>
+            <span class="metric-label">Minimum</span>
+            <div class="figure" style="font-size: 24px">500</div>
+            <span class="muted" style="font-size: 11px">USD, no maximum</span>
+          </div>
+          <div>
+            <span class="metric-label">Raised</span>
+            <div class="figure" style="font-size: 24px">61<span style="font-size: 13px">%</span></div>
+            <span class="muted" style="font-size: 11px">612,400 of 1,000,000</span>
+          </div>
+        </div>
+        <div class="bar-track" style="margin-top: 14px" role="img" aria-label="61% of target raised">
+          <span class="bar-x" style="width: 61%"></span>
+        </div>
+      </div>
+
+      <div class="card stack">
+        <span class="section-title">About this offering</span>
+        <div class="prose">
+          <p>Helios Grid Series B funds three metered solar installations already under
+          contract. Returns are paid from output measured at the meter rather than from a
+          forecast, and the term runs 180 days from the day the book closes.</p>
+          <p>Allocation is first come, first served. A subscription that would take the book
+          past its target is refused with the amount still available, rather than scaled
+          back — there is no pro-rata.</p>
+        </div>
+        <!-- The line the brief insists on: ship the mechanism, leave the claim unmade. -->
+        <p class="note">
+          Demonstration offering on simulated balances. Nothing here is a securities
+          offering, a prospectus, or a transferable instrument.
+        </p>
+      </div>
+    </div>
+
+    <div class="stack">
+
+      <!-- Subscribe. Labels, not placeholders. The window and the cap are re-checked on the
+           server regardless of what this form believes. -->
+      <form class="card tile grain stack" style="position: relative" onsubmit="return false">
+        <span class="tile-corner"></span>
+        <span class="section-title">Subscribe</span>
+
+        <div class="row" style="justify-content: space-between">
+          <span class="metric-label">Closes in</span>
+          <span class="countdown" data-until="2026-09-24T16:00:00Z">—</span>
+        </div>
+
+        <label>
+          <span class="metric-label">Amount</span>
+          <input class="field" style="margin-top: 5px" type="number" value="5000" min="500" step="any" inputmode="decimal">
+        </label>
+
+        <div style="display: flex; justify-content: space-between; font-size: 12px">
+          <span class="muted">You hold</span>
+          <span class="tnum">44,445.00 USD</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px">
+          <span class="muted">Still available in this offering</span>
+          <span class="tnum">387,600 USD</span>
+        </div>
+
+        <button class="btn focus-ring" type="submit">Subscribe 5,000 USD</button>
+        <p class="muted" style="font-size: 11px; margin: 0">
+          Taken from your USD balance when you subscribe, not at close. ROI accrues daily
+          once the offering goes active; principal and return come back at maturity.
+        </p>
+      </form>
+
+      <!-- KYC gate. The brief calls unverified investment money the single most obvious
+           compliance failure this feature could ship with, so the refusal points somewhere
+           rather than being a bare 403. Shown here in its blocked state. -->
+      <div class="card stack" style="border-color: color-mix(in srgb, var(--color-ember) 40%, transparent)">
+        <span class="section-title">Verification needed</span>
+        <p style="font-size: 12px; margin: 0; color: var(--ink-quiet)">
+          Subscriptions are open to verified accounts. Your identity documents are with the
+          desk and usually clear within a day.
+        </p>
+        <a class="btn btn-ghost btn-sm focus-ring" href="#" style="justify-self: start; text-decoration: none">Open verification</a>
+      </div>
+
+      <div class="card stack">
+        <span class="section-title">Dates</span>
+        <div class="dates">
+          <div><span class="muted">Opened</span><span class="tnum">17 Sep 2026, 09:00</span></div>
+          <div><span class="muted">Closes</span><span class="tnum">24 Sep 2026, 16:00</span></div>
+          <div><span class="muted">Matures</span><span class="tnum">23 Mar 2027, 16:00</span></div>
+        </div>
+        <p class="muted" style="font-size: 11px; margin: 0">
+          Times are the desk's, shown in your local zone. Accrual stops at maturity even if
+          settlement lands later.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  /* Same single ticker as the list page, against the server-corrected clock. */
+  const SKEW_MS = 0;
+  const pad = (n) => String(n).padStart(2, '0');
+  const parts = (ms) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+    return (d > 0 ? d + 'd ' : '') + pad(h) + ':' + pad(Math.floor((s % 3600) / 60)) + ':' + pad(s % 60);
+  };
+  const nodes = [...document.querySelectorAll('[data-until]')];
+  nodes.forEach((n) => n.setAttribute('aria-live', 'off'));
+  const tick = () => {
+    const now = Date.now() + SKEW_MS;
+    for (const n of nodes) {
+      const left = new Date(n.dataset.until).getTime() - now;
+      n.textContent = left <= 0 ? 'refreshing…' : parts(left);
+    }
+  };
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

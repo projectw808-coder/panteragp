@@ -1,0 +1,310 @@
+/* IPO screens — design mockups.
+ *
+ * Tokens and materials lifted from web/src/index.css so these screens speak the product's
+ * own language rather than a new one. Plain CSS rather than Tailwind because a mockup should
+ * open in a browser with nothing built; the real screens use the utility classes these
+ * mirror. Values are copied, not re-picked — if they ever drift, index.css wins.
+ *
+ * Terminal (dark) is the default, because that is what the product ships on. The toggle in
+ * the corner carries the light theme through, as the brief asks.
+ */
+
+:root {
+  --color-ember: #ff7817;
+  --color-ember-ink: #9a4000;
+  --color-vellum: #ffffff;
+  --color-obsidian: #18181b;
+  --color-graphite: #000000;
+  --color-pebble: #e5e7eb;
+  --color-bone: #ebebeb;
+  --color-slate-ink: #66666e;
+  --color-up: #116a32;
+  --color-down: #af1b1b;
+
+  --font-display: "Playfair Display", ui-serif, Georgia, serif;
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Surfaces named by job, so a page never reaches for a raw colour. */
+  --ground: var(--color-vellum);
+  --panel: var(--color-bone);
+  --panel-raised: #f4f4f5;
+  --ink: var(--color-obsidian);
+  --ink-quiet: var(--color-slate-ink);
+  --line: var(--color-pebble);
+}
+
+html.dark {
+  --color-ember-ink: #ff7817;
+  --color-up: #2cba60;
+  --color-down: #ff4d4f;
+  --ground: var(--color-obsidian);
+  --panel: rgba(255, 255, 255, 0.05);
+  --panel-raised: rgba(255, 255, 255, 0.08);
+  --ink: var(--color-vellum);
+  --ink-quiet: #8b8690;
+  --line: rgba(255, 255, 255, 0.1);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The one place the serif is allowed: 28px and up. */
+.page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.section-title::before {
+  content: "";
+  flex: none;
+  width: 2px;
+  height: 11px;
+  background: var(--color-ember);
+}
+
+.metric-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-quiet);
+}
+
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* Flat surfaces, no drop shadows ever. Depth comes from tonal layering only. */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.tile { position: relative; overflow: hidden; transition: border-color 0.2s; }
+
+.tile::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 2px;
+  width: 0;
+  background: var(--color-ember);
+  transition: width 0.4s var(--ease-enter);
+}
+
+.tile:hover::after { width: 100%; }
+
+/* Two hairlines meeting, so a panel reads as a bracketed readout, not a rounded box. */
+.tile-corner {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid color-mix(in srgb, var(--color-ember) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-ember) 60%, transparent);
+}
+
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.lift { transition: transform 0.25s var(--ease-enter), border-color 0.25s; }
+
+.lift:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-ember) 40%, transparent);
+}
+
+/* Progress toward a target. Grows once, on arrival, never on refresh. */
+.bar-track {
+  height: 3px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ink-quiet) 22%, transparent);
+  overflow: hidden;
+}
+
+.bar-x {
+  display: block;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--color-ember);
+  transform-origin: left;
+  animation: bar-widen 0.8s var(--ease-enter) both;
+}
+
+@keyframes bar-widen { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* A status is neutral by rule: ember is for the frame and the one thing asking for
+   attention, and up/down are reserved for money that moved. A status is neither. */
+.chip {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--ink-quiet) 16%, transparent);
+  color: var(--ink-quiet);
+}
+
+.chip-live {
+  background: color-mix(in srgb, var(--color-ember) 18%, transparent);
+  color: var(--color-ember-ink);
+}
+
+.chip-asset {
+  background: color-mix(in srgb, var(--color-ember) 15%, transparent);
+  color: var(--color-ember-ink);
+}
+
+.chip-up { background: color-mix(in srgb, var(--color-up) 14%, transparent); color: var(--color-up); }
+
+html.dark .chip-up { background: rgb(0 0 0 / 0.28); }
+
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
+
+/* Buttons are pills; inputs take md, because a pill text field reads as a search box. */
+.btn {
+  border: 0;
+  border-radius: 9999px;
+  padding: 9px 18px;
+  background: var(--color-ember);
+  color: var(--color-graphite);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:hover { filter: brightness(1.1); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-quiet);
+  border: 1px solid var(--line);
+}
+
+.btn-ghost:hover {
+  filter: none;
+  border-color: color-mix(in srgb, var(--color-ember) 50%, transparent);
+  color: var(--ink);
+}
+
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+.field {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.field:focus-visible { outline: 2px solid var(--color-ember); outline-offset: 2px; }
+
+.focus-ring:focus-visible { outline: 2px solid var(--color-ember); outline-offset: 2px; }
+
+/* The countdown. aria-live is off by design: a value changing every second must not be
+   announced every second. */
+.countdown {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--color-ember-ink);
+}
+
+/* Offering imagery. Obviously a placeholder rather than a broken image, drawn in the
+   system's own materials. Real artwork replaces the svg, not the frame. */
+.shot {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 90% at 18% 8%, color-mix(in srgb, var(--color-ember) 20%, transparent), transparent 62%),
+    var(--panel-raised);
+}
+
+.shot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: color-mix(in srgb, var(--color-ember) 55%, transparent);
+}
+
+.theme-toggle { position: fixed; right: 16px; top: 16px; z-index: 10; }
+
+.muted { color: var(--ink-quiet); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.grid { display: grid; gap: 12px; }
+.stack { display: grid; gap: 16px; }
+
+table.book { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.book th {
+  text-align: left;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-quiet);
+  border-bottom: 1px solid var(--line);
+}
+table.book td { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+table.book tr:last-child td { border-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-x { animation: none; }
+  .tile::after, .lift { transition: none; }
+}
