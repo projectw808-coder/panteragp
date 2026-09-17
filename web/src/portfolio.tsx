@@ -270,15 +270,6 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
 
         <span className="ml-auto flex items-center gap-6">
           <span className="text-right">
-            <span className="metric-label block">Return</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
-              {p.indicative_rate === null ? '—' : pct(p.indicative_rate)}
-            </span>
-            {p.rate_override !== null && (
-              <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">agreed</span>
-            )}
-          </span>
-          <span className="text-right">
             <span className="metric-label block">Earned</span>
             <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-up">
               {Number(p.earned) > 0 ? `+${money(p.earned, p.currency)}` : `0 ${p.currency}`}

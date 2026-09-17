@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { alertBox, card, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
-import { price, result, tone } from './format.ts';
+import { price } from './format.ts';
 import { clear, getLines, isRunning, onLines, setSymbols, start, stop, type Line } from './auto-trader-store.ts';
 
 /**
@@ -158,7 +158,7 @@ export function AutoTraderView() {
                     from a list of rows. */}
                 <tr className="border-b border-pebble dark:border-white/10">
                   {([['Side', false], ['Instrument', false], ['Size', true],
-                     ['Price', true], ['Result', true], ['Time', true]] as const).map(([h, num]) => (
+                     ['Price', true], ['Time', true]] as const).map(([h, num]) => (
                     <th key={h} className={`metric-label px-2 py-2 font-normal ${num ? 'text-right' : 'text-left'}`}>
                       {h}
                     </th>
@@ -182,9 +182,6 @@ export function AutoTraderView() {
                     <td className="px-2 py-1.5 font-medium">{l.symbol}</td>
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums text-slate-ink">{l.qty}</td>
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums">{price(l.price)}</td>
-                    <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${tone(l.pnl)}`}>
-                      {result(l.pnl)}
-                    </td>
                     <td className="px-2 py-1.5 text-right font-mono text-xs text-slate-ink">{clock(l.at)}</td>
                   </tr>
                 ))}

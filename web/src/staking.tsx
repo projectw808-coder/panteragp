@@ -126,15 +126,6 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
 
         <span className="ml-auto flex items-center gap-6">
           <span className="text-right">
-            <span className="metric-label block">Rate</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-ember-ink">
-              {pct(s.apy)}
-            </span>
-            {s.apy_override !== null && (
-              <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">agreed</span>
-            )}
-          </span>
-          <span className="text-right">
             <span className="metric-label block">Staked</span>
             <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
               {num(s.amount)} {s.asset}
