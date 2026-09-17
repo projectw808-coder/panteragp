@@ -1692,9 +1692,14 @@ app.get('/cash', { preHandler: auth() }, async (req: any, reply) => {
   }
   const clientId = req.principal.kind === 'client' ? req.principal.sub : q.client_id;
   if (!clientId) return [];
+  // The currency comes from the account the movement landed in. Without it a caller can
+  // only add the amounts up, and amounts in different currencies do not add up — a
+  // 100 GBP deposit and a 100 USD one are not 200 of anything.
   const { rows } = await pool.query(
-    `SELECT id, kind, amount, status, created_at FROM cash_transactions
-      WHERE client_id = $1 ORDER BY created_at DESC LIMIT 200`, [clientId]);
+    `SELECT t.id, t.kind, t.amount, t.status, t.created_at, a.currency
+       FROM cash_transactions t
+       JOIN trading_accounts a ON a.id = t.account_id
+      WHERE t.client_id = $1 ORDER BY t.created_at DESC LIMIT 200`, [clientId]);
   return rows;
 });
 

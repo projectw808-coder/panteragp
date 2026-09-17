@@ -15,7 +15,12 @@ type Flag = {
   id: number; client_id: string; client_name: string; rule: string;
   severity: 'low' | 'medium' | 'high'; details: Record<string, unknown>; raised_at: string;
 };
-type Cash = { id: number; kind: string; amount: number; status: string; created_at: string };
+type Cash = {
+  id: number; kind: string; amount: number; status: string; created_at: string;
+  // The account the movement landed in decides this. An amount without it is a number
+  // the reader has to guess the units of.
+  currency: string;
+};
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 const pretty = (s: string) => s.replace(/_/g, ' ');
@@ -799,7 +804,7 @@ export function FundingPanel() {
             <tr key={t.id} className="border-t border-pebble dark:border-white/10">
               <td className="px-3 py-1.5 text-slate-ink">{when(t.created_at)}</td>
               <td className="px-3 py-1.5">{t.kind}</td>
-              <td className="px-3 py-1.5 tabular-nums">{t.amount}</td>
+              <td className="px-3 py-1.5 tabular-nums">{t.amount} {t.currency}</td>
               <td className={`px-3 py-1.5 ${STATUS[t.status] ?? ''}`}>{t.status}</td>
             </tr>
           ))}

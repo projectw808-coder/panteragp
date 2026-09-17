@@ -15,7 +15,7 @@ import { useCountUp, useTick } from './count-up.ts';
  */
 
 type Held = { balance: number; usd_value: number | null };
-type Cash = { kind: string; amount: number; status: string };
+type Cash = { kind: string; amount: number; status: string; currency: string };
 type Account = { balance: number; equity: number; unrealized: number; currency: string };
 
 export type Accounts = {
@@ -62,6 +62,25 @@ export function held(a: Accounts) {
 /** The pot the client asked to keep an eye on, if they have picked one. */
 const featured = (a: Accounts) => a.portfolios.find((p) => p.featured) ?? null;
 
+/**
+ * What has been paid in, per currency.
+ *
+ * Per currency and not a single figure, because there is no single figure to give. This
+ * used to sum every deposit's raw amount and print the result with a dollar sign, so a
+ * client who paid in 100 GBP was told they had deposited $100 — not a conversion, just the
+ * wrong label on the wrong sum. Money is only added to money in the same currency, and
+ * converting on the client's behalf would invent a rate they never agreed to.
+ */
+function paidIn(cash: Cash[]) {
+  const by = new Map<string, number>();
+  for (const t of cash) {
+    if (t.kind !== 'deposit') continue;
+    if (t.status !== 'approved' && t.status !== 'settled') continue;
+    by.set(t.currency, (by.get(t.currency) ?? 0) + Number(t.amount));
+  }
+  return [...by].filter(([, n]) => n !== 0).sort((x, y) => x[0].localeCompare(y[0]));
+}
+
 /** What is locked in staking, per asset, for the strip's own line. */
 function staked(a: Accounts) {
   const by = new Map<string, number>();
@@ -85,9 +104,7 @@ export function BalanceBar() {
   const a = accounts.data;
   if (!a) return null;
   const rows = held(a);
-  const deposits = (cash.data ?? [])
-    .filter((t) => t.kind === 'deposit' && (t.status === 'approved' || t.status === 'settled'))
-    .reduce((n, t) => n + Number(t.amount), 0);
+  const deposits = paidIn(cash.data ?? []);
   const open = Number(account.data?.unrealized ?? 0);
 
   return (
@@ -125,12 +142,16 @@ export function BalanceBar() {
 
       {/* Deposits come from settled cash in rather than from the balance: the balance has
           trading in it, and somebody who paid in 10,000 and is down 2,000 has still paid
-          in 10,000. */}
+          in 10,000. Each currency stands on its own — see paidIn. */}
       <span className="ml-auto flex flex-wrap items-baseline gap-x-6 gap-y-2">
-        <span className="flex items-baseline gap-1.5">
-          <span className="bal-label">Deposits</span>
-          <span className="bal-value">{usd(deposits)}</span>
-        </span>
+        {!!deposits.length && (
+          <span className="flex items-baseline gap-1.5">
+            <span className="bal-label">Deposits</span>
+            <span className="bal-value">
+              {deposits.map(([code, n]) => `${amount(n)} ${code}`).join(' · ')}
+            </span>
+          </span>
+        )}
         <span className="flex items-baseline gap-1.5">
           <span className="bal-label">Open P&amp;L</span>
           <span className={`bal-value ${
