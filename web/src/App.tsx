@@ -19,6 +19,8 @@ import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
 import { Landing } from './landing.tsx';
+import { IposPanel } from './ipos.tsx';
+import { IposAdmin } from './ipos-admin.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -297,6 +299,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/tasks', 'Tasks', crm],
     ['#/compliance', 'Compliance', !!compliance],
     ['#/staking', 'Staking', crm],
+    ['#/ipos', 'IPO offerings', crm],
     ['#/requests', 'Requests', crm],
     // Support is the same route to two different things. For staff it is a queue they
     // work, so it sits among the work; for a client it is "get hold of us", which belongs
@@ -308,6 +311,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/trade', 'Auto trader', trading],
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
+    ['#/ipos', 'IPO offerings', trading],
     ['#/wallet', 'Connect wallet', trading],
     // Documents, support, settings: the account tail, after the things a client came here
     // to do. Staff keep their own Settings at the very end of their own rail.
@@ -384,6 +388,10 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/staking' ? (crm ? <StakingAdmin />
             : trading
               ? <div className="mx-auto max-w-3xl"><StakingPanel /></div>
+              : <Denied />)
+          : hash === '/ipos' ? (crm ? <IposAdmin admin={!!admin} />
+            : trading
+              ? <div className='mx-auto max-w-5xl'><IposPanel /></div>
               : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)

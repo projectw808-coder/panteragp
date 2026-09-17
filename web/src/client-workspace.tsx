@@ -6,6 +6,7 @@ import { CreditForm, DepositForm, PnlForm } from './wallet.tsx';
 import { CopyButton } from './copy.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
+import { IposPanel } from './ipos.tsx';
 import { ResetPassword } from './settings.tsx';
 
 type Holdings = {
@@ -399,6 +400,7 @@ function Assets({ id, h, admin, onChanged }: {
         </Table>
       )}
       {admin && <StakingPanel clientId={id} onChanged={onChanged} />}
+      {admin && <IposPanel clientId={id} onChanged={onChanged} />}
       {admin
         ? <PortfoliosPanel clientId={id} onChanged={onChanged} />
         : !!h.portfolios.length && (
