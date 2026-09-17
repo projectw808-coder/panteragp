@@ -81,6 +81,27 @@ function paidIn(cash: Cash[]) {
   return [...by].filter(([, n]) => n !== 0).sort((x, y) => x[0].localeCompare(y[0]));
 }
 
+/**
+ * The headline total, in the unit it is actually in.
+ *
+ * Converting is what a total is for when there is more than one currency: a single figure
+ * needs a common one, and `unpriced` already names anything the rate table could not value.
+ * With exactly one currency there is nothing to reconcile, and converting invented a number
+ * the client never held — 222 GBP shown as $281.01, at a rate nobody agreed to and which
+ * moves on its own. So one currency is reported as itself. USD is already the common unit,
+ * so it keeps the symbol rather than reading "222 USD".
+ */
+function headline(a: Accounts): { value: number; format: (n: number) => string } {
+  const rows = held(a);
+  if (rows.length !== 1) return { value: Number(a.total_usd), format: usd };
+  const [code, n] = rows[0];
+  if (code === 'USD') return { value: n, format: usd };
+  return { value: n, format: (x) => `${amount(x)} ${code}` };
+}
+
+/** True while the total is a conversion, and so while its caveats are worth printing. */
+const converting = (a: Accounts) => held(a).length > 1;
+
 /** What is locked in staking, per asset, for the strip's own line. */
 function staked(a: Accounts) {
   const by = new Map<string, number>();
@@ -161,7 +182,7 @@ export function BalanceBar() {
         </span>
         <span className="flex items-baseline gap-2">
           <span className="bal-label">Total</span>
-          <Total value={a.total_usd} />
+          <Total {...headline(a)} />
         </span>
       </span>
     </div>
@@ -188,10 +209,14 @@ export function BalancePanel() {
           ))}
         <div className="ml-auto text-right">
           <dt className="metric-label">Total</dt>
-          <dd className="font-mono text-xl font-medium tabular-nums text-ember-ink">{usd(a.total_usd)}</dd>
+          <dd className="font-mono text-xl font-medium tabular-nums text-ember-ink">
+            {headline(a).format(headline(a).value)}
+          </dd>
         </div>
       </dl>
-      {!!a.unpriced.length && (
+      {/* Only while the total is a conversion. On a single currency it is that currency,
+          so there is nothing it could have left out. */}
+      {converting(a) && !!a.unpriced.length && (
         <p className="text-xs text-slate-ink">
           Total excludes {a.unpriced.join(', ')} — no price source for it.
         </p>
@@ -207,7 +232,7 @@ export function BalancePanel() {
  * the accounts are still loading, and a hook after an early return is a hook that runs on
  * some renders and not others.
  */
-function Total({ value }: { value: number }) {
+function Total({ value, format }: { value: number; format: (n: number) => string }) {
   const shown = useCountUp(Number(value));
   // The one figure on the page that gets the full treatment: it counts up when it first
   // lands, carries the gradient, and flashes the direction it moved on every change after.
@@ -215,7 +240,7 @@ function Total({ value }: { value: number }) {
   if (shown === null) return <span className="skeleton bal-value inline-block h-4 w-24" />;
   return (
     <span className={`bal-value bal-total hero-figure ${direction ? `tick-${direction}` : ''}`}>
-      {usd(shown)}
+      {format(shown)}
     </span>
   );
 }
