@@ -17,6 +17,12 @@ import { token } from './api.ts';
  * `key` is any value that changes when the picture does — `image_key` for an offering,
  * `avatar_key` for a client. It is what makes this refetch after an upload; without it the
  * effect would not re-run and the old picture would stay on screen.
+ *
+ * It must also be IN `path`, as a query parameter. Re-running the effect is not enough on
+ * its own: the response carries `max-age`, so a refetch of the same URL is answered from the
+ * browser's cache with the picture that was just replaced. That shipped — a replaced picture
+ * kept showing the old one for a day, which reads exactly like an upload that did not work.
+ * The key in the URL is what makes it a different request.
  */
 export function useAuthedImage(path: string | null, key: string | null | undefined) {
   const [src, setSrc] = useState<string | null>(null);

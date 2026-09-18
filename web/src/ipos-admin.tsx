@@ -179,7 +179,7 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
   // The picture as stored, fetched with the token — an <img src> pointed at the API carries
   // no Authorization header and comes back 401.
   const stored = useAuthedImage(
-    ipo?.has_image ? `/api/ipos/${ipo.id}/image` : null, ipo?.image_key);
+    ipo?.has_image ? `/api/ipos/${ipo.id}/image?v=${ipo.image_key}` : null, ipo?.image_key);
 
   // A file picked but not yet saved previews from the browser, so the desk sees the crop it
   // is about to commit rather than the one it is replacing.

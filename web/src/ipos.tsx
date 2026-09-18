@@ -459,7 +459,7 @@ function Done({ ipo }: { ipo: Ipo }) {
 function Picture({ ipo }: { ipo: Ipo }) {
   // Fetched with the token rather than pointed at by an <img src>, which cannot carry one.
   const { src } = useAuthedImage(
-    ipo.has_image ? `/api/ipos/${ipo.id}/image` : null, ipo.image_key);
+    ipo.has_image ? `/api/ipos/${ipo.id}/image?v=${ipo.image_key}` : null, ipo.image_key);
   const tint = markTint(ipo.asset);
   return (
     // The frame's wash takes the offering's own colour, so a card is found by its colour
