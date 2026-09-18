@@ -1904,6 +1904,62 @@ await step('the picture refuses a disallowed type and an oversized file', async 
   assert.equal(await status(`/ipos/${deal.id}/image`, { token: T }), 200);
 });
 
+await step('a picture is stored whole, and the list does not carry it', async () => {
+  const deal = await offering();
+  // Recognisable bytes, so "it came back" means these bytes and not merely some bytes.
+  const sent = Uint8Array.from({ length: 512 }, (_, i) => (i * 7 + 3) % 256);
+  const form = new FormData();
+  form.append('file', new Blob([sent], { type: 'image/webp' }), 'shot.webp');
+  assert.equal((await fetch(`${B}/admin/ipos/${deal.id}/image`, {
+    method: 'POST', headers: { authorization: `Bearer ${A}` }, body: form,
+  })).status, 200);
+
+  const back = await fetch(`${B}/ipos/${deal.id}/image`, { headers: { authorization: `Bearer ${T}` } });
+  assert.equal(back.headers.get('content-type'), 'image/webp', 'the type it was uploaded as');
+  assert.deepEqual(new Uint8Array(await back.arrayBuffer()), sent,
+    'the picture that came back is not the one that went in');
+
+  // The bytes live with the record now rather than on a disk the next deploy replaces. The
+  // cost of that is a column a careless `SELECT *` would put in every list, so: it must not
+  // be in one. A five-megabyte picture on each of a dozen cards is the failure this guards.
+  const list = await get('/ipos', { token: T });
+  const shown = list.find((i) => i.id === deal.id);
+  assert.equal(shown.has_image, true, 'the card does not know it has a picture');
+  assert.ok(!('image_data' in shown), 'the picture is riding along in the list payload');
+  assert.ok(!('image_type' in shown), 'the picture type is riding along in the list payload');
+
+  // Replacing one leaves exactly one, and it is the new one.
+  const second = Uint8Array.from({ length: 300 }, (_, i) => (i * 11) % 256);
+  const form2 = new FormData();
+  form2.append('file', new Blob([second], { type: 'image/png' }), 'new.png');
+  await fetch(`${B}/admin/ipos/${deal.id}/image`, {
+    method: 'POST', headers: { authorization: `Bearer ${A}` }, body: form2,
+  });
+  const replaced = await fetch(`${B}/ipos/${deal.id}/image`, { headers: { authorization: `Bearer ${T}` } });
+  assert.deepEqual(new Uint8Array(await replaced.arrayBuffer()), second, 'the old picture is still being served');
+});
+
+await step('the valuation is the desk’s to set, and reaches the client', async () => {
+  const deal = await offering({ valuation: '$14.6bn' });
+  assert.equal((await get(`/ipos/${deal.id}`, { token: T })).valuation, '$14.6bn');
+
+  const edited = await get(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH', body: { valuation: '$30bn' },
+  });
+  assert.equal(edited.valuation, '$30bn');
+  assert.equal((await get(`/ipos/${deal.id}`, { token: T })).valuation, '$30bn');
+
+  // Free text, but not unbounded: it is printed on a card.
+  assert.equal(await status(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH', body: { valuation: 'x'.repeat(61) },
+  }), 400, 'a valuation longer than the field allows was accepted');
+
+  // Clearing it is allowed — not every offering has a figure worth printing.
+  assert.equal((await get(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH', body: { valuation: null },
+  })).valuation, null);
+});
+
 await step('an allocation reaches the desk-side holdings and the timeline', async () => {
   const deal = await offering();
   await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 250 } });

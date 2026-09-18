@@ -361,3 +361,80 @@ BEGIN
              FOR EACH ROW EXECUTE FUNCTION touch()';
   END IF;
 END $do$;
+
+-- The valuation the deal is being talked about at — "$2tn", "$165-175bn". Text rather than a
+-- number because that is how it is reported and how the desk wants to print it: a range, an
+-- "above", an "up to". Nothing computes with it, so nothing needs it parsed.
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS valuation text;
+
+-- The offering's picture, in the row rather than on the filesystem, for the reason the
+-- avatar moved there: this deploys to a container whose disk is replaced on every release,
+-- so a file written at upload is gone by the next one. A picture that vanishes when the desk
+-- ships is worse than no picture, because nobody finds out until a client is looking at it.
+-- Capped at 5 MB and one per offering, so it is small enough to live with the record.
+-- image_key stays as the cache-busting token the page keys its fetch on, and to find the
+-- handful of pictures uploaded to disk before this.
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS image_data bytea;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS image_type text;
+
+-- The 2026 calendar, seeded the way instruments are: reference data that has to reach
+-- deployments which already exist, so it runs every start and does nothing the second time.
+-- ON CONFLICT DO NOTHING rather than DO UPDATE on purpose — once the desk has edited an
+-- offering, a deploy must not quietly put its own numbers back.
+--
+-- Dates are absolute and the lifecycle is computed from them, so these move through the
+-- groups on their own: what is incoming today is running in a month and finished after that,
+-- with no deploy and nobody clicking. Company facts and valuations are from public reporting
+-- on the 2026 calendar; the ROI, term, minimum and allocation are the desk's own terms.
+INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
+                  target_amount, min_subscription, roi_rate, term_days,
+                  opens_at, closes_at, matures_at, status, sort_order)
+VALUES
+  ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
+   'Filed confidentially on 1 June 2026; listing has shifted to mid-October on Nasdaq. Bankers are floating up to $2tn, which would top SpaceX.',
+   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026. Lead underwriters are reported as Morgan Stanley, Goldman Sachs and JPMorgan.',
+   '$2tn', 10000000, 500, 0.0725, 180,
+   '2026-09-11T09:00:00Z', '2026-10-09T16:00:00Z', '2027-04-07T16:00:00Z', 'upcoming', 1),
+
+  ('nscale-2026', 'Nscale', 'NSCL', 'USD',
+   'London-founded GPU data-centre operator leasing compute on multi-year contracts, flagship campus in Narvik. The most imminent of the group.',
+   'A March 2026 Series C valued it at $14.6bn; a later convertible round carried a $30bn conversion cap. Contracted backlog has swelled to $103bn.',
+   '$30bn', 3000000, 250, 0.0910, 90,
+   '2026-09-15T09:00:00Z', '2026-09-26T16:00:00Z', '2026-12-25T16:00:00Z', 'upcoming', 2),
+
+  ('openai-2026', 'OpenAI', 'OAI', 'USD',
+   'S-1 submitted confidentially around 22 May 2026 and confirmed publicly on 8 June, seeking above $1tn. A September window was targeted.',
+   'Reports point to a possible slip into 2027. Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters.',
+   '$1tn+', 25000000, 1000, 0.0640, 365,
+   '2026-09-29T09:00:00Z', '2026-10-27T16:00:00Z', '2027-10-27T16:00:00Z', 'upcoming', 3),
+
+  ('databricks-2026', 'Databricks', 'DBX', 'USD',
+   'Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with fresh talks at $165-175bn.',
+   'No S-1 has been filed. The CEO has called 2026 a terrible year to go public, pointing instead at 2027.',
+   '$175bn', 12000000, 1000, 0.0580, 365,
+   '2026-11-02T09:00:00Z', '2026-12-02T16:00:00Z', '2027-12-02T16:00:00Z', 'upcoming', 4),
+
+  ('spacex-2026', 'SpaceX', 'SPCX', 'USD',
+   'The largest IPO in history: priced at $135 on 11 June 2026 and listed on Nasdaq the next day, raising $86bn with the greenshoe at a $1.77tn valuation.',
+   'The listing values Starlink and Starship together. The raise topped Saudi Aramco''s 2019 record.',
+   '$1.77tn', 20000000, 500, 0.0725, 180,
+   '2026-06-01T09:00:00Z', '2026-06-12T16:00:00Z', '2026-12-09T16:00:00Z', 'upcoming', 5),
+
+  ('crne-2026', 'China Resources New Energy', 'CRNE', 'USD',
+   'Asia''s biggest IPO of 2026 and the largest ever on Shenzhen: a wind and solar developer spun out of China Resources Power, raising 24.5bn yuan.',
+   'Listed on the Shenzhen exchange on 3 July 2026 after a book covered many times over.',
+   'CNY 24.5bn raise', 8000000, 500, 0.0610, 90,
+   '2026-06-22T09:00:00Z', '2026-07-03T16:00:00Z', '2026-10-01T16:00:00Z', 'upcoming', 6),
+
+  ('sk-hynix-2026', 'SK hynix', 'SKHY', 'USD',
+   'The largest US listing ever by a non-American company, topping Alibaba''s 2014 raise. 177.9m ADSs at $149 on 10 July 2026, raising $26.5bn.',
+   'The book was reported seven times oversubscribed, driven by HBM memory demand.',
+   '$26.5bn raise', 6000000, 500, 0.0540, 60,
+   '2026-07-01T09:00:00Z', '2026-07-10T16:00:00Z', '2026-09-08T16:00:00Z', 'completed', 7),
+
+  ('cerebras-2026', 'Cerebras Systems', 'CBRS', 'USD',
+   'The year''s first blockbuster tech listing: wafer-scale AI inference chips, 2025 revenue $510m and a swing to profit. Priced at $185 on 14 May 2026.',
+   'The range was raised twice before pricing. The stock opened at $385 against the $185 offer.',
+   '$8.1bn', 4000000, 500, 0.0840, 90,
+   '2026-05-05T09:00:00Z', '2026-05-14T16:00:00Z', '2026-08-12T16:00:00Z', 'completed', 8)
+ON CONFLICT (slug) DO NOTHING;

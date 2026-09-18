@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { IpoMark } from './ipo-art.tsx';
 import { useCountUp } from './count-up.ts';
 
 /**
@@ -26,6 +27,7 @@ type Ipo = {
   id: string; slug: string; name: string; summary: string; description: string | null;
   asset: string; currency: string; target_amount: number; min_subscription: number;
   max_subscription: number | null; roi_rate: number; term_days: number;
+  valuation: string | null;
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; group: Group; raised: number; remaining: number; progress: number | null;
   has_image: boolean; server_time: string;
@@ -34,7 +36,7 @@ type Ipo = {
 
 type On = { client_id?: string };
 
-const pct = (n: number) => `${Number((n * 100).toFixed(2))}%`;
+const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
 /** Money, to the minor unit. The database keeps eighteen decimals; a reader wants two. */
 const fixed = (n: number) =>
@@ -44,6 +46,19 @@ const money = (n: number, ccy: string) =>
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, {
   day: 'numeric', month: 'short', year: 'numeric',
 });
+/**
+ * Which day of the term a running offering is on.
+ *
+ * Counted from the close, because that is the day the money started working and the day the
+ * accrual runs from — not from whenever the client happened to subscribe. Clamped into the
+ * term at both ends so a settlement running late reads "180 of 180" rather than "183 of 180".
+ */
+function dayOfTerm(closesAt: string | null, termDays: number, clock: number): number | null {
+  if (!closesAt) return null;
+  const elapsed = Math.floor((clock - new Date(closesAt).getTime()) / 86400000);
+  return Math.min(Math.max(elapsed, 0), termDays);
+}
+
 const term = (days: number) => (days >= 365 && days % 365 === 0
   ? `${days / 365} year${days === 365 ? '' : 's'}` : `${days} days`);
 
@@ -107,6 +122,24 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boundary]);
 
+  /**
+   * What the finished group is worth saying in one line.
+   *
+   * The money figure only appears when the client actually had something in these, and it
+   * counts settled positions only — a cancelled offering refunded exactly what it took, so
+   * folding it in would report nothing as if it were something. With no positions at all it
+   * falls back to a count, because "0.00 returned above capital" reads as a loss.
+   */
+  const closedOut = useMemo(() => {
+    const settled = groups.finished.filter((i) => i.subscription?.status === 'settled');
+    const earned = settled.reduce((t, i) => t + Number(i.subscription!.accrued), 0);
+    const ccy = settled[0]?.subscription!.currency;
+    const matured = `${settled.length || groups.finished.length} ${settled.length ? 'matured' : 'closed out'}`;
+    return settled.length && earned > 0
+      ? `${matured} · +${fixed(earned)} ${ccy} returned above capital`
+      : matured;
+  }, [groups.finished]);
+
   const refresh = () => { rows.reload(); onChanged?.(); };
 
   if (rows.error) return <p role="alert" className={alertBox}>{rows.error}</p>;
@@ -115,6 +148,11 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>IPO offerings</PageTitle>
+        {/* Live means the page is ticking against the server's clock, not that any one
+            offering is open — the per-card status says that. */}
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-ink/10 px-2.5 py-0.5 font-mono text-[10px] tracking-[0.14em] uppercase dark:bg-white/10">
+          <i className="block size-1.5 rounded-full bg-up" aria-hidden />Live
+        </span>
         {!clientId && (
           <span className="text-xs text-slate-ink">
             subscribe with money you hold — ROI is credited daily and paid at maturity
@@ -163,13 +201,21 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
               <details open className="border-t border-pebble pt-3 dark:border-white/10">
                 <summary className="flex cursor-pointer flex-wrap items-center gap-3">
                   <span className="section-title">Finished projects</span>
-                  <span className="text-xs text-slate-ink">
-                    {groups.finished.length} closed out
-                  </span>
+                  <span className="text-xs text-slate-ink">{closedOut}</span>
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {groups.finished.map((i) => <Done key={i.id} ipo={i} />)}
                 </div>
+                {/* Where the company facts come from, and — more to the point — what the
+                    return on these cards is and is not. Somebody reading a finished deal is
+                    the most likely person to assume it tracked the share price. */}
+                <p className="mt-3 text-xs text-slate-ink">
+                  Company facts, dates and prices are drawn from public reporting on the 2026
+                  IPO calendar. Allocations, ROI rates and terms are this desk's own, and the
+                  return shown is the ROI accrued over the term rather than any movement in
+                  the share price. Balances here are simulated and nothing on this page is a
+                  securities offering or a transferable instrument.
+                </p>
               </details>
             </section>
           )}
@@ -183,6 +229,7 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
 function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolean }) {
   const mine = ipo.subscription;
   const left = ipo.matures_at ? new Date(ipo.matures_at).getTime() - clock : null;
+  const elapsed = dayOfTerm(ipo.closes_at, ipo.term_days, clock);
   return (
     <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${
       first ? '' : 'mt-3 border-t border-pebble pt-3 dark:border-white/10'}`}>
@@ -195,7 +242,9 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
         </span>
         <span className="mt-0.5 block text-xs text-slate-ink">
           {pct(ipo.roi_rate)} over {term(ipo.term_days)}
-          {ipo.matures_at && ` · matures ${day(ipo.matures_at)}`}
+          {ipo.closes_at && `, from the ${day(ipo.closes_at)} listing`}
+          {elapsed !== null && `. Day ${elapsed} of ${ipo.term_days}`}
+          {ipo.matures_at && ` — matures ${day(ipo.matures_at)}`}
         </span>
       </span>
       {mine ? (
@@ -257,11 +306,11 @@ function Offer({ ipo, on, clock, onDone, staff }: {
       <h3 className="text-sm font-medium">{ipo.name}</h3>
       <p className="text-xs text-slate-ink">{ipo.summary}</p>
 
-      <dl className="grid grid-cols-3 gap-2">
+      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-4' : 'grid-cols-3'}`}>
         <div>
           <dt className="metric-label">ROI</dt>
           <dd className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
-            {shown === null ? '—' : `${Number(shown.toFixed(2))}%`}
+            {shown === null ? '—' : `${shown.toFixed(2)}%`}
           </dd>
         </div>
         <div>
@@ -274,6 +323,14 @@ function Offer({ ipo, on, clock, onDone, staff }: {
             {num(ipo.min_subscription)}
           </dd>
         </div>
+        {/* The valuation the deal is talked about at. Absent on an offering the desk has not
+            given one, and the grid closes up rather than leaving a labelled hole. */}
+        {ipo.valuation && (
+          <div>
+            <dt className="metric-label">Valuation</dt>
+            <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.valuation}</dd>
+          </div>
+        )}
       </dl>
 
       <div>
@@ -338,6 +395,9 @@ function Done({ ipo }: { ipo: Ipo }) {
         </span>
       </div>
       <h3 className="text-sm font-medium">{ipo.name}</h3>
+      {/* The company, not just the terms: a settled deal is a record of what it was, and the
+          summary is the only thing on the card that says what the business does. */}
+      <p className="text-xs text-slate-ink">{ipo.summary}</p>
       <p className="text-xs text-slate-ink">
         {pct(ipo.roi_rate)} over {term(ipo.term_days)}
         {ipo.matures_at && ` · ${cancelled ? 'withdrawn' : 'matured'} ${day(ipo.matures_at)}`}
@@ -356,10 +416,13 @@ function Done({ ipo }: { ipo: Ipo }) {
           </div>
           <div>
             <dt className="metric-label">Return</dt>
-            {/* A cancellation is not a loss and is not coloured like one: nothing was
+            {/* As a percentage of what went in, which is the figure that compares across two
+                deals of different sizes — 21.71 on 2,500 and 20.09 on 1,000 are not ranked
+                the way the amounts suggest.
+                A cancellation is not a loss and is not coloured like one: nothing was
                 earned and nothing was lost. */}
             <dd className={`font-mono text-sm font-medium tabular-nums ${cancelled ? 'text-slate-ink' : 'text-up'}`}>
-              {cancelled ? '0.00' : `+${fixed(mine.accrued)}`}
+              {cancelled ? '0.00%' : `+${((Number(mine.accrued) / Number(mine.amount)) * 100).toFixed(2)}%`}
             </dd>
           </div>
         </dl>
@@ -367,33 +430,34 @@ function Done({ ipo }: { ipo: Ipo }) {
         <p className="text-xs text-slate-ink">You had nothing in this one.</p>
       )}
       <p className="text-xs text-slate-ink">
-        {cancelled
-          ? 'Refunded at exactly the amount debited, never a figure recomputed from a rate.'
-          : 'Principal and accrued ROI were paid to your balance.'}
+        {!mine
+          ? 'Subscribers were paid principal and accrued ROI when it matured.'
+          : cancelled
+            ? 'Refunded at exactly the amount debited, never a figure recomputed from a rate.'
+            : 'Principal and accrued ROI were paid to your balance.'}
       </p>
     </article>
   );
 }
 
 /** The offering's picture, or a mark in its place so a half-prepared one is not broken. */
+/**
+ * The offering's uploaded picture, or its drawn mark when there is none.
+ *
+ * Falling back on an error as well as on has_image matters more than it looks: a picture
+ * uploaded before pictures moved into the database may have gone with the container it was
+ * written to, and a card that degrades to its mark is better than one with a broken image
+ * in it. Nothing here tells the client which of the two they are looking at.
+ */
 function Picture({ ipo }: { ipo: Ipo }) {
   const [failed, setFailed] = useState(false);
-  if (!ipo.has_image || failed) {
-    return (
-      <span className="grid aspect-video place-items-center overflow-hidden rounded-md border border-pebble bg-bone/60 text-ember-ink dark:border-white/10 dark:bg-white/5"
-        aria-hidden>
-        <svg width="48" height="48" viewBox="0 0 44 44" fill="none" stroke="currentColor"
-          strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity="0.55">
-          <path d="M6 32V18M15 32V10M24 32v-9M33 32V14" />
-          <path d="M4 36h36" opacity="0.4" />
-        </svg>
-      </span>
-    );
-  }
   return (
-    <img className="aspect-video w-full rounded-md border border-pebble object-cover dark:border-white/10"
-      src={`/api/ipos/${ipo.id}/image`} alt={ipo.name} loading="lazy"
-      onError={() => setFailed(true)} />
+    <span className="shot block">
+      {ipo.has_image && !failed
+        ? <img src={`/api/ipos/${ipo.id}/image`} alt={ipo.name} loading="lazy"
+            onError={() => setFailed(true)} />
+        : <IpoMark asset={ipo.asset} />}
+    </span>
   );
 }
 

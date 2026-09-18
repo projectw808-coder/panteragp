@@ -14,6 +14,7 @@ import { api, token, useApi } from './api.ts';
 type Ipo = {
   id: string; slug: string; name: string; summary: string; description: string | null;
   asset: string; currency: string; target_amount: number; min_subscription: number;
+  valuation: string | null;
   max_subscription: number | null; roi_rate: number; term_days: number;
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; stored_status: string; group: string; sort_order: number;
@@ -27,7 +28,8 @@ type Sub = {
   roi_override: number | null; effective_rate: number; offering_rate: number;
 };
 
-const pct = (n: number | null) => (n === null ? '—' : `${Number((n * 100).toFixed(2))}%`);
+/** Both decimals, so a rate reads the same here as it does on the client page. */
+const pct = (n: number | null) => (n === null ? '—' : `${(n * 100).toFixed(2)}%`);
 const num = (n: number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 8 });
 // The year is not optional here. A 365-day term puts the close and the maturity on the
 // same day and month twelve months apart, which read as identical without it.
@@ -158,6 +160,15 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fiat = (currencies.data ?? []).filter((c) => c.kind === 'fiat');
+  /**
+   * Controlled rather than defaultValue, because the options arrive after the mount.
+   *
+   * The list is fetched, so the first render has none of it. An uncontrolled select mounted
+   * empty has nothing for defaultValue to match, and when the options do arrive the browser
+   * leaves it on the first one — which is AED. Opening a USD offering and saving it without
+   * touching the currency would have changed what its subscribers pay in.
+   */
+  const [currency, setCurrency] = useState(ipo?.currency ?? 'USD');
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -169,7 +180,7 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
     const body: Record<string, unknown> = {
       slug: str('slug'), name: str('name'), summary: str('summary'),
       description: str('description') ?? null,
-      asset: str('asset'), currency: str('currency'),
+      asset: str('asset'), currency: str('currency'), valuation: str('valuation') ?? null,
       target_amount: num_('target_amount'), min_subscription: num_('min_subscription') ?? 0,
       max_subscription: num_('max_subscription') ?? null,
       roi_rate: num_('roi_rate'), term_days: num_('term_days'),
@@ -237,9 +248,20 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
           <input name="asset" required maxLength={20} defaultValue={ipo?.asset} className={`${field} w-full`} />
         </Labelled>
         <Labelled label="Currency">
-          <select name="currency" defaultValue={ipo?.currency ?? 'USD'} className={`${field} w-full`}>
+          <select name="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}
+            className={`${field} w-full`}>
+            {/* The offering's own currency stays selectable while the list is loading, so
+                the field never shows something the offering is not. */}
+            {!fiat.some((c) => c.code === currency) && <option value={currency}>{currency}</option>}
             {fiat.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
           </select>
+        </Labelled>
+        {/* Free text and shown to clients as typed. A valuation is reported as a range or an
+            approximation as often as a number, and forcing it into one would mean choosing a
+            figure the reporting did not. */}
+        <Labelled label="Valuation">
+          <input name="valuation" maxLength={60} defaultValue={ipo?.valuation ?? ''}
+            placeholder="$2tn, $165-175bn, none" className={`${field} w-full`} />
         </Labelled>
 
         <Labelled label="Target amount">

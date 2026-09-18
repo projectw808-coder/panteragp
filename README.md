@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 125 acceptance checks against the running stack
+    npm run test:e2e # 127 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -281,6 +281,41 @@ paying. It stops at `matures_at`: settling a week late pays the term, not the de
 
 It rides the same hourly sweep as portfolio interest and staking, and
 `POST /admin/accrue-ipos` re-runs it by hand. Being idempotent, a double-click costs nothing.
+
+### The shelf it starts with
+
+The 2026 calendar ships seeded, the way `instruments.sql` does: reference data has to reach
+deployments that already exist, so it runs on every start and does nothing the second time.
+It is `ON CONFLICT DO NOTHING` rather than `DO UPDATE` deliberately — once the desk has
+edited an offering, a deploy must not quietly put its own numbers back.
+
+Because the lifecycle is computed from the dates, these move through the groups on their
+own: what is incoming today is running in a month and finished after that, with no deploy
+and nobody clicking. Company facts and valuations are from public reporting; the ROI, term,
+minimum and allocation are the desk's own terms and are not claimed to be anybody else's.
+
+Every field is editable from the desk afterwards, including the picture and the valuation —
+free text, because a valuation is reported as a range or an approximation (`$165-175bn`,
+`$1tn+`) as often as a number, and forcing it into one would mean choosing a figure the
+reporting did not.
+
+### Pictures live in the row
+
+An offering's picture is a `bytea` on `ipos`, not a file, for the reason the profile photo
+moved there first: this deploys to a container whose filesystem is replaced on every
+release, so a file written at upload is gone by the next one and the card silently loses its
+picture. Nobody finds out until a client is looking at it. In the row it is as permanent as
+the offering, it reaches every instance without shared storage, and it is in whatever backs
+the database up.
+
+The cost is a column a careless `SELECT *` would put into every list, so `ipoSelect` names
+its columns instead and the list carries `has_image`, a boolean. There is an acceptance check
+for exactly that, because five megabytes on each of a dozen cards is the failure this invites.
+
+`image_key` survives as the cache-busting token the page keys its fetch on — it changes on
+every upload, which is what makes a browser holding the old picture go and ask for the new
+one — and to find the handful of pictures written to disk before the move, which are still
+served from there if the deploy that replaced the filesystem has not got to them first.
 
 ### Who may do what
 
