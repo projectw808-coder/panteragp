@@ -234,9 +234,17 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
   const mine = ipo.subscription;
   const left = ipo.matures_at ? new Date(ipo.matures_at).getTime() - clock : null;
   const elapsed = dayOfTerm(ipo.closes_at, ipo.term_days, clock);
+  const [open, setOpen] = useState(false);
+  const panel = `running-${ipo.id}`;
+
   return (
-    <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${
-      first ? '' : 'mt-3 border-t border-pebble pt-3 dark:border-white/10'}`}>
+    <div className={first ? '' : 'mt-3 border-t border-pebble pt-3 dark:border-white/10'}>
+      {/* A real button, not a div with an onClick: the row is reachable by Tab and opens on
+          Enter or Space for free, which a div never does however it is styled. The whole row
+          is the target rather than a small chevron — the thing being clicked is the offering,
+          and a 14px hit area on a touch screen is not one. */}
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={panel}
+        className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-lg text-left transition-colors hover:bg-slate-ink/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember dark:hover:bg-white/5">
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{ipo.name}</span>
@@ -280,6 +288,66 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
           {left === null ? '—' : left <= 0 ? 'settling…' : countdown(left)}
         </span>
       </span>
+      <span aria-hidden className={`font-mono text-ember-ink transition-transform duration-200 ${
+        open ? 'rotate-90' : ''}`}>›</span>
+      </button>
+
+      {/* Unfolded, a running offering reads like it did on the shelf: the same picture, the
+          same summary, the same facts. What is different is that it is no longer an offer —
+          the book is closed and the bar is what was raised, not what is still to be. */}
+      {open && (
+        <div id={panel} className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
+          <Picture ipo={ipo} />
+          <div className="space-y-3">
+            <p className="text-xs text-slate-ink">{ipo.summary}</p>
+            {ipo.description && <p className="text-xs text-slate-ink">{ipo.description}</p>}
+
+            <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div>
+                <dt className="metric-label">Term</dt>
+                <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.term_days}d</dd>
+              </div>
+              {/* The same three facts the shelf shows, and no more: the listing date and the
+                  day of the term are already in the line above, and repeating them two
+                  centimetres apart is noise rather than emphasis. */}
+              <div>
+                <dt className="metric-label">Min</dt>
+                <dd className="font-mono text-sm leading-none font-medium tabular-nums">
+                  {num(ipo.min_subscription)}
+                </dd>
+              </div>
+              {ipo.valuation && (
+                <div>
+                  <dt className="metric-label">Valuation</dt>
+                  <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.valuation}</dd>
+                </div>
+              )}
+            </dl>
+
+            <div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-slate-ink">Raised</span>
+                <span className="font-mono tabular-nums">
+                  {num(ipo.raised)} / {money(ipo.target_amount, ipo.currency)}
+                </span>
+              </div>
+              <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-slate-ink/20"
+                role="img" aria-label={`${Math.round((ipo.progress ?? 0) * 100)}% of target raised`}>
+                <span className="bar-x block h-[3px] rounded-full bg-ember"
+                  style={{ width: `${Math.round((ipo.progress ?? 0) * 100)}%` }} />
+              </div>
+            </div>
+
+            {/* The term is closed, so there is nothing to subscribe to and no button that
+                could do anything. Saying why is better than an absence somebody reads as a
+                bug, or a disabled control they keep pressing. */}
+            <p className="text-xs text-slate-ink">
+              The book closed on {ipo.closes_at ? day(ipo.closes_at) : 'listing'}. This one is
+              working its term — nothing more can be put in, and it pays out at maturity.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
