@@ -4290,6 +4290,7 @@ type IpoRow = {
   opens_at: Date | null; closes_at: Date | null; matures_at: Date | null;
   status: string; image_key: string | null; sort_order: number;
   valuation: string | null;
+  raised_baseline: number;
   raised: number; subscribers: number;
   // Whether a picture exists, never the picture itself. The bytes are deliberately absent
   // from this type so a list of offerings cannot accidentally carry a dozen of them.
@@ -4318,11 +4319,13 @@ const IPO_COLUMNS = `
   i.id, i.slug, i.name, i.summary, i.description, i.asset, i.currency, i.target_amount,
   i.min_subscription, i.max_subscription, i.roi_rate, i.term_days,
   i.opens_at, i.closes_at, i.matures_at, i.status, i.image_key, i.sort_order,
-  i.valuation, i.created_at, i.updated_at,
+  i.valuation, i.raised_baseline, i.created_at, i.updated_at,
   (i.image_data IS NOT NULL) AS has_image_data`;
 
 const ipoSelect = (where: string) => `
-  SELECT ${IPO_COLUMNS}, coalesce(r.raised, 0) AS raised, coalesce(r.subscribers, 0) AS subscribers
+  SELECT ${IPO_COLUMNS},
+         coalesce(r.raised, 0) + i.raised_baseline AS raised,
+         coalesce(r.subscribers, 0) AS subscribers
     FROM ipos i ${RAISED_JOIN}
    ${where}
    ORDER BY i.sort_order, i.created_at DESC`;
@@ -4332,6 +4335,12 @@ function shapeIpo(row: IpoRow, now = new Date()) {
   const status = effectiveStatus(row, now);
   const raised = Number(row.raised);
   const target = Number(row.target_amount);
+  // The return over the whole term, as a fraction of what goes in — 7.25% a year across 180
+  // days is about 3.52%, not 7.25%. Computed with accrue() on a unit balance rather than
+  // with a formula written out again here: the figure a client is shown before subscribing
+  // has to be the one the daily job actually credits, and the only way to guarantee that is
+  // for both to be the same function. There is a test that holds them together.
+  const estimated = accrue({ balance: 1, annualRate: Number(row.roi_rate), days: row.term_days });
   return {
     ...row,
     status,                                   // computed, never the stored column
@@ -4343,6 +4352,9 @@ function shapeIpo(row: IpoRow, now = new Date()) {
     // Absolute and in UTC. The page corrects for clock skew against these; it never uses
     // its own clock to decide whether a window is open, and neither does the server.
     server_time: now.toISOString(),
+    // "Estimated" because the desk can change the rate on a live offering; it is exact for
+    // as long as the rate stands, not a projection of anything uncertain.
+    estimated_return_pct: round8(estimated),
     has_image: row.has_image_data || row.image_key !== null,
   };
 }
@@ -4450,7 +4462,10 @@ app.post('/ipos/:id/subscribe', { preHandler: auth() }, async (req: any, reply) 
   const out = await tx(req.principal.sub, async (c) => {
     // The offering first, and locked: everything after this reads the book.
     const { rows: [ipo] } = await c.query<IpoRow>(
-      `SELECT i.*, 0 AS raised, 0 AS subscribers FROM ipos i WHERE i.id = $1 FOR UPDATE`,
+      // Named columns, not i.*: this row is read under FOR UPDATE on every subscription,
+      // and i.* would pull the offering picture — up to five megabytes of bytea — through
+      // the lock each time, for a transaction that never looks at it.
+      `SELECT ${IPO_COLUMNS}, 0 AS raised, 0 AS subscribers FROM ipos i WHERE i.id = $1 FOR UPDATE`,
       [req.params.id]);
     if (!ipo) return { kind: 'missing' } as const;
 
@@ -4473,8 +4488,14 @@ app.post('/ipos/:id/subscribe', { preHandler: auth() }, async (req: any, reply) 
       `SELECT coalesce(sum(amount), 0) AS raised FROM ipo_subscriptions
         WHERE ipo_id = $1 AND status <> 'refunded'`, [ipo.id]);
 
+    // Plus what the desk placed before this book opened. The progress bar already counts it,
+    // so the allocation must as well — otherwise an offering shown as nearly full would go on
+    // accepting subscriptions up to the full target, and the refusal would name an amount
+    // that was never really available.
+    const taken = Number(book.raised) + Number(ipo.raised_baseline);
+
     const fit = allocation({
-      target: Number(ipo.target_amount), raised: Number(book.raised), amount,
+      target: Number(ipo.target_amount), raised: taken, amount,
       min: Number(ipo.min_subscription), max: ipo.max_subscription === null ? null : Number(ipo.max_subscription),
     });
     if (!fit.ok) return { kind: 'refused', fit, currency: ipo.currency } as const;
@@ -4634,6 +4655,9 @@ const ipoBody = z.object({
   // Free text: valuations are reported as ranges and approximations ("$165-175bn", "$1tn+"),
   // and nothing computes with this, so nothing needs it parsed into a number.
   valuation: z.string().max(60).nullable().optional(),
+  // Allocation placed away from this platform. Bounded against the target by a CHECK, so a
+  // baseline larger than the book is refused rather than making `remaining` negative.
+  raised_baseline: z.number().min(0).finite().max(1e15).default(0),
   target_amount: z.number().positive().finite().max(1e15),
   min_subscription: z.number().min(0).finite().max(1e15).default(0),
   max_subscription: z.number().positive().finite().max(1e15).nullable().optional(),
@@ -4665,13 +4689,14 @@ app.post('/admin/ipos', { preHandler: auth('admin') }, async (req: any, reply) =
       const { rows: [ipo] } = await c.query(
         `INSERT INTO ipos (slug, name, summary, description, asset, currency, target_amount,
                            min_subscription, max_subscription, roi_rate, term_days,
-                           opens_at, closes_at, matures_at, sort_order, valuation)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                           opens_at, closes_at, matures_at, sort_order, valuation,
+                           raised_baseline)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING ${IPO_COLUMNS.replaceAll('i.', '')}`,
         [b.slug, b.name, b.summary, b.description ?? null, b.asset, b.currency, b.target_amount,
          b.min_subscription, b.max_subscription ?? null, b.roi_rate / 100, b.term_days,
          b.opens_at ?? null, b.closes_at ?? null, b.matures_at ?? null, b.sort_order,
-         b.valuation ?? null]);
+         b.valuation ?? null, b.raised_baseline]);
       return reply.code(201).send(shapeIpo({ ...ipo, raised: 0, subscribers: 0 }));
     });
   } catch (err: any) {

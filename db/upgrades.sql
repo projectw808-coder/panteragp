@@ -490,3 +490,26 @@ END $do$;
 -- would put back a cover the desk had deliberately removed. Stamped once, checked forever,
 -- so the seed happens exactly one time per offering and every later decision is the desk's.
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS cover_seeded_at timestamptz;
+
+-- Allocation the desk placed outside this platform, before the book opened here.
+--
+-- The raise shown on an offering was purely the sum of subscriptions taken through this
+-- system, which reads as zero on a deal that is genuinely most of the way covered — the desk
+-- needs to say "6.1m of this 10m is already placed" without inventing subscription rows
+-- against real client accounts to do it.
+--
+-- It is added to the real subscriptions wherever the raise is shown AND wherever the cap is
+-- enforced. That second half is the part that matters: a baseline that moved the progress bar
+-- but not the allocation would show a book 61% full while still letting clients take the
+-- whole target, which is a bar that lies. Money placed here genuinely reduces what is left.
+--
+-- It is not client money and never becomes any: nothing settles it, nothing refunds it, and
+-- it appears in no client's position. A cancellation refunds the subscriptions and leaves
+-- this untouched, because there is nothing of ours to give back.
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS raised_baseline numeric(38,18) NOT NULL DEFAULT 0;
+
+DO $do$ BEGIN
+  ALTER TABLE ipos ADD CONSTRAINT ipos_raised_baseline_check
+    CHECK (raised_baseline >= 0 AND raised_baseline <= target_amount);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;

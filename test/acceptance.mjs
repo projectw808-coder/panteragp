@@ -2026,6 +2026,49 @@ await step('a rate above 100% is the desk’s to set, and still accrues correctl
   }), 400, 'a rate past what the column stores must refuse, not error');
 });
 
+await step('allocation placed elsewhere counts in the raise and against the cap', async () => {
+  // A book the desk has already half-placed away from this platform. The point of the field
+  // is that it is not decoration: it moves the bar AND it moves what is left.
+  const deal = await offering({ target_amount: 1_000, raised_baseline: 600, min_subscription: 10 });
+  const seen = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(Number(seen.raised), 600, 'the placed allocation is not in the raise');
+  assert.equal(Number(seen.remaining), 400, 'the placed allocation did not reduce what is left');
+  assert.equal(Number(seen.subscribers), 0, 'it is not a subscriber and must not be counted as one');
+
+  // 500 would fit inside the 1,000 target but not inside what is actually left.
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } }), 422,
+    'a subscription past the real remainder was allowed');
+
+  // Exactly the remainder fits, and fills the book.
+  assert.equal(await status(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 400 } }), 200);
+  const full = await get(`/ipos/${deal.id}`, { token: T });
+  assert.equal(Number(full.raised), 1_000, 'the book did not finish exactly full');
+  assert.equal(Number(full.remaining), 0);
+  assert.equal(Number(full.subscribers), 1, 'only the real subscription counts as one');
+
+  // A baseline larger than the book is refused rather than making the remainder negative.
+  assert.equal(await status('/admin/ipos', {
+    token: A, method: 'POST',
+    body: { slug: ipoSlug('over'), name: 'Over', summary: 's', asset: 'OVR', currency: 'USD',
+            target_amount: 100, raised_baseline: 101, roi_rate: 5, term_days: 30 },
+  }), 400, 'a placed allocation larger than the target was accepted');
+});
+
+await step('the estimated return is the term’s, and is what gets paid', async () => {
+  const deal = await offering({ roi_rate: 7.25, term_days: 180 });
+  const seen = await get(`/ipos/${deal.id}`, { token: T });
+  // The term's return, not the annual rate: about 3.5%, not 7.25%.
+  assert.ok(seen.estimated_return_pct > 0.034 && seen.estimated_return_pct < 0.036,
+    `expected about 3.5% over the term, got ${(seen.estimated_return_pct * 100).toFixed(2)}%`);
+  assert.ok(seen.estimated_return_pct < 0.0725, 'a part-year term cannot return the whole year');
+
+  // A one-year offering lands on its headline rate, which is the case the compounding exists
+  // for — rate/365 a day would overshoot it.
+  const year = await offering({ roi_rate: 7.25, term_days: 365 });
+  const yearly = (await get(`/ipos/${year.id}`, { token: T })).estimated_return_pct;
+  assert.ok(Math.abs(yearly - 0.0725) < 1e-6, `a full year should return 7.25%, got ${yearly}`);
+});
+
 await step('the valuation is the desk’s to set, and reaches the client', async () => {
   const deal = await offering({ valuation: '$14.6bn' });
   assert.equal((await get(`/ipos/${deal.id}`, { token: T })).valuation, '$14.6bn');

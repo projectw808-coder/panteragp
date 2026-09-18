@@ -31,6 +31,9 @@ type Ipo = {
   asset: string; currency: string; target_amount: number; min_subscription: number;
   max_subscription: number | null; roi_rate: number; term_days: number;
   valuation: string | null;
+  // The return over the whole term as a fraction of what goes in, computed by the server
+  // with the same function that credits it.
+  estimated_return_pct: number;
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; group: Group; raised: number; remaining: number; progress: number | null;
   // image_key changes on every upload, which is what makes the picture refetch.
@@ -302,6 +305,14 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
             <p className="text-xs text-slate-ink">{ipo.summary}</p>
             {ipo.description && <p className="text-xs text-slate-ink">{ipo.description}</p>}
 
+            <div className="flex items-baseline gap-2">
+              <span className="metric-label">Est. return</span>
+              <span className="font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
+                +{(ipo.estimated_return_pct * 100).toFixed(2)}%
+              </span>
+              <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
+            </div>
+
             <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <div>
                 <dt className="metric-label">Term</dt>
@@ -385,10 +396,27 @@ function Offer({ ipo, on, clock, onDone, staff }: {
           actually returned. The term leads instead, in the size the rate had — a card still
           needs one figure to read from across the page, and "how long is my money in" is the
           honest candidate once the rate has gone. */}
+      {/* Estimated return leads, because it is the thing being decided on. It is the return
+          over this offering's own term rather than a yearly rate — 7.25% a year across 180
+          days is 3.52%, and printing the annual figure beside a 180-day term is how somebody
+          ends up expecting twice what they get. "Estimated" because the desk can change the
+          rate on a live offering, not because the arithmetic is uncertain. */}
+      {/* On its own line rather than squeezed into the fact grid: "Est. return" does not fit
+          a quarter of a card at this tracking, and the figure is the one being decided on
+          anyway. Saying "over 180 days" beside it is the whole point — the number is this
+          term's, not a year's. */}
+      <div className="flex items-baseline gap-2">
+        <span className="metric-label">Est. return</span>
+        <span className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
+          +{(ipo.estimated_return_pct * 100).toFixed(2)}%
+        </span>
+        <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
+      </div>
+
       <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <div>
           <dt className="metric-label">Term</dt>
-          <dd className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
+          <dd className="font-mono text-sm leading-none font-medium tabular-nums">
             {ipo.term_days}d
           </dd>
         </div>

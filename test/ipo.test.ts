@@ -130,6 +130,28 @@ describe('ROI compounds daily and lands on the headline figure', () => {
     assert.ok(Math.abs(roi - 725) < 0.01, `a year of 7.25% on 10,000 should be ~725, got ${roi}`);
   });
 
+  test('the estimated return is what the term actually pays, not the annual rate', () => {
+    // The figure on the card is the return over THIS offering's term. Printing the annual
+    // rate next to a 180-day term is how somebody ends up expecting twice what they get.
+    const estimate = accrue({ balance: 1, annualRate: 0.0725, days: 180 });
+    assert.ok(estimate > 0.034 && estimate < 0.036,
+      `7.25% a year over 180 days should be about 3.5%, got ${(estimate * 100).toFixed(2)}%`);
+    assert.ok(estimate < 0.0725, 'a part-year term cannot return the whole year');
+
+    // And it is the same number the daily job credits over that term — the card and the
+    // ledger must not disagree, which is the whole reason both call accrue().
+    //
+    // Agreement is asserted at money precision rather than to the last bit: the estimate is a
+    // fraction of one unit rounded to eight decimals, so scaling it to a five-figure
+    // principal scales that rounding with it. A hundredth of a penny on 5,000 is the honest
+    // bar here, and it is three orders of magnitude finer than anything displayed.
+    const principal = 5_000;
+    let balance = principal;
+    for (let i = 0; i < 180; i++) balance += accrue({ balance, annualRate: 0.0725, days: 1 });
+    assert.ok(Math.abs((balance - principal) - principal * estimate) < 0.0001,
+      'what the card estimates and what 180 daily accruals pay have drifted apart');
+  });
+
   test('a rate far above 100% compounds to exactly that rate over a year', () => {
     // The cap came off, so the maths has to hold where it was never exercised. 440% a year
     // is what a 30-day offering at 15% over its term annualises to — the ordinary case the

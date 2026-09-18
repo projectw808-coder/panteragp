@@ -21,6 +21,7 @@ type Ipo = {
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; stored_status: string; group: string; sort_order: number;
   raised: number; remaining: number; progress: number | null; subscribers: number;
+  raised_baseline: number;
   // image_key changes on every upload, which is what makes a preview refetch rather than
   // go on showing the picture that was just replaced.
   has_image: boolean; image_key: string | null;
@@ -205,6 +206,7 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
       description: str('description') ?? null,
       asset: str('asset'), currency: str('currency'), valuation: str('valuation') ?? null,
       target_amount: num_('target_amount'), min_subscription: num_('min_subscription') ?? 0,
+      raised_baseline: num_('raised_baseline') ?? 0,
       max_subscription: num_('max_subscription') ?? null,
       roi_rate: num_('roi_rate'), term_days: num_('term_days'),
       opens_at: date('opens_at'), closes_at: date('closes_at'), matures_at: date('matures_at'),
@@ -294,6 +296,18 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
         <Labelled label="Minimum subscription">
           <input name="min_subscription" type="number" step="any" min="0"
             defaultValue={ipo?.min_subscription ?? 0} className={`${field} w-full`} />
+        </Labelled>
+        {/* Allocation placed away from this platform, before the book opened here. It is
+            added to the raise on every screen AND to the cap on every subscription, so
+            setting it genuinely reduces what clients can take — a bar that moved without the
+            allocation moving would be a bar that lies. */}
+        <Labelled label="Already placed elsewhere">
+          <input name="raised_baseline" type="number" step="any" min="0"
+            defaultValue={ipo?.raised_baseline ?? 0} className={`${field} w-full`} />
+          <span className="mt-1 block text-xs text-slate-ink">
+            Counted in the raise and against the cap. Not client money: nothing settles or
+            refunds it, and it appears in no client's position.
+          </span>
         </Labelled>
         <Labelled label="Maximum subscription">
           <input name="max_subscription" type="number" step="any" min="0" placeholder="none"

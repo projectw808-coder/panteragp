@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 129 acceptance checks against the running stack
+    npm run test:e2e # 131 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -253,6 +253,28 @@ A refusal names what is actually left. Somebody told "only 400 USD is left in th
 can subscribe for 400; somebody told "that did not work" tries the same number again. An
 exact fill is allowed — refusing the amount that lands precisely on the target would leave
 every book a penny short.
+
+**Allocation placed elsewhere** is `raised_baseline`, the part of a book the desk covered
+away from this platform before it opened here. It exists because the alternative was writing
+subscription rows against real client accounts to make a bar look right — inventing money in
+a ledger to fix a picture.
+
+It counts in the raise **and** against the cap. That second half is the whole point: a
+baseline that moved the progress bar but not the allocation would show a book 61% full while
+still letting clients take the entire target, and the refusal would name an amount that was
+never available. It is bounded against the target by a CHECK, so a baseline larger than the
+book is a readable refusal rather than a negative remainder. It is not client money and never
+becomes any — nothing settles it, nothing refunds it, it is in no client's position, and it
+is not counted as a subscriber.
+
+**The estimated return is this term's, not a year's.** `estimated_return_pct` is what a
+subscription earns over `term_days`: 7.25% a year across 180 days is 3.52%, and printing the
+annual figure beside a 180-day term is how somebody ends up expecting twice what they get. It
+is computed by `accrue()` on a unit balance — the same function the daily job credits with,
+rather than the formula written out a second time, so the number on the card and the number
+in the ledger cannot drift. A test holds them together at money precision. "Estimated"
+because the desk can change the rate on a live offering, not because the arithmetic is
+uncertain.
 
 Allocation is first come, first served. There is no pro-rata scale-back: the overflow is
 refused rather than trimmed.
