@@ -481,3 +481,12 @@ DO $do$ BEGIN
     CHECK (roi_override IS NULL OR roi_override >= 0);
 EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
 END $do$;
+
+-- When an offering's shipped cover art was installed, if it ever was.
+--
+-- The covers under assets/ipo-covers are applied by db-init on deploy, the way instruments
+-- and the offerings themselves are. This column is what stops that being a nuisance: without
+-- it the rule would have to be "fill any offering that has no picture", and the next deploy
+-- would put back a cover the desk had deliberately removed. Stamped once, checked forever,
+-- so the seed happens exactly one time per offering and every later decision is the desk's.
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS cover_seeded_at timestamptz;

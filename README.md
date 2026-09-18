@@ -299,6 +299,19 @@ free text, because a valuation is reported as a range or an approximation (`$165
 `$1tn+`) as often as a number, and forcing it into one would mean choosing a figure the
 reporting did not.
 
+**The cover art ships with the code.** `assets/ipo-covers/<asset>.png`, installed by `db:init`
+on deploy so every environment has it without anybody uploading eight files by hand. It is
+drawn, not photographed and not anybody's logo: `scripts/make-ipo-covers.mjs` computes each
+one from the same motif its card falls back to, so they are reproducible rather than eight
+unexplained binaries in the tree. Real company logos are deliberately not used — they are
+trademarks, and an offering here is not equity in the company it names, so putting its mark
+on one would assert a relationship this product spends a paragraph disclaiming.
+
+It applies **at most once per offering**, gated on `cover_seeded_at` rather than on the
+picture being absent. The difference matters: a rule based on emptiness would put back a
+cover the desk had deliberately removed, every time anybody deployed. After the first install
+every decision about that picture is the desk's, including the decision to have none.
+
 ### Pictures live in the row
 
 An offering's picture is a `bytea` on `ipos`, not a file, for the reason the profile photo

@@ -52,6 +52,34 @@ try {
   await client.query(readFileSync(join(root, 'db', 'upgrades.sql'), 'utf8'));
   const { rows: [{ count }] } = await client.query('SELECT count(*)::int AS count FROM instruments');
   console.log(`instruments available: ${count}`);
+
+  // The offerings' cover art, which travels in the repository rather than being uploaded by
+  // hand to every environment. Each file is named for the offering's asset code.
+  //
+  // Applied at most once per offering, gated on cover_seeded_at rather than on "has no
+  // picture": an offering the desk has deliberately stripped back to its drawn mark must
+  // stay that way, and a rule based on emptiness would undo that on the next deploy. After
+  // this runs, every decision about the picture is the desk's.
+  //
+  // These are drawn, not photographed and not anybody's logo — see scripts/make-ipo-covers.mjs,
+  // which generates them, so they are reproducible rather than eight unexplained binaries.
+  let covered = 0;
+  const { rows: needCover } = await client.query(
+    `SELECT id, asset FROM ipos WHERE cover_seeded_at IS NULL AND image_data IS NULL`);
+  for (const ipo of needCover) {
+    let bytes;
+    try {
+      bytes = readFileSync(join(root, 'assets', 'ipo-covers', `${ipo.asset.toLowerCase()}.png`));
+    } catch {
+      continue; // No art shipped for this one, which is not an error: it wears its mark.
+    }
+    await client.query(
+      `UPDATE ipos SET image_key = gen_random_uuid()::text, image_data = $2,
+                       image_type = 'image/png', cover_seeded_at = now()
+        WHERE id = $1`, [ipo.id, bytes]);
+    covered++;
+  }
+  if (covered) console.log(`cover art installed on ${covered} offering(s)`);
 } finally {
   await client.end();
 }
