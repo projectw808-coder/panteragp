@@ -438,3 +438,17 @@ VALUES
    '$8.1bn', 4000000, 500, 0.0840, 90,
    '2026-05-05T09:00:00Z', '2026-05-14T16:00:00Z', '2026-08-12T16:00:00Z', 'completed', 8)
 ON CONFLICT (slug) DO NOTHING;
+
+-- KYC documents in the row, for the same reason the offering picture and the profile photo
+-- are: this deploys to a container whose disk is replaced on every release, so a file
+-- written at upload does not survive it. /health has been reporting "fresh" rather than
+-- "persisted" on consecutive deploys, which is that marker saying so out loud.
+--
+-- These are passports and proofs of address, so losing them is worse than losing a picture:
+-- the client is asked to send identification a second time, and the record of what was
+-- actually reviewed is gone. Capped by the upload route at 10 MB.
+--
+-- storage_key stays. It is what the review screens key on, and it is how the documents
+-- written to disk before this are still found.
+ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS file_data bytea;
+ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS file_type text;

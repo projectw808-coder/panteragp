@@ -235,6 +235,42 @@ await step('documents are readable by compliance, and by whoever sent them', asy
   assert.equal(await status(`/kyc/${doc.id}/file`, { token: T }), 200, 'their own document is theirs to open');
   assert.equal(await status(`/kyc/${doc.id}/file`), 401);
 });
+await step('a document comes back exactly as it was sent, and never rides in a list', async () => {
+  // Recognisable bytes, so "it came back" means these bytes rather than merely some bytes.
+  const sent = Buffer.from(Array.from({ length: 1024 }, (_, i) => (i * 13 + 5) % 256));
+  const fd = new FormData();
+  fd.append('kind', 'tax_document');
+  fd.append('file', new Blob([sent], { type: 'application/pdf' }), 'form.pdf');
+  const made = await fetch(`${B}/clients/${client.id}/kyc`, {
+    method: 'POST', headers: { authorization: `Bearer ${T}` }, body: fd,
+  });
+  assert.equal(made.status, 201);
+  const doc = await made.json();
+
+  // The upload confirmation is a receipt, not a copy of what was uploaded.
+  assert.ok(!('file_data' in doc), 'the upload response is carrying the file back');
+  assert.ok(!('file_type' in doc), 'the upload response is carrying the file type back');
+
+  const back = await fetch(`${B}/kyc/${doc.id}/file`, { headers: { authorization: `Bearer ${A}` } });
+  assert.equal(back.status, 200);
+  assert.equal(back.headers.get('content-type'), 'application/pdf');
+  // Identification must not sit in a cache between here and whoever asked for it.
+  assert.equal(back.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(Buffer.from(await back.arrayBuffer()), sent,
+    'the document that came back is not the one that went in');
+
+  // A passport scan is up to 10 MB. Listing a client's documents must not read any of them.
+  const list = await get(`/clients/${client.id}/kyc`, { token: A });
+  assert.ok(list.every((d) => !('file_data' in d)), 'a document list is carrying the files');
+  const queue = await get('/kyc/pending', { token: A });
+  assert.ok(queue.every((d) => !('file_data' in d)), 'the review queue is carrying the files');
+
+  // Nor does recording a decision hand the file back to whoever made it.
+  const decided = await get(`/kyc/${doc.id}/review`, {
+    token: A, method: 'POST', body: { status: 'approved' },
+  });
+  assert.ok(!('file_data' in decided), 'the review response is carrying the file back');
+});
 await step('approval requires every required document', async () => {
   const queue = (await get('/kyc/pending', { token: A })).filter((d) => d.client_id === client.id);
   const first = await get(`/kyc/${queue[0].id}/review`, { token: A, method: 'POST', body: { status: 'approved' } });

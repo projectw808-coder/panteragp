@@ -5,11 +5,11 @@ import { assertSecretConfigured, can, hashPassword, signToken, verifyPassword, v
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+
 import { challengeMessage, checksumAddress, isAddress, recoverSigner } from './wallet-link.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
@@ -1393,6 +1393,16 @@ const REQUIRED_KYC = ['id_front', 'proof_of_address'];
 const EXTRA_KINDS = ['bank_statement', 'source_of_funds', 'tax_document', 'other'] as const;
 const DOC_KINDS: readonly string[] = [...KYC_KINDS, ...EXTRA_KINDS];
 // Only formats a reviewer actually needs to look at. Anything else is refused outright.
+/**
+ * Every column of kyc_documents except the file itself.
+ *
+ * The bytes live in the row now, which means `RETURNING *` would put a ten-megabyte
+ * passport scan into the JSON of an upload response and of a review decision. Neither
+ * caller wants it: one is confirming the upload, the other is recording a decision.
+ */
+const DOC_COLUMNS = `id, client_id, kind, storage_key, status, reviewed_by, reviewed_at,
+                     note, uploaded_at`;
+
 const ALLOWED_UPLOAD = new Map([
   ['image/jpeg', '.jpg'], ['image/png', '.png'], ['application/pdf', '.pdf'],
 ]);
@@ -1410,8 +1420,13 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR ?? join(import.meta.dirname, '..', 'up
  *   ephemeral  UPLOAD_DIR is not set at all, so this is the container filesystem
  *
  * "fresh" twice across two deploys means the files are NOT surviving, whatever the path
- * is called. This matters most for KYC documents — passports, proof of address — which
- * are still files; a profile photo lives in its row now and does not depend on any of it.
+ * is called. On this deployment it has been reporting exactly that, which is what sent
+ * every upload into its own row: profile photos first, then offering pictures, and now KYC
+ * documents. Nothing written from here on depends on this disk.
+ *
+ * The probe stays because the disk is still read: documents uploaded before the move are
+ * only there, and this is what says whether they are still readable or whether that
+ * deployment has already thrown them away. When it reports "fresh", the answer is no.
  */
 const PROBE = join(UPLOAD_DIR, '.persistence-probe');
 let UPLOAD_PERSISTENCE: 'persisted' | 'fresh' | 'ephemeral' =
@@ -1425,8 +1440,9 @@ try {
 }
 if (UPLOAD_PERSISTENCE !== 'persisted' && process.env.NODE_ENV === 'production') {
   app.log.warn({ uploadDir: UPLOAD_DIR, persistence: UPLOAD_PERSISTENCE },
-    'No marker from an earlier boot under UPLOAD_DIR. If this says the same after the next '
-    + 'deploy, uploaded KYC documents are NOT surviving restarts.');
+    'No marker from an earlier boot under UPLOAD_DIR. New uploads do not depend on this — '
+    + 'they are stored in their rows — but any document uploaded before that change lived '
+    + 'here only, and this says it is already gone.');
 }
 
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
@@ -1444,19 +1460,23 @@ app.post('/clients/:id/kyc', { preHandler: clientScope }, async (req: any, reply
   if (!ext) return reply.code(415).send({ error: 'only jpeg, png or pdf' });
   if (!DOC_KINDS.includes(kind)) return reply.code(400).send({ error: 'unknown document kind' });
 
-  // The stored name is generated: an uploaded filename never reaches the filesystem.
+  // Buffered rather than streamed to disk, because the document is stored in its row: a file
+  // written here is gone with the container on the next release, and a passport that has to
+  // be sent twice is a worse outcome than a slightly larger row. The multipart plugin's own
+  // 10 MB ceiling is what bounds this buffer.
+  const bytes = await file.toBuffer();
+  if (file.file.truncated) return reply.code(413).send({ error: 'file too large' });
+
+  // Generated, never the name the file arrived with. It is no longer a path — it is the
+  // handle the review screens key on, and it keeps its extension so a document uploaded
+  // before this change is still findable on disk.
   const storageKey = `${randomUUID()}${ext}`;
-  await mkdir(UPLOAD_DIR, { recursive: true });
-  await pipeline(file.file, createWriteStream(join(UPLOAD_DIR, storageKey)));
-  if (file.file.truncated) {
-    await rm(join(UPLOAD_DIR, storageKey), { force: true });
-    return reply.code(413).send({ error: 'file too large' });
-  }
 
   const doc = await tx(req.principal.sub, async (c) => {
     const { rows } = await c.query(
-      `INSERT INTO kyc_documents (client_id, kind, storage_key) VALUES ($1,$2,$3) RETURNING *`,
-      [req.params.id, kind, storageKey]);
+      `INSERT INTO kyc_documents (client_id, kind, storage_key, file_data, file_type)
+       VALUES ($1,$2,$3,$4,$5) RETURNING ${DOC_COLUMNS}`,
+      [req.params.id, kind, storageKey, bytes, file.mimetype]);
     // Only an identity document moves the verification along. A tax form from somebody who
     // has never sent identification would otherwise mark them "pending verification" with
     // nothing pending that could ever verify them.
@@ -1503,8 +1523,10 @@ app.get('/kyc/pending', { preHandler: auth('kyc:review') }, async () =>
  * stalls and the easiest one for them to fix themselves.
  */
 app.get('/kyc/:id/file', { preHandler: auth() }, async (req: any, reply) => {
-  const { rows } = await pool.query<{ storage_key: string; client_id: string }>(
-    'SELECT storage_key, client_id FROM kyc_documents WHERE id = $1', [req.params.id]);
+  const { rows } = await pool.query<{
+    storage_key: string; client_id: string; file_data: Buffer | null; file_type: string | null;
+  }>('SELECT storage_key, client_id, file_data, file_type FROM kyc_documents WHERE id = $1',
+     [req.params.id]);
   if (!rows[0]) return reply.code(404).send({ error: 'not found' });
 
   const own = req.principal.kind === 'client' && req.principal.sub === rows[0].client_id;
@@ -1512,10 +1534,25 @@ app.get('/kyc/:id/file', { preHandler: auth() }, async (req: any, reply) => {
     return reply.code(403).send({ error: 'reading a client document needs kyc:review' });
   }
 
-  // storage_key is generated by us, but resolve and re-check anyway.
+  // Identification, so it is never cached by anything between here and the reader.
+  const sent = reply.header('cache-control', 'no-store');
+  if (rows[0].file_data) {
+    return sent.type(rows[0].file_type ?? 'application/octet-stream').send(rows[0].file_data);
+  }
+
+  // Uploaded before documents moved into the row. storage_key is generated by us, but
+  // resolve and re-check anyway — and say plainly when the file is no longer there, rather
+  // than streaming a missing path and failing halfway through the response.
   const path = join(UPLOAD_DIR, basename(rows[0].storage_key));
   if (!path.startsWith(UPLOAD_DIR)) return reply.code(400).send({ error: 'bad key' });
-  return reply.type(extname(path) === '.pdf' ? 'application/pdf' : 'image/*').send(createReadStream(path));
+  if (!existsSync(path)) {
+    return sent.code(410).send({
+      error: 'this document was stored on a filesystem that has since been replaced, and is '
+        + 'no longer available. Ask the client to upload it again.',
+    });
+  }
+  return sent.type(extname(path) === '.pdf' ? 'application/pdf' : 'image/*')
+    .send(createReadStream(path));
 });
 
 
@@ -1639,7 +1676,7 @@ app.post('/kyc/:id/review', { preHandler: auth('kyc:review') }, async (req: any,
   const out = await tx(req.principal.sub, async (c) => {
     const { rows } = await c.query(
       `UPDATE kyc_documents SET status = $2, note = $3, reviewed_by = $4, reviewed_at = now()
-        WHERE id = $1 AND status = 'pending' RETURNING *`,
+        WHERE id = $1 AND status = 'pending' RETURNING ${DOC_COLUMNS}`,
       [req.params.id, body.data.status, body.data.note ?? null, req.principal.sub]);
     const doc = rows[0];
     if (!doc) return null;

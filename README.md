@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 127 acceptance checks against the running stack
+    npm run test:e2e # 128 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -442,9 +442,10 @@ Staff replies notify the client through the notification system; internal notes 
 
 
 ## Compliance
-KYC: a client uploads JPEG/PNG/PDF (10 MB cap, anything else refused). The stored filename
-is generated — an uploaded name never reaches the filesystem — and documents are served
-only through an authenticated endpoint that requires `kyc:review`, never as a static path.
+KYC: a client uploads JPEG/PNG/PDF (10 MB cap, anything else refused). The document is
+stored in its row, not on a disk — see **Uploads live in the database** — and is served only
+through an authenticated endpoint that requires `kyc:review`, never as a static path, with
+`cache-control: no-store` so identification does not sit in anything in between.
 A client goes to `approved` once every required document is (`id_front` and
 `proof_of_address`); one rejection rejects them.
 
@@ -469,6 +470,33 @@ Reports export as RFC 4180 CSV. Cells starting with `=`, `+`, `-` or `@` are pre
 with an apostrophe: client names and notes reach these files, and a spreadsheet would
 otherwise execute them. PDF is the browser's print dialogue on the on-screen report rather
 than a PDF library.
+
+## Uploads live in the database
+
+Every file this application accepts — KYC documents, the profile photo, an offering's
+picture — is stored as `bytea` on the row it belongs to. None of them touch the filesystem.
+
+This is not the textbook answer, and it was not the first one here. It is the answer because
+of where this runs: the container's disk is replaced on every release, so a file written at
+upload is gone by the next deploy. For a profile photo that is a blank circle. For a
+passport it means asking a client to send identification a second time and having no record
+of what was actually reviewed. A volume would also solve it, but it is a thing that has to
+be attached, stay attached, and be backed up separately — and when it is missed, nothing
+fails loudly. The row cannot be forgotten, reaches every instance, and is in the database
+backup already.
+
+`/health` reports which it is, proven rather than assumed: the boot leaves a marker under
+`UPLOAD_DIR` and looks for it next time. `persisted` means the disk survives restarts;
+`fresh` means it did not; `ephemeral` means `UPLOAD_DIR` was never set. It is still reported
+because the disk is still *read* — documents uploaded before this change live only there —
+and it is the thing that says whether they are still readable. When it says `fresh`, they
+are not, and asking for one returns **410 with a sentence saying so** rather than a stream
+that fails halfway through the response.
+
+The cost of a blob in a row is that a careless `SELECT *` reads it. Every query that touches
+these tables names its columns instead, lists carry a boolean (`has_image`) rather than
+bytes, and the acceptance run asserts that no list, upload receipt or review decision comes
+back carrying a file. A ten-megabyte scan on each of a dozen rows is the failure this invites.
 
 ## Admin dashboard
 One screen across all three pillars: headline tiles that link into the area they describe,
@@ -526,9 +554,10 @@ always calls `/api/...` — Vite proxies that away in development, and `rewriteU
 3. **Set `JWT_SECRET`** to at least 32 random characters. The API refuses to sign or verify
    without it, so this is not optional:
    `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
-4. **Attach a volume** mounted at `/data`, and set `UPLOAD_DIR=/data/uploads`. Without it,
-   KYC documents are written to the container filesystem and are **gone on the next
-   deploy** — see the warning below.
+4. **No volume is needed.** Uploads are stored in the database, so nothing written by this
+   application depends on the container filesystem. `UPLOAD_DIR` is still read, and is worth
+   pointing at a volume only if you have documents from before that change that you want to
+   keep reading — `/health` tells you whether they are still there.
 5. **Deploy.** The start command runs `db:init` first, which creates the schema on an empty
    database and does nothing on one that already has it.
 6. **Create the first staff account** once, from the Railway shell. There is no default
@@ -598,7 +627,8 @@ to a changed one, so the first schema change after go-live needs real migrations
 1. Run `db:reset` against a Postgres you host and back up (`src/devdb.ts` runs a real
    server, but it is an unmanaged local cluster wiped on boot — dev only).
 2. Add migration tooling — there is none, and the schema is applied by dropping it.
-3. Move KYC uploads off local disk to object storage; `storage_key` already assumes it.
+3. Move uploads out of the database to object storage once they are big enough to be worth
+   it; `storage_key` is still the handle that would name them.
 4. Set `JWT_SECRET` from a secrets manager, not the environment inline.
 
 ## What is deliberately not here
