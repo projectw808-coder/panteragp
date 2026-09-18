@@ -1973,6 +1973,57 @@ await step('a picture is stored whole, and the list does not carry it', async ()
   });
   const replaced = await fetch(`${B}/ipos/${deal.id}/image`, { headers: { authorization: `Bearer ${T}` } });
   assert.deepEqual(new Uint8Array(await replaced.arrayBuffer()), second, 'the old picture is still being served');
+
+  // Taking it off is its own decision, not "upload something else". Without it a card that
+  // should fall back to its drawn mark could never be made to.
+  assert.equal(await status(`/admin/ipos/${deal.id}/image`, { token: T, method: 'DELETE' }), 403,
+    'a client removed an offering picture');
+  assert.equal(await status(`/admin/ipos/${deal.id}/image`, { token: A, method: 'DELETE' }), 200);
+  assert.equal((await get(`/ipos/${deal.id}`, { token: T })).has_image, false);
+  assert.equal(await status(`/ipos/${deal.id}/image`, { token: T }), 404,
+    'the picture is still served after being removed');
+
+  // The picture is behind the same auth as the page, which is why the client screens fetch
+  // it with the token rather than pointing an <img src> at it — a browser sends no
+  // Authorization header for an image, and this 401 is what that mistake looks like.
+  const form3 = new FormData();
+  form3.append('file', new Blob([second], { type: 'image/png' }), 'again.png');
+  await fetch(`${B}/admin/ipos/${deal.id}/image`, {
+    method: 'POST', headers: { authorization: `Bearer ${A}` }, body: form3,
+  });
+  assert.equal((await fetch(`${B}/ipos/${deal.id}/image`)).status, 401,
+    'the picture is readable without signing in');
+});
+
+await step('a rate above 100% is the desk’s to set, and still accrues correctly', async () => {
+  // 15% over 30 days annualises to roughly 440%, which the old ceiling refused. The point
+  // of the bound was never the number — it was stopping a negative one.
+  const deal = await offering({ roi_rate: 440 });
+  assert.ok(Math.abs(Number(deal.roi_rate) - 4.4) < 1e-9,
+    `440% should store as the fraction 4.4, got ${deal.roi_rate}`);
+  assert.equal((await get(`/ipos/${deal.id}`, { token: T })).roi_rate, 4.4);
+
+  // Far past the old cap, to prove it is gone rather than merely raised a little.
+  const steep = await offering({ roi_rate: 5000 });
+  assert.ok(Math.abs(Number(steep.roi_rate) - 50) < 1e-9);
+
+  // A per-client rate is bounded the same way, because it replaces the offering's own.
+  await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
+  const book = await get(`/admin/ipos/${deal.id}/subscriptions`, { token: A });
+  const mine = book.find((s) => Number(s.amount) === 500);
+  const agreed = await get(`/admin/ipo-subscriptions/${mine.id}`, {
+    token: A, method: 'PATCH', body: { roi_override: 750 },
+  });
+  assert.ok(Math.abs(Number(agreed.roi_override) - 7.5) < 1e-9);
+
+  // What is still refused is what would break the maths rather than what looks large:
+  // the accrual takes the 365th root of (1 + rate), and Infinity would corrupt a balance.
+  assert.equal(await status(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH', body: { roi_rate: -1 },
+  }), 400, 'a negative rate was accepted');
+  assert.equal(await status(`/admin/ipos/${deal.id}`, {
+    token: A, method: 'PATCH', body: { roi_rate: 1e12 },
+  }), 400, 'a rate past what the column stores must refuse, not error');
 });
 
 await step('the valuation is the desk’s to set, and reaches the client', async () => {

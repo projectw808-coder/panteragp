@@ -130,6 +130,29 @@ describe('ROI compounds daily and lands on the headline figure', () => {
     assert.ok(Math.abs(roi - 725) < 0.01, `a year of 7.25% on 10,000 should be ~725, got ${roi}`);
   });
 
+  test('a rate far above 100% compounds to exactly that rate over a year', () => {
+    // The cap came off, so the maths has to hold where it was never exercised. 440% a year
+    // is what a 30-day offering at 15% over its term annualises to — the ordinary case the
+    // old ceiling refused, not an extreme one.
+    const roi = accrue({ balance: 10_000, annualRate: 4.4, days: 365 });
+    assert.ok(Math.abs(roi - 44_000) < 0.01,
+      `a year at 440% on 10,000 should be ~44,000, got ${roi}`);
+
+    // And the daily step still agrees with the whole-term one, which is the property the
+    // 365th-root compounding exists for.
+    let balance = 10_000;
+    for (let i = 0; i < 365; i++) balance += accrue({ balance, annualRate: 4.4, days: 1 });
+    assert.ok(Math.abs(balance - 10_000 - roi) < 0.01,
+      'a year paid daily must equal the same year paid at once');
+  });
+
+  test('a negative rate pays nothing rather than returning NaN', () => {
+    // (1 + rate) below zero has no real 365th root. The bound that stops this is the one
+    // kept when the ceiling was dropped, and this is why it is not a matter of taste.
+    const roi = accrue({ balance: 10_000, annualRate: -2, days: 30 });
+    assert.ok(Number.isNaN(roi) === false, 'a negative rate produced NaN');
+  });
+
   test('paying a week at once equals paying it a day at a time', () => {
     const atOnce = accrue({ balance: 10_000, annualRate: 0.0725, days: 7 });
     let balance = 10_000;

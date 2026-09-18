@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 128 acceptance checks against the running stack
+    npm run test:e2e # 129 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -333,10 +333,22 @@ offering changes what every subscriber is paid, which is the same shape of power
 change affects and from when, because a number that silently changes what people are paid
 deserves a sentence of friction.
 
-The headline `roi_rate` is public — it is the offering's pitch and the thing a client is
-deciding on, which is why it is shown here when portfolio and staking rates are not. A
-per-client `roi_override` is the desk's agreement with one client and appears only on the
-desk side.
+**The rate is not on the client page.** It was, on the argument that an offering's ROI is its
+public pitch rather than an agreed rate like a portfolio's or a stake's. The desk decided
+otherwise, so it now sits with those two: a client sees the term, what they hold, what it has
+earned and when it matures. Finished offerings still print a rate, because there it is a
+record of what was paid rather than an offer being made. A per-client `roi_override` was
+always desk-side and stays there.
+
+**There is no upper bound on the rate.** A 100% ceiling is reasonable for a bond and wrong
+here: a 30-day offering at 15% over its term is about 440% annualised, and the cap made
+ordinary short-dated deals unenterable. What is still enforced is what is not a matter of
+taste — the rate cannot be negative, because the accrual takes the 365th root of
+(1 + rate) and there is no real root below -1, and it has to fit `numeric(12,4)` so that too
+large is a refusal somebody can read rather than a driver error. `accrue()` also returns zero
+rather than NaN for a rate it cannot compound, which nothing can currently reach; it is
+guarded because a NaN written onto a balance would not throw, would not be caught, and would
+be money silently destroyed.
 
 ### Verification, and what gets recorded
 
@@ -497,6 +509,15 @@ The cost of a blob in a row is that a careless `SELECT *` reads it. Every query 
 these tables names its columns instead, lists carry a boolean (`has_image`) rather than
 bytes, and the acceptance run asserts that no list, upload receipt or review decision comes
 back carrying a file. A ten-megabyte scan on each of a dozen rows is the failure this invites.
+
+**Every one of these is behind the API's auth, which means no screen may point an `<img src>`
+at one.** A browser sends no `Authorization` header for an image and there is no way to give
+it one, so the request comes back 401. The offering cards shipped that way and the bug hid
+itself perfectly: the 401 fired the `onError` fallback, the card quietly drew its own mark,
+and a picture that had been uploaded looked exactly like one that never had. They are fetched
+with the token and handed to the `<img>` as an object URL — `useAuthedImage` in
+`web/src/authed-image.ts`, which is the profile photo's original code made shared rather than
+copied a third time. Anything new that displays an uploaded file uses it.
 
 ## Admin dashboard
 One screen across all three pillars: headline tiles that link into the area they describe,

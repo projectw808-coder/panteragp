@@ -4572,6 +4572,25 @@ app.post('/ipos/:id/subscribe', { preHandler: auth() }, async (req: any, reply) 
 });
 
 /** The offering's picture. Served through a route, never as a guessable static path. */
+/**
+ * Take the picture off an offering.
+ *
+ * Separate from uploading a replacement because they are different decisions: one is a
+ * better photograph, the other is "this should not be showing". Without it the desk can only
+ * ever swap one picture for another, and a card that should fall back to its drawn mark
+ * cannot be made to.
+ */
+app.delete('/admin/ipos/:id/image', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query<{ image_key: string | null }>(
+      `UPDATE ipos SET image_key = NULL, image_data = NULL, image_type = NULL
+        WHERE id = $1 RETURNING image_key`, [req.params.id]);
+    return rows.length ? rows[0] : null;
+  });
+  if (!out) return reply.code(404).send({ error: 'no such offering' });
+  return { ok: true, image: false };
+});
+
 app.get('/ipos/:id/image', { preHandler: auth() }, async (req: any, reply) => {
   const { rows } = await pool.query<{
     image_key: string | null; image_data: Buffer | null; image_type: string | null;
@@ -4620,7 +4639,13 @@ const ipoBody = z.object({
   max_subscription: z.number().positive().finite().max(1e15).nullable().optional(),
   // Taken as a percentage and stored as a fraction, the same way the desk types every
   // other rate in this product.
-  roi_rate: z.number().min(0).max(100),
+  // No upper bound worth calling a rate limit. The old 100% ceiling made short-dated
+  // offerings unenterable — 15% over 30 days is about 440% annualised — and this is the
+  // desk's own number on its own product. What is enforced is what is not taste: not
+  // negative, because the accrual takes the 365th root of (1 + rate); finite, because
+  // Infinity would silently corrupt every balance it touched; and inside what the column
+  // stores, so too large is a refusal that says so rather than a driver error.
+  roi_rate: z.number().min(0).finite().max(1_000_000),
   term_days: z.number().int().min(1).max(3650),
   opens_at: z.coerce.date().nullable().optional(),
   closes_at: z.coerce.date().nullable().optional(),
@@ -4780,7 +4805,9 @@ app.get('/admin/ipos/:id/subscriptions', { preHandler: auth('crm:read') }, async
 /** The rate agreed with one client on one subscription. Never shown on a client screen. */
 app.patch('/admin/ipo-subscriptions/:id', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
   const body = z.object({
-    roi_override: z.number().min(0).max(100).nullable(),
+    // Same bounds as the offering's own rate: an agreed rate for one client is not a
+    // smaller number than the one it replaces.
+    roi_override: z.number().min(0).finite().max(1_000_000).nullable(),
   }).safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const next = body.data.roi_override === null ? null : body.data.roi_override / 100;

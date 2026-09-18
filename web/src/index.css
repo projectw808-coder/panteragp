@@ -997,13 +997,13 @@ input:-webkit-autofill:active {
   overflow: hidden;
   border: 1px solid var(--color-pebble);
   background:
-    radial-gradient(120% 90% at 18% 8%, color-mix(in srgb, var(--color-ember) 20%, transparent), transparent 62%),
+    radial-gradient(120% 90% at 18% 8%, color-mix(in srgb, var(--mark, var(--color-ember)) 20%, transparent), transparent 62%),
     var(--color-bone);
 }
 .dark .shot {
   border-color: rgb(255 255 255 / 0.1);
   background:
-    radial-gradient(120% 90% at 18% 8%, color-mix(in srgb, var(--color-ember) 22%, transparent), transparent 62%),
+    radial-gradient(120% 90% at 18% 8%, color-mix(in srgb, var(--mark, var(--color-ember)) 22%, transparent), transparent 62%),
     rgb(255 255 255 / 0.05);
 }
 .shot svg, .shot img {

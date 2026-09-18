@@ -452,3 +452,32 @@ ON CONFLICT (slug) DO NOTHING;
 -- written to disk before this are still found.
 ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS file_data bytea;
 ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS file_type text;
+
+-- The ROI ceiling comes off. It was one year's rate capped at 100%, which is a reasonable
+-- bound for a bond and a wrong one for this desk: short-dated offerings are quoted at rates
+-- that read absurd annualised — a 30-day deal at 15% over the term is about 440% a year —
+-- and the cap made those unenterable. What is left is the part that is not a matter of
+-- taste: the rate must not be negative, because the accrual takes the 365th root of
+-- (1 + rate) and a rate below -1 has no real root, and it must fit the column.
+--
+-- The column widens with it. numeric(6,4) tops out at 99.9999 as a fraction, so without
+-- this a rate the validation now allows would fail as a numeric overflow from the driver
+-- rather than as a refusal anybody can read.
+ALTER TABLE ipos             ALTER COLUMN roi_rate     TYPE numeric(12,4);
+ALTER TABLE ipo_subscriptions ALTER COLUMN roi_override TYPE numeric(12,4);
+
+DO $do$ BEGIN
+  ALTER TABLE ipos DROP CONSTRAINT IF EXISTS ipos_roi_rate_check;
+  ALTER TABLE ipo_subscriptions DROP CONSTRAINT IF EXISTS ipo_subscriptions_roi_override_check;
+END $do$;
+
+DO $do$ BEGIN
+  ALTER TABLE ipos ADD CONSTRAINT ipos_roi_rate_check CHECK (roi_rate >= 0);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;
+
+DO $do$ BEGIN
+  ALTER TABLE ipo_subscriptions ADD CONSTRAINT ipo_subscriptions_roi_override_check
+    CHECK (roi_override IS NULL OR roi_override >= 0);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;

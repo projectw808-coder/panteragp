@@ -16,14 +16,42 @@
 
 type MarkProps = { className?: string };
 
-const frame = (children: React.ReactNode) => (
+const frame = (children: React.ReactNode, tint?: string) => (
   <svg viewBox="0 0 320 180" fill="none" stroke="currentColor" strokeWidth="1.4"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden
+    style={tint ? { color: tint } : undefined}>
     {children}
     {/* A ground line under every mark, so eight different drawings still look like a set. */}
     <path d="M0 162h320" opacity=".4" />
   </svg>
 );
+
+/**
+ * A colour per offering, so eight cards are told apart at a glance.
+ *
+ * This is the part of a logo that actually does the work in a list: long before anybody
+ * reads a name, they have found the card by its colour. A hue is not a trademark and this is
+ * not anybody's mark — the drawing it colours is ours, and nothing here reproduces a logo,
+ * claims a relationship with the company, or would pass for its branding.
+ *
+ * It is the one place in this app where colour outside the ember scale is allowed. The rule
+ * it bends — ember is the only chromatic colour — exists so that colour carries meaning
+ * rather than decoration, and here it does: it identifies which offering you are looking at.
+ * It stays inside the artwork frame and never reaches a figure, a status or a control.
+ */
+const TINTS: Record<string, string> = {
+  ANTH: '#d97757',   // clay
+  NSCL: '#3d7de0',   // a cold blue, for racks in Narvik
+  OAI:  '#0f9d76',   // green
+  DBX:  '#e04a2f',   // red
+  SPCX: '#7c8794',   // steel, and the only near-neutral of the set
+  CRNE: '#2e9e5b',   // wind and solar
+  SKHY: '#d8452f',   // memory red
+  CBRS: '#7c5cd6',   // wafer violet
+};
+
+/** The colour an offering is identified by, or the house ember when it has none. */
+export const markTint = (asset: string) => TINTS[asset?.toUpperCase()] ?? null;
 
 const MARKS: Record<string, React.ReactNode> = {
   // Anthropic — concentric rings, the widening circle of a model's reach.
@@ -94,7 +122,8 @@ const FALLBACK = (<>
 </>);
 
 export function IpoMark({ asset }: { asset: string } & MarkProps) {
-  return frame(MARKS[asset?.toUpperCase()] ?? FALLBACK);
+  const key = asset?.toUpperCase();
+  return frame(MARKS[key] ?? FALLBACK, TINTS[key]);
 }
 
 /** Whether this offering has a drawn mark of its own, as opposed to the generic one. */

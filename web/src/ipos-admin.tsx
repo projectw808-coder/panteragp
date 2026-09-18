@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, PageTitle, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
+import { IpoMark, markTint } from './ipo-art.tsx';
+import { useAuthedImage } from './authed-image.ts';
 
 /**
  * The desk side of IPO offerings: the whole shelf including drafts, the edit form, and the
@@ -19,7 +21,9 @@ type Ipo = {
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; stored_status: string; group: string; sort_order: number;
   raised: number; remaining: number; progress: number | null; subscribers: number;
-  has_image: boolean;
+  // image_key changes on every upload, which is what makes a preview refetch rather than
+  // go on showing the picture that was just replaced.
+  has_image: boolean; image_key: string | null;
 };
 
 type Sub = {
@@ -169,6 +173,25 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
    * touching the currency would have changed what its subscribers pay in.
    */
   const [currency, setCurrency] = useState(ipo?.currency ?? 'USD');
+  const [chosen, setChosen] = useState<File | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  // The picture as stored, fetched with the token — an <img src> pointed at the API carries
+  // no Authorization header and comes back 401.
+  const stored = useAuthedImage(
+    ipo?.has_image ? `/api/ipos/${ipo.id}/image` : null, ipo?.image_key);
+
+  // A file picked but not yet saved previews from the browser, so the desk sees the crop it
+  // is about to commit rather than the one it is replacing.
+  const [local, setLocal] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chosen) { setLocal(null); return; }
+    const url = URL.createObjectURL(chosen);
+    setLocal(url);
+    return () => URL.revokeObjectURL(url);
+  }, [chosen]);
+
+  const shot = local ?? stored.src;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -277,16 +300,59 @@ function IpoForm({ ipo, onDone, onCancel }: { ipo?: Ipo; onDone: () => void; onC
             defaultValue={ipo?.max_subscription ?? ''} className={`${field} w-full`} />
         </Labelled>
         <Labelled label="ROI rate (% a year)">
-          <input name="roi_rate" type="number" step="0.01" required min="0" max="100"
+          {/* No max: a short-dated offering annualises to a figure that reads absurd and is
+              still the right number, and the ceiling here only ever stopped the desk typing
+              its own rate. The server still refuses a negative one. */}
+          <input name="roi_rate" type="number" step="0.01" required min="0"
             defaultValue={ipo ? Number((ipo.roi_rate * 100).toFixed(2)) : ''} className={`${field} w-full`} />
         </Labelled>
         <Labelled label="Term (days)">
           <input name="term_days" type="number" required min="1" max="3650"
             defaultValue={ipo?.term_days} className={`${field} w-full`} />
         </Labelled>
-        <Labelled label="Picture">
-          <input name="image" type="file" accept="image/jpeg,image/png,image/webp" className={`${field} w-full`} />
-          <span className="mt-1 block text-xs text-slate-ink">JPEG, PNG or WebP, up to 5 MB</span>
+        <Labelled label="Picture" wide>
+          <div className="flex flex-wrap items-start gap-4">
+            {/* What is actually on the card right now, at the shape the card uses — a
+                picture chosen against a square preview and shown in 16:9 is a picture with
+                its subject cropped out, and the desk should see that before a client does. */}
+            <span className="shot block w-56 shrink-0"
+              style={markTint(ipo?.asset ?? '') ? ({ '--mark': markTint(ipo?.asset ?? '') } as React.CSSProperties) : undefined}>
+              {shot ? <img src={shot} alt="" /> : <IpoMark asset={ipo?.asset ?? ''} />}
+            </span>
+            <span className="min-w-56 flex-1 space-y-2">
+              <input name="image" type="file" accept="image/jpeg,image/png,image/webp"
+                className={`${field} w-full`}
+                onChange={(e) => setChosen(e.target.files?.[0] ?? null)} />
+              <span className="block text-xs text-slate-ink">
+                JPEG, PNG or WebP, up to 5 MB. Shown at 16:9 on the client's card.
+                {!ipo && ' It is uploaded once the offering is saved.'}
+              </span>
+              {chosen && (
+                <span className="block text-xs text-ember-ink">
+                  Previewing {chosen.name} — not saved until you save the offering.
+                </span>
+              )}
+              {ipo?.has_image && !chosen && (
+                <button type="button" className="rounded-full border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
+                  disabled={removing}
+                  onClick={async () => {
+                    setRemoving(true);
+                    setError(null);
+                    try {
+                      await api(`/admin/ipos/${ipo.id}/image`, { method: 'DELETE' });
+                      onDone();
+                    } catch (err) { setError((err as Error).message); } finally { setRemoving(false); }
+                  }}>
+                  {removing ? 'Removing…' : 'Remove picture'}
+                </button>
+              )}
+              {!ipo?.has_image && !chosen && (
+                <span className="block text-xs text-slate-ink">
+                  No picture, so the card wears the offering's drawn mark.
+                </span>
+              )}
+            </span>
+          </div>
         </Labelled>
 
         <Labelled label="Opens at">
@@ -471,7 +537,7 @@ function Row({ sub, canOverride, onDone }: { sub: Sub; canOverride: boolean; onD
               <label className="block">
                 <span className="metric-label">Agreed rate</span>
                 <span className="mt-1 flex items-center gap-2">
-                  <input className={`${field} w-28`} type="number" step="0.01" min="0" max="100"
+                  <input className={`${field} w-28`} type="number" step="0.01" min="0"
                     placeholder={String(Number((sub.offering_rate * 100).toFixed(2)))}
                     value={value} onChange={(e) => setValue(e.target.value)} />
                   <span className="font-mono text-xs">% a year</span>

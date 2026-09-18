@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { alertBox, btn, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
-import { IpoMark } from './ipo-art.tsx';
-import { useCountUp } from './count-up.ts';
+import { IpoMark, markTint } from './ipo-art.tsx';
+import { useAuthedImage } from './authed-image.ts';
 
 /**
  * IPO offerings for the client: what is running, what is coming, what has finished.
@@ -10,10 +10,13 @@ import { useCountUp } from './count-up.ts';
  * Built as a panel rather than a page so the client workspace can embed it for staff the
  * same way it embeds portfolios and staking — hence the `on` convention below.
  *
- * The one deliberate difference from those two: the ROI is shown. A portfolio or staking
- * rate is agreed with the desk and stays the desk's, which is why it was taken off those
- * screens. An offering's ROI is its public pitch and the thing a client is deciding on. A
- * per-client override is still private and appears only on the desk side.
+ * The rate is not on this page. It was, on the argument that an offering's ROI is its public
+ * pitch rather than an agreed rate like a portfolio's or a stake's — the desk decided
+ * otherwise, so it now sits with those two. What a client sees is the term, what they hold,
+ * what it has earned and when it matures.
+ *
+ * Finished offerings are the exception and still print a rate, because there it is a record
+ * of what was actually paid rather than an offer being made.
  */
 
 type Group = 'running' | 'incoming' | 'finished' | 'hidden';
@@ -30,7 +33,8 @@ type Ipo = {
   valuation: string | null;
   opens_at: string | null; closes_at: string | null; matures_at: string | null;
   status: string; group: Group; raised: number; remaining: number; progress: number | null;
-  has_image: boolean; server_time: string;
+  // image_key changes on every upload, which is what makes the picture refetch.
+  has_image: boolean; image_key: string | null; server_time: string;
   subscription: Subscription | null;
 };
 
@@ -155,7 +159,7 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
         </span>
         {!clientId && (
           <span className="text-xs text-slate-ink">
-            subscribe with money you hold — ROI is credited daily and paid at maturity
+            subscribe with money you hold — earnings are credited daily and paid at maturity
           </span>
         )}
       </div>
@@ -186,7 +190,7 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
             <section className="space-y-2">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <span className="section-title">Incoming</span>
-                <span className="text-xs text-slate-ink">annual ROI, paid daily on what you put in</span>
+                <span className="text-xs text-slate-ink">earnings are credited daily and paid at maturity</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {groups.incoming.map((i) => (
@@ -240,8 +244,12 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
             {ipo.status}
           </span>
         </span>
+        {/* The rate is off the client page by decision of the desk: what a client holds,
+            what it has earned and when it matures are theirs to see; the rate behind it is
+            the desk's, the way a portfolio's and a stake's already were. The term stays,
+            because it says when the money comes back. */}
         <span className="mt-0.5 block text-xs text-slate-ink">
-          {pct(ipo.roi_rate)} over {term(ipo.term_days)}
+          Over {term(ipo.term_days)}
           {ipo.closes_at && `, from the ${day(ipo.closes_at)} listing`}
           {elapsed !== null && `. Day ${elapsed} of ${ipo.term_days}`}
           {ipo.matures_at && ` — matures ${day(ipo.matures_at)}`}
@@ -284,7 +292,6 @@ function Offer({ ipo, on, clock, onDone, staff }: {
   const opening = ipo.status === 'upcoming';
   const target = opening ? ipo.opens_at : ipo.closes_at;
   const left = target ? new Date(target).getTime() - clock : null;
-  const shown = useCountUp(Number(ipo.roi_rate) * 100);
 
   return (
     <article className={`${card} tile lift grain relative space-y-2.5`}>
@@ -306,16 +313,16 @@ function Offer({ ipo, on, clock, onDone, staff }: {
       <h3 className="text-sm font-medium">{ipo.name}</h3>
       <p className="text-xs text-slate-ink">{ipo.summary}</p>
 
-      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-4' : 'grid-cols-3'}`}>
-        <div>
-          <dt className="metric-label">ROI</dt>
-          <dd className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
-            {shown === null ? '—' : `${shown.toFixed(2)}%`}
-          </dd>
-        </div>
+      {/* No ROI here: the rate is the desk's, and only a finished offering shows what it
+          actually returned. The term leads instead, in the size the rate had — a card still
+          needs one figure to read from across the page, and "how long is my money in" is the
+          honest candidate once the rate has gone. */}
+      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <div>
           <dt className="metric-label">Term</dt>
-          <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.term_days}d</dd>
+          <dd className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
+            {ipo.term_days}d
+          </dd>
         </div>
         <div>
           <dt className="metric-label">Min</dt>
@@ -450,13 +457,15 @@ function Done({ ipo }: { ipo: Ipo }) {
  * in it. Nothing here tells the client which of the two they are looking at.
  */
 function Picture({ ipo }: { ipo: Ipo }) {
-  const [failed, setFailed] = useState(false);
+  // Fetched with the token rather than pointed at by an <img src>, which cannot carry one.
+  const { src } = useAuthedImage(
+    ipo.has_image ? `/api/ipos/${ipo.id}/image` : null, ipo.image_key);
+  const tint = markTint(ipo.asset);
   return (
-    <span className="shot block">
-      {ipo.has_image && !failed
-        ? <img src={`/api/ipos/${ipo.id}/image`} alt={ipo.name} loading="lazy"
-            onError={() => setFailed(true)} />
-        : <IpoMark asset={ipo.asset} />}
+    // The frame's wash takes the offering's own colour, so a card is found by its colour
+    // before anybody reads its name. An uploaded picture covers the wash entirely.
+    <span className="shot block" style={tint ? ({ '--mark': tint } as React.CSSProperties) : undefined}>
+      {src ? <img src={src} alt={ipo.name} /> : <IpoMark asset={ipo.asset} />}
     </span>
   );
 }

@@ -161,7 +161,12 @@ export const DAYS_PER_YEAR = 365;
 export function accrue(
   { balance, annualRate, days }: { balance: number; annualRate: number | null; days: number },
 ): number {
-  if (annualRate === null || annualRate === 0 || !(days > 0) || !(balance > 0)) return 0;
+  // A rate below zero has no real 365th root once it passes -1, and the root of a negative
+  // number is NaN — which would not throw, would not be caught, and would be written onto a
+  // balance as a silent corruption. Nothing can reach this: every rate is bounded at zero by
+  // its schema and by a CHECK on its column. It is guarded anyway because the cost is a
+  // comparison and the failure it prevents is money turning into NaN.
+  if (annualRate === null || !(annualRate > 0) || !(days > 0) || !(balance > 0)) return 0;
   const daily = (1 + annualRate) ** (1 / DAYS_PER_YEAR) - 1;
   return round8(balance * ((1 + daily) ** days - 1));
 }
