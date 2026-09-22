@@ -513,3 +513,90 @@ DO $do$ BEGIN
     CHECK (raised_baseline >= 0 AND raised_baseline <= target_amount);
 EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
 END $do$;
+
+-- ---------------------------------------------------------------- email to clients
+--
+-- Sending to a client list is not the same as writing a notification into the app. A
+-- notification is read by somebody who chose to open the product; an email arrives whether
+-- they wanted it or not, at an address that belongs to them, and there is no unsending it.
+-- The three tables below exist for the three things that follow from that: consent, a record
+-- of what was actually sent, and an identity for the send so that clicking twice does not
+-- deliver twice.
+
+-- Consent. Kept per client because it is the client's decision, not a setting on the send.
+-- A weekly update is marketing however useful it is, so it goes only to people who have not
+-- said no, and every one of them can say no from the message itself without signing in —
+-- which is what the token is for. It is not the client's id: an id in a public link is an
+-- invitation to enumerate the client list.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email_opt_out    boolean NOT NULL DEFAULT false;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email_opt_out_at timestamptz;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS unsubscribe_token text;
+-- A DEFAULT, not just a backfill. Backfilling alone gave every client created afterwards a
+-- null token, so their unsubscribe link read ?token=null — the same dead link for all of
+-- them, and the one part of a marketing email that is not optional. It failed silently,
+-- because a dead link looks exactly like a live one until somebody clicks it.
+ALTER TABLE clients ALTER COLUMN unsubscribe_token
+  SET DEFAULT replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+-- gen_random_uuid() is built in; gen_random_bytes() is pgcrypto, which is not installed
+-- here and must not become a deploy-time dependency for one column. Two uuids stripped of
+-- their dashes is 64 hex characters of the same randomness.
+UPDATE clients
+   SET unsubscribe_token = replace(gen_random_uuid()::text, '-', '')
+                        || replace(gen_random_uuid()::text, '-', '')
+ WHERE unsubscribe_token IS NULL;
+DO $do$ BEGIN
+  ALTER TABLE clients ADD CONSTRAINT clients_unsubscribe_token_key UNIQUE (unsubscribe_token);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;
+
+-- One article, written and reviewed before it goes anywhere. Drafting and sending are
+-- deliberately two steps: an admin writes or generates a draft, looks at it, sends a test to
+-- themselves, and only then releases it. A single endpoint that composed and delivered in one
+-- call would make "oops" unrecoverable for a thousand people at once.
+CREATE TABLE IF NOT EXISTS email_campaigns (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind        text NOT NULL DEFAULT 'weekly_update',
+  subject     text NOT NULL,
+  body        text NOT NULL,              -- the article, as plain text with blank-line paragraphs
+  status      text NOT NULL DEFAULT 'draft'
+              CHECK (status IN ('draft','sending','sent','failed')),
+  created_by  uuid REFERENCES staff(id),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  started_at  timestamptz,
+  finished_at timestamptz,
+  recipients  integer NOT NULL DEFAULT 0, -- how many it went to, once it has gone
+  failures    integer NOT NULL DEFAULT 0
+);
+
+-- One row per client per campaign, written before the message is handed to the server.
+--
+-- The UNIQUE is the idempotency: a second send skips anybody already recorded, so a
+-- double-click, a retry after a crash, or two admins pressing at once cannot deliver twice.
+-- It is also the answer to "did they get it?", which support will ask.
+CREATE TABLE IF NOT EXISTS email_deliveries (
+  id          bigserial PRIMARY KEY,
+  campaign_id uuid NOT NULL REFERENCES email_campaigns(id) ON DELETE CASCADE,
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  email       text NOT NULL,              -- as addressed, so a later change to the client is visible
+  status      text NOT NULL CHECK (status IN ('sent','failed')),
+  error       text,
+  sent_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (campaign_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS email_deliveries_by_client ON email_deliveries (client_id, sent_at DESC);
+
+DO $do$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['email_campaigns'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = t || '_audit') THEN
+      EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
+                      FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
+    END IF;
+  END LOOP;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'email_campaigns_touch') THEN
+    EXECUTE 'CREATE TRIGGER email_campaigns_touch BEFORE UPDATE ON email_campaigns
+             FOR EACH ROW EXECUTE FUNCTION touch()';
+  END IF;
+END $do$;

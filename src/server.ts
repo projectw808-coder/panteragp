@@ -11,6 +11,9 @@ import { randomUUID } from 'node:crypto';
 import { basename, extname, join } from 'node:path';
 
 import { challengeMessage, checksumAddress, isAddress, recoverSigner } from './wallet-link.ts';
+import {
+  mailConfig, render as renderMail, send as sendMail, verify as verifyMail,
+} from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
 import {
@@ -213,7 +216,8 @@ app.post('/clients', { preHandler: auth('crm:write') }, async (req, reply) => {
   const b = body.data;
   const actor = req.principal.sub;
 
-  return tx(actor, async (c) => {
+  try {
+  return await tx(actor, async (c) => {
     const { rows } = await c.query(
       `INSERT INTO clients (email, name, phone, country, tier, owner_staff_id, password_hash)
        VALUES ($1,$2,$3,$4,coalesce($5,'standard'),coalesce($6::uuid,$7::uuid),$8) RETURNING *`,
@@ -225,8 +229,18 @@ app.post('/clients', { preHandler: auth('crm:write') }, async (req, reply) => {
       client_id: rows[0].id, kind: 'note', actor, summary: 'Client record created',
     });
     delete rows[0].password_hash;
+    delete rows[0].unsubscribe_token;
     return rows[0];
   });
+  } catch (err: any) {
+    // An address already on file is something the caller can act on — find the record, or
+    // use a different address. As an unhandled error it surfaced as a 500, which says the
+    // application is broken when the truth is that this client already exists.
+    if (err?.code === '23505') {
+      return reply.code(409).send({ error: 'a client with that email address already exists' });
+    }
+    throw err;
+  }
 });
 
 /**
@@ -484,6 +498,7 @@ app.get('/clients/:id', { preHandler: clientScope }, async (req: any, reply) => 
   // Derived before the hash is dropped, for the same reason the list carries it.
   rows[0].has_login = rows[0].password_hash !== null;
   delete rows[0].password_hash;
+    delete rows[0].unsubscribe_token;
   return rows[0];
 });
 
@@ -581,6 +596,7 @@ app.patch('/clients/:id', { preHandler: auth('crm:write') }, async (req: any, re
         });
       }
       delete rows[0].password_hash;
+    delete rows[0].unsubscribe_token;
       return rows[0];
     });
   } catch (err: any) {
@@ -5092,6 +5108,342 @@ async function maturedIpos(actor: string): Promise<{ offerings: number; settled:
   for (const r of rows) settled += (await settleIpo(r.id, actor)).settled;
   return { offerings: rows.length, settled };
 }
+
+
+// ------------------------------------------------------------------ email to clients
+/*
+ * An article the desk writes once and sends to everybody who has not opted out.
+ *
+ * Four things shape this, and all four are about the fact that mail cannot be recalled:
+ *
+ *   Drafting and sending are separate calls. Compose, read it back, send it to yourself,
+ *   then release it. One endpoint that composed and delivered would make a typo permanent
+ *   for a thousand people simultaneously.
+ *
+ *   The send is guarded by a count. The caller states how many people it expects to reach
+ *   and the server refuses if that is not the number it computes. A stale screen, a client
+ *   list that grew, or a misclick on the wrong campaign all fail closed.
+ *
+ *   Every recipient is recorded before the message leaves, with a UNIQUE on
+ *   (campaign_id, client_id). Running the same send twice delivers nothing the second time.
+ *
+ *   One failure is one failure. A refused address is written down and the loop carries on,
+ *   because the alternative is that client 4 of 900 decides the other 896 hear nothing.
+ */
+
+/** Who a campaign would actually reach: opted in, and with an address to reach them at. */
+const RECIPIENTS = `
+  FROM clients c
+ WHERE c.email_opt_out = false
+   AND c.email IS NOT NULL AND c.email <> ''`;
+
+app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
+  const cfg = mailConfig();
+  const { rows: [n] } = await pool.query<{ eligible: number; opted_out: number }>(`
+    SELECT (SELECT count(*)::int ${RECIPIENTS}) AS eligible,
+           (SELECT count(*)::int FROM clients WHERE email_opt_out) AS opted_out`);
+  return {
+    // What is set, never what it is set to: a host and a sender are operational facts, a
+    // password is not, and it has no business leaving the process that reads it.
+    configured: cfg !== null,
+    host: cfg?.host ?? null,
+    port: cfg?.port ?? null,
+    secure: cfg?.secure ?? null,
+    from: cfg?.from ?? null,
+    authenticated: cfg?.user !== null && cfg?.user !== undefined,
+    eligible: n.eligible,
+    opted_out: n.opted_out,
+  };
+});
+
+/** Ask the mail server whether it would have us, without sending to anybody. */
+app.post('/admin/email/verify', { preHandler: auth('admin') }, async (_req, reply) => {
+  const out = await verifyMail();
+  if (!out.ok) return reply.code(502).send({ ok: false, error: out.error });
+  return { ok: true };
+});
+
+/**
+ * A draft written from what actually happened, rather than from nothing.
+ *
+ * It reports the shelf: what opened, what is closing, what matured. Facts this database
+ * holds, phrased plainly. It deliberately contains no market commentary, no outlook and no
+ * suggestion about what anybody should do with their money — this desk is simulated, the
+ * author is a program, and an article that told clients what to buy would be the one part of
+ * this feature nobody could defend. The desk edits it before it goes anywhere.
+ */
+async function draftWeeklyUpdate(): Promise<{ subject: string; body: string }> {
+  const { rows: opened } = await pool.query<{ name: string; closes_at: Date | null }>(`
+    SELECT name, closes_at FROM ipos
+     WHERE status NOT IN ('draft','cancelled') AND opens_at IS NOT NULL
+       AND opens_at >= now() - interval '7 days' AND opens_at <= now()
+     ORDER BY opens_at`);
+  const { rows: closing } = await pool.query<{ name: string; closes_at: Date }>(`
+    SELECT name, closes_at FROM ipos
+     WHERE status NOT IN ('draft','cancelled') AND closes_at IS NOT NULL
+       AND closes_at > now() AND closes_at <= now() + interval '14 days'
+     ORDER BY closes_at`);
+  const { rows: matured } = await pool.query<{ name: string }>(`
+    SELECT name FROM ipos
+     WHERE matures_at IS NOT NULL AND matures_at >= now() - interval '7 days'
+       AND matures_at <= now() AND status <> 'cancelled'
+     ORDER BY matures_at`);
+  const { rows: [shelf] } = await pool.query<{ open: number }>(`
+    SELECT count(*)::int AS open FROM ipos
+     WHERE status NOT IN ('draft','cancelled')
+       AND opens_at <= now() AND closes_at > now()`);
+
+  const when = (d: Date | null) => (d
+    ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : 'shortly');
+  const list = (xs: string[]) => (xs.length > 1
+    ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] ?? '');
+
+  const paras: string[] = ['Here is what changed on the desk this week.'];
+
+  if (opened.length) {
+    paras.push(`${list(opened.map((o) => o.name))} ${opened.length > 1 ? 'opened' : 'opened'} `
+      + `for subscription. You can read the terms on the IPO offerings page.`);
+  }
+  if (closing.length) {
+    paras.push(`Closing soon: ${closing.map((c) => `${c.name} on ${when(c.closes_at)}`).join('; ')}. `
+      + `Once a book closes nothing further can be put into it.`);
+  }
+  if (matured.length) {
+    paras.push(`${list(matured.map((m) => m.name))} reached maturity. Where you held an `
+      + `allocation, the principal and the return accrued over the term were paid to your balance.`);
+  }
+  if (!opened.length && !closing.length && !matured.length) {
+    paras.push('No offerings opened, closed or matured this week.');
+  }
+  paras.push(shelf.open
+    ? `There ${shelf.open === 1 ? 'is one offering' : `are ${shelf.open} offerings`} open for `
+      + `subscription right now.`
+    : 'Nothing is open for subscription at the moment.');
+  paras.push('As always, your positions, balances and documents are on your account page.');
+
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return { subject: `Weekly update — ${today}`, body: paras.join('\n\n') };
+}
+
+const campaignBody = z.object({
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(20_000),
+});
+
+app.get('/admin/campaigns', { preHandler: auth('admin') }, async () =>
+  (await pool.query(`
+    SELECT c.id, c.kind, c.subject, c.status, c.created_at, c.started_at, c.finished_at,
+           c.recipients, c.failures, s.name AS created_by
+      FROM email_campaigns c LEFT JOIN staff s ON s.id = c.created_by
+     ORDER BY c.created_at DESC LIMIT 50`)).rows);
+
+app.get('/admin/campaigns/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const { rows: [c] } = await pool.query('SELECT * FROM email_campaigns WHERE id = $1', [req.params.id]);
+  if (!c) return reply.code(404).send({ error: 'no such campaign' });
+  const { rows: [n] } = await pool.query<{ eligible: number }>(
+    `SELECT count(*)::int AS eligible ${RECIPIENTS}`);
+  const { rows: deliveries } = await pool.query(`
+    SELECT d.status, d.email, d.error, d.sent_at, cl.name
+      FROM email_deliveries d JOIN clients cl ON cl.id = d.client_id
+     WHERE d.campaign_id = $1 ORDER BY d.sent_at DESC LIMIT 200`, [req.params.id]);
+  return { ...c, eligible: n.eligible, deliveries };
+});
+
+/** Create a draft. With no subject and body of its own, one is written from the week. */
+app.post('/admin/campaigns', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const given = campaignBody.partial().safeParse(req.body ?? {});
+  if (!given.success) return reply.code(400).send({ error: given.error.flatten() });
+  const draft = given.data.subject && given.data.body
+    ? { subject: given.data.subject, body: given.data.body }
+    : await draftWeeklyUpdate();
+
+  return await tx(req.principal.sub, async (c) => {
+    const { rows: [made] } = await c.query(
+      `INSERT INTO email_campaigns (subject, body, created_by) VALUES ($1,$2,$3) RETURNING *`,
+      [draft.subject, draft.body, req.principal.sub]);
+    return reply.code(201).send(made);
+  });
+});
+
+app.patch('/admin/campaigns/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = campaignBody.partial().refine((o) => Object.keys(o).length > 0, 'nothing to change')
+    .safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [before] } = await c.query<{ status: string }>(
+      'SELECT status FROM email_campaigns WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!before) return { kind: 'missing' } as const;
+    // Editing something already delivered would rewrite history without touching a single
+    // inbox: the record has to keep saying what was actually sent.
+    if (before.status !== 'draft') return { kind: 'not-draft', status: before.status } as const;
+    const entries = Object.entries(body.data);
+    const { rows: [after] } = await c.query(
+      `UPDATE email_campaigns SET ${entries.map(([k], i) => `${k} = ${i + 2}`).join(', ')}
+        WHERE id = $1 RETURNING *`,
+      [req.params.id, ...entries.map(([, v]) => v)]);
+    return { kind: 'ok', campaign: after } as const;
+  });
+  if (out.kind === 'missing') return reply.code(404).send({ error: 'no such campaign' });
+  if (out.kind === 'not-draft') {
+    return reply.code(409).send({ error: `this campaign is ${out.status} and cannot be edited` });
+  }
+  return out.campaign;
+});
+
+/** Send it to one address — normally the admin's own — and to nobody else. */
+app.post('/admin/campaigns/:id/test', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const to = z.object({ to: z.string().email() }).safeParse(req.body);
+  if (!to.success) return reply.code(400).send({ error: 'a single address to send the test to' });
+
+  const { rows: [c] } = await pool.query<{ subject: string; body: string }>(
+    'SELECT subject, body FROM email_campaigns WHERE id = $1', [req.params.id]);
+  if (!c) return reply.code(404).send({ error: 'no such campaign' });
+
+  const cfg = mailConfig();
+  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+  // A test carries an unsubscribe link that goes nowhere real: it is not addressed to a
+  // client, so there is no consent to withdraw and nothing to look up.
+  const unsubscribeUrl = `${cfg.publicUrl}/unsubscribe?token=test`;
+  const { text, html } = renderMail({
+    subject: c.subject, body: c.body, name: 'there', unsubscribeUrl, publicUrl: cfg.publicUrl,
+  });
+  const sent = await sendMail({
+    to: to.data.to, subject: `[test] ${c.subject}`, text, html, unsubscribeUrl,
+  });
+  if (!sent.ok) return reply.code(502).send({ error: sent.error });
+  return { ok: true, to: to.data.to };
+});
+
+/**
+ * Send it to every client who has not opted out.
+ *
+ * `confirm_recipients` has to match the number the server counts. It is not ceremony: the
+ * screen that offered the button may have been open for an hour, the list may have grown,
+ * and this is the one action here that cannot be undone by pressing something else.
+ */
+app.post('/admin/campaigns/:id/send', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = z.object({ confirm_recipients: z.number().int().min(0) }).safeParse(req.body);
+  if (!body.success) {
+    return reply.code(400).send({ error: 'confirm_recipients must state how many this will reach' });
+  }
+  const cfg = mailConfig();
+  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+
+  // Claim the campaign: moving it out of draft inside a transaction is what stops two
+  // admins, or one admin clicking twice, both starting the same run.
+  const claim = await tx(req.principal.sub, async (c) => {
+    const { rows: [row] } = await c.query<{ id: string; status: string; subject: string; body: string }>(
+      'SELECT id, status, subject, body FROM email_campaigns WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!row) return { kind: 'missing' } as const;
+    if (row.status !== 'draft') return { kind: 'busy', status: row.status } as const;
+
+    const { rows: [n] } = await c.query<{ eligible: number }>(
+      `SELECT count(*)::int AS eligible ${RECIPIENTS}`);
+    if (n.eligible !== body.data.confirm_recipients) {
+      return { kind: 'changed', eligible: n.eligible } as const;
+    }
+    await c.query(`UPDATE email_campaigns SET status = 'sending', started_at = now() WHERE id = $1`,
+      [row.id]);
+    return { kind: 'ok', campaign: row, eligible: n.eligible } as const;
+  });
+
+  if (claim.kind === 'missing') return reply.code(404).send({ error: 'no such campaign' });
+  if (claim.kind === 'busy') {
+    return reply.code(409).send({ error: `this campaign is already ${claim.status}` });
+  }
+  if (claim.kind === 'changed') {
+    return reply.code(409).send({
+      error: `this would now reach ${claim.eligible} clients, not ${body.data.confirm_recipients}.`
+        + ' Nothing was sent — check the number and try again.',
+      eligible: claim.eligible,
+    });
+  }
+
+  // Nobody is mailed without a working way out. The column has a default, so this fills
+  // nothing on a healthy database — it is here because the failure it prevents is silent:
+  // a missing token renders as ?token=null, which looks like a link, reads like a link, and
+  // unsubscribes nobody. Cheap, idempotent, and it runs before a single message goes out.
+  const { rowCount: repaired } = await pool.query(`
+    UPDATE clients
+       SET unsubscribe_token = replace(gen_random_uuid()::text, '-', '')
+                            || replace(gen_random_uuid()::text, '-', '')
+     WHERE unsubscribe_token IS NULL`);
+  if (repaired) app.log.warn({ repaired }, 'clients had no unsubscribe token; generated one each');
+
+  const { rows: people } = await pool.query<{
+    id: string; name: string; email: string; unsubscribe_token: string;
+  }>(`SELECT c.id, c.name, c.email, c.unsubscribe_token ${RECIPIENTS} ORDER BY c.created_at`);
+
+  let sent = 0;
+  let failed = 0;
+  for (const person of people) {
+    const unsubscribeUrl = `${cfg.publicUrl}/unsubscribe?token=${person.unsubscribe_token}`;
+    const { text, html } = renderMail({
+      subject: claim.campaign.subject, body: claim.campaign.body,
+      name: person.name, unsubscribeUrl, publicUrl: cfg.publicUrl,
+    });
+    const out = await sendMail({
+      to: person.email, subject: claim.campaign.subject, text, html, unsubscribeUrl,
+    });
+
+    // Recorded whether it worked or not, and never allowed to throw: a bookkeeping failure
+    // must not stop the run, and ON CONFLICT is what makes a re-run skip these.
+    try {
+      await pool.query(
+        `INSERT INTO email_deliveries (campaign_id, client_id, email, status, error)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (campaign_id, client_id) DO NOTHING`,
+        [claim.campaign.id, person.id, person.email, out.ok ? 'sent' : 'failed',
+         out.ok ? null : out.error.slice(0, 500)]);
+    } catch (err) {
+      app.log.error({ err, client: person.id }, 'could not record an email delivery');
+    }
+    if (out.ok) sent++; else failed++;
+  }
+
+  await tx(req.principal.sub, (c) => c.query(
+    `UPDATE email_campaigns SET status = $2, finished_at = now(), recipients = $3, failures = $4
+      WHERE id = $1`,
+    [claim.campaign.id, failed === people.length && people.length > 0 ? 'failed' : 'sent', sent, failed]));
+
+  app.log.info({ campaign: claim.campaign.id, sent, failed }, 'weekly update sent');
+  return { ok: true, sent, failed, recipients: people.length };
+});
+
+/**
+ * Stop receiving these, without signing in.
+ *
+ * Unauthenticated on purpose: somebody who no longer wants our mail must not have to
+ * remember a password to say so, and a link that leads to a login screen is a link that gets
+ * the message reported as spam instead. The token is random and per client, so it identifies
+ * one person without exposing an id, and it always answers the same way — an unknown token
+ * gets the same page a known one does, because differing replies would turn this into a
+ * checker for which tokens are real.
+ */
+app.get('/unsubscribe', async (req: any, reply) => {
+  const token = String(req.query?.token ?? '');
+  if (token && token !== 'test') {
+    await tx('unsubscribe', (c) => c.query(
+      `UPDATE clients SET email_opt_out = true, email_opt_out_at = now()
+        WHERE unsubscribe_token = $1 AND email_opt_out = false`, [token]));
+  }
+  return reply.type('text/html').send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unsubscribed</title></head>
+<body style="margin:0;padding:48px 24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
+<div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;">
+<div style="font-size:18px;">Pantera GP <span style="color:#ff7817;">///</span></div>
+<h1 style="font-size:20px;margin:18px 0 10px;">You will not get these any more</h1>
+<p style="font-size:15px;line-height:1.6;margin:0 0 12px;">
+  We have stopped sending you update emails. It takes effect immediately — nothing further
+  is queued.</p>
+<p style="font-size:14px;line-height:1.6;color:#66666e;margin:0;">
+  This does not close your account or affect anything about it. Messages about your own
+  account — a document we need, a withdrawal, something you asked us to tell you — are not
+  part of this and will still reach you.</p>
+</div></body></html>`);
+});
 
 if (process.argv[1]?.endsWith('server.ts')) {
   // Refuse to start misconfigured, rather than serving 500s at the login screen.

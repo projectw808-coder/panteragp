@@ -518,6 +518,59 @@ with an apostrophe: client names and notes reach these files, and a spreadsheet 
 otherwise execute them. PDF is the browser's print dialogue on the on-screen report rather
 than a PDF library.
 
+## Client email
+
+An article the desk writes once and sends to everyone who has not opted out.
+`GET|POST /admin/campaigns` · `PATCH /admin/campaigns/:id` · `POST /admin/campaigns/:id/test` ·
+`POST /admin/campaigns/:id/send` · `GET /admin/email/status` · `POST /admin/email/verify` ·
+`GET /unsubscribe`
+
+Configuration is environment only: `SMTP_HOST`, `SMTP_PORT` (587 by default), `SMTP_USER`,
+`SMTP_PASS`, `SMTP_FROM`, and `PUBLIC_URL` for the links inside a message. `SMTP_SECURE`
+overrides the guess, which is implicit TLS on 465 and STARTTLS otherwise. With no host and no
+sender the feature reports itself unconfigured and offers no button, rather than presenting
+one that fails. The status endpoint says what is set and never what it is set to — a password
+has no business leaving the process that reads it.
+
+**Everything here is shaped by one fact: a message cannot be recalled.**
+
+*Writing and sending are separate calls.* Compose, read it back, send it to yourself, then
+release it. One endpoint that composed and delivered would make a typo permanent for a
+thousand people at once. The screen puts the test above the send because that is the order it
+should happen in.
+
+*The send is guarded by a count.* The caller states how many people it expects to reach and
+the server refuses if that is not the number it computes — a stale screen, a list that grew,
+or a click on the wrong campaign all fail closed, having sent nothing. The desk screen makes
+you type the number; the server checks it independently, so neither is load-bearing alone.
+
+*Every recipient is recorded before the message leaves*, with `UNIQUE (campaign_id, client_id)`
+and the campaign claimed out of `draft` inside a transaction. A double-click, a retry after a
+crash, or two admins pressing at once cannot deliver twice. It is also the answer to "did they
+get it?", which support will ask.
+
+*One failure is one failure.* A refused address is written down with its reason and the loop
+carries on, because the alternative is that client 4 of 900 decides the other 896 hear nothing.
+
+**Consent is the client's, and lives on the client.** A weekly update is marketing however
+useful it is, so it goes only to people who have not said no, and every message carries a link
+that opts them out without signing in — a link that leads to a login screen is a link that
+gets the message reported as spam instead. The token is random, per client and unique; it is
+not the client's id, because an id in a public link is an invitation to enumerate the client
+list, and it is stripped from every CRM payload because whoever holds it can act with it. An
+unknown token gets the identical page a real one does, or this becomes a way to test which
+tokens are live. `List-Unsubscribe` is set too, so mail clients offer their own button.
+
+The draft is written from what the database actually holds — what opened, what is closing,
+what matured. It contains no market commentary, no outlook and no suggestion about what
+anybody should do with their money: this desk is simulated and the author is a program. The
+desk edits every word before it goes anywhere.
+
+Tested against a real SMTP conversation rather than a mock: a local sink that speaks RFC 5321
+accepts the mail, refuses one address on purpose, and the assertions are about what actually
+arrived — both MIME parts, the per-recipient token, the unsubscribe round trip, and that a
+second send delivers nothing.
+
 ## Uploads live in the database
 
 Every file this application accepts — KYC documents, the profile photo, an offering's

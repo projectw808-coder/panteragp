@@ -21,6 +21,7 @@ import { SettingsView } from './settings.tsx';
 import { Landing } from './landing.tsx';
 import { IposPanel } from './ipos.tsx';
 import { IposAdmin } from './ipos-admin.tsx';
+import { EmailAdmin } from './email-admin.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -306,6 +307,7 @@ function Shell({ dark, setDark, onLogout }: {
     // at the bottom with the rest of the account.
     ['#/support', 'Support', crm],
     ['#/reports', 'Reports', crm],
+    ['#/email', 'Client email', crm],
     ['#/overview', 'Overview', trading],
     ['#/charts', 'Charts', true],
     ['#/trade', 'Auto trader', trading],
@@ -393,6 +395,7 @@ function Shell({ dark, setDark, onLogout }: {
             : trading
               ? <div className='mx-auto max-w-5xl'><IposPanel /></div>
               : <Denied />)
+          : hash === '/email' ? (crm ? <EmailAdmin admin={!!admin} /> : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)
           : hash === '/documents' ? (trading && me
