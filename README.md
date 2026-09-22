@@ -527,7 +527,11 @@ An article the desk writes once and sends to everyone who has not opted out.
 
 Configuration is environment only: `SMTP_HOST`, `SMTP_PORT` (587 by default), `SMTP_USER`,
 `SMTP_PASS`, `SMTP_FROM`, and `PUBLIC_URL` for the links inside a message. `SMTP_SECURE`
-overrides the guess, which is implicit TLS on 465 and STARTTLS otherwise. With no host and no
+overrides the guess, which is implicit TLS on 465 and STARTTLS otherwise. `SMTP_MESSAGE_STREAM`
+names a provider stream where one is required: Postmark separates transactional mail from
+broadcasts and treats a newsletter on the transactional stream as a terms violation, which
+suspends the account rather than bouncing the message. Set it to the broadcast stream’s id.
+The header is ignored by providers that do not use streams, and omitted when unset. With no host and no
 sender the feature reports itself unconfigured and offers no button, rather than presenting
 one that fails. The status endpoint says what is set and never what it is set to — a password
 has no business leaving the process that reads it.

@@ -5150,6 +5150,7 @@ app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
     port: cfg?.port ?? null,
     secure: cfg?.secure ?? null,
     from: cfg?.from ?? null,
+    message_stream: cfg?.messageStream ?? null,
     authenticated: cfg?.user !== null && cfg?.user !== undefined,
     eligible: n.eligible,
     opted_out: n.opted_out,

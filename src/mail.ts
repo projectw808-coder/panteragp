@@ -18,6 +18,7 @@ export type MailConfig = {
   host: string; port: number; secure: boolean;
   user: string | null; pass: string | null;
   from: string; publicUrl: string;
+  messageStream: string | null;
 };
 
 /** What is set, read once at the point of use so a restart is all a change needs. */
@@ -36,6 +37,12 @@ export function mailConfig(env = process.env): MailConfig | null {
     pass: env.SMTP_PASS || null,
     from,
     publicUrl: (env.PUBLIC_URL ?? 'http://localhost:5173').replace(/\/+$/, ''),
+    // Some providers route by a named stream and treat the choice as a rule rather than a
+    // preference. Postmark separates transactional mail from broadcasts, and a newsletter
+    // sent on the transactional stream is a terms violation that suspends the sending
+    // account — the one failure here that costs more than a bounced message. The header is
+    // theirs, is ignored by everyone else, and is omitted entirely when unset.
+    messageStream: env.SMTP_MESSAGE_STREAM?.trim() || null,
   };
 }
 
@@ -174,6 +181,7 @@ export async function send(a: {
       headers: {
         'List-Unsubscribe': `<${a.unsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        ...(cfg.messageStream ? { 'X-PM-Message-Stream': cfg.messageStream } : {}),
       },
     });
     return { ok: true, id: String(info.messageId ?? '') };
