@@ -13,7 +13,7 @@ import { ProfileView } from './profile.tsx';
 import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
 import { ComplianceView, DocumentsPanel, ReportsView } from './compliance.tsx';
-import { AutoTraderRunner, AutoTraderView } from './auto-trader.tsx';
+import { AutoTraderView } from './auto-trader.tsx';
 import { OverviewView } from './overview.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
@@ -376,7 +376,6 @@ function Shell({ dark, setDark, onLogout }: {
         {/* On every client screen, charts included. It used to be hidden there because the
             charts run full-bleed, which stopped mattering the moment charts became where a
             trader lands. */}
-        {trading && <AutoTraderRunner />}
         {trading && <div className={charts ? 'shrink-0' : 'mx-auto max-w-6xl'}><BalanceBar /></div>}
         {charts ? <ChartsView dark={dark} />
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)

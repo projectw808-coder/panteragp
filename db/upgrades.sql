@@ -677,3 +677,64 @@ DO $do$ BEGIN
     ADD CONSTRAINT email_campaigns_audience_check CHECK (audience IN ('all','selected'));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $do$;
+
+-- The auto trader, made real. Its orders go through the same book as a client's own, marked
+-- with where they came from and why, so a bot trade is a trade: it fills, moves the position,
+-- realises onto the balance and lands on the timeline like any other. The strategy, its risk
+-- budget and its log are the bot's own records.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS source      text NOT NULL DEFAULT 'manual';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS strategy_id uuid;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS reason      text;
+DO $do$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('manual','auto'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
+CREATE INDEX IF NOT EXISTS orders_auto_by_client ON orders (client_id, placed_at DESC) WHERE source = 'auto';
+
+CREATE TABLE IF NOT EXISTS auto_strategies (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  kind        text NOT NULL CHECK (kind IN ('trend','mean_reversion','grid')),
+  name        text NOT NULL,
+  symbols     text[] NOT NULL,
+  allocation  numeric(20,8) NOT NULL DEFAULT 0 CHECK (allocation >= 0),  -- USD it may deploy
+  state       text NOT NULL DEFAULT 'running' CHECK (state IN ('running','paused')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auto_strategies_by_client ON auto_strategies (client_id);
+
+CREATE TABLE IF NOT EXISTS auto_settings (
+  client_id          uuid PRIMARY KEY REFERENCES clients(id),
+  risk_per_trade     numeric(8,4) NOT NULL DEFAULT 1    CHECK (risk_per_trade > 0 AND risk_per_trade <= 5),
+  max_daily_loss     numeric(8,4) NOT NULL DEFAULT 3    CHECK (max_daily_loss > 0 AND max_daily_loss <= 20),
+  max_open_positions integer      NOT NULL DEFAULT 5    CHECK (max_open_positions BETWEEN 1 AND 20),
+  max_leverage       numeric(8,2) NOT NULL DEFAULT 5    CHECK (max_leverage >= 1 AND max_leverage <= 50),
+  started_at         timestamptz,
+  halted_until       date,          -- the daily loss budget was spent; no new entries until then
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS auto_log (
+  id          bigserial PRIMARY KEY,
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  strategy_id uuid,
+  at          timestamptz NOT NULL DEFAULT now(),
+  level       text NOT NULL DEFAULT 'info' CHECK (level IN ('info','trade','win','loss','warn')),
+  message     text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS auto_log_by_client ON auto_log (client_id, at DESC);
+
+DO $do$ DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['auto_strategies','auto_settings'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = t || '_audit') THEN
+      EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
+                      FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = t || '_touch') THEN
+      EXECUTE format('CREATE TRIGGER %I_touch BEFORE UPDATE ON %I
+                      FOR EACH ROW EXECUTE FUNCTION touch()', t, t);
+    END IF;
+  END LOOP;
+END $do$;

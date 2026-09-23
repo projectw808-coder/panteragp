@@ -2161,6 +2161,52 @@ await step('a weekly draft is written from the desk, for everyone unless told ot
   assert.equal(row.chosen, null);
 });
 
+console.log('\nAuto trader');
+await step('the bot sets itself up when switched on, with a share of the account', async () => {
+  await get(`/clients/${client.id}/deposit`, { token: A, method: 'POST', body: { currency: 'USD', amount: 10000, note: 'for the bot' } });
+  assert.equal((await get('/me/auto-trader', { token: T })).on, false);
+  await get('/me/auto-trader', { token: T, method: 'POST', body: { on: true } });
+  const d = await get('/me/auto-trader', { token: T });
+  assert.equal(d.on, true);
+  assert.equal(d.strategies.length, 3, 'three standard strategies');
+  assert.ok(d.since, 'it knows when it started');
+  const alloc = d.strategies.reduce((a, s) => a + s.allocation, 0);
+  assert.ok(alloc > 0 && alloc <= d.account.balance, 'allocates a share of the balance, never more than it');
+  assert.ok(d.log.some((l) => /Switched on/.test(l.message)));
+});
+await step('a pass places only what it can justify, and everything it places is a real order', async () => {
+  const d = await get('/me/auto-trader/tick', { token: T, method: 'POST' });
+  assert.equal(d.on, true);
+  assert.ok(d.kpis.open <= d.settings.max_open_positions, 'never over the position limit');
+  const orders = await get('/orders', { token: T });
+  const entries = orders.filter((o) => o.source === 'auto' && !o.parent_order_id);
+  assert.ok(entries.length >= d.positions.length, 'every bot position is an order in the book');
+  for (const p of d.positions) {
+    assert.ok(p.stop_loss !== null && p.take_profit !== null, 'every bot entry carries a stop and a target');
+    assert.ok(p.strategy, 'and says which strategy opened it');
+    const children = orders.filter((o) => o.parent_order_id === p.id && o.status === 'working');
+    assert.equal(children.length, 2, 'with both exits resting in the book');
+  }
+});
+await step("risk controls are the client's to set, within bounds", async () => {
+  assert.equal(await status('/me/auto-trader/settings', { token: T, method: 'PATCH', body: { risk_per_trade: 50 } }), 400);
+  const d = await get('/me/auto-trader/settings', { token: T, method: 'PATCH', body: { risk_per_trade: 0.5, max_open_positions: 2 } });
+  assert.equal(d.settings.risk_per_trade, 0.5);
+  assert.equal(d.settings.max_open_positions, 2);
+  const paused = await get(`/me/auto-trader/strategies/${d.strategies[0].id}`, { token: T, method: 'PATCH', body: { state: 'paused' } });
+  assert.equal(paused.state, 'paused');
+  assert.equal(await status('/me/auto-trader/strategies', { token: T, method: 'POST', body: { kind: 'trend', symbols: ['NOPE'], allocation: 10 } }), 404);
+  assert.equal(await status('/me/auto-trader', { token: A }), 403, 'staff have no bot of their own');
+});
+await step('the kill switch closes everything, cancels everything, and stops', async () => {
+  const d = await get('/me/auto-trader/kill', { token: T, method: 'POST' });
+  assert.equal(d.on, false);
+  assert.equal(d.positions.length, 0);
+  const open = await get('/orders?open=true', { token: T });
+  assert.equal(open.filter((o) => o.source === 'auto').length, 0, 'no bot order left resting');
+  assert.ok(d.log.some((l) => /Kill switch/.test(l.message)));
+});
+
 console.log('\nCross-cutting');
 await step('a token for a deleted subject is unauthorised, not a crash', async () => {
   const forged = await forge({ kind: 'client', role: 'trader' }, '00000000-0000-0000-0000-000000000000');

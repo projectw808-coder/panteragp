@@ -16,6 +16,7 @@ import {
 } from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
+import { evaluate, pairTrade, sizeFor, stats as botStats, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
@@ -3650,20 +3651,450 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
   return out;
 });
 
-/** The auto trader switch. Off by default, and the client's own to set. */
+// ------------------------------------------------------------------ auto trader
+/*
+ * A bot that trades the client's own demo account through the same book as their hand.
+ *
+ * Every order it places is an order: it fills through fillOrder, moves the position,
+ * realises onto the balance and lands on the timeline. What marks it as the bot's is
+ * `source = 'auto'`, the strategy that decided it and the reason it gave. A bot trade is
+ * an entry order with a stop and a target attached; the book turns those into two resting
+ * exits, and whichever fills closes the trade. The bot itself closes a trade only when its
+ * own signal reverses, and it does that with a market order that points at the entry as
+ * its parent — so the pairing of entry to exit is a join, not a guess.
+ *
+ * Money is capped three ways: risk per trade against the bot's equity, notional against
+ * the strategy's allocation times leverage, and a daily loss budget that closes everything
+ * and halts new entries until tomorrow. The kill switch does the first two of those on
+ * demand and switches the bot off.
+ */
+
+const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
+const AUTO_COOLDOWN_MS = 10 * 60_000;     // after an exit, no re-entry in that symbol for a while
+const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
+
+type AutoSettings = {
+  client_id: string; risk_per_trade: number; max_daily_loss: number; max_open_positions: number;
+  max_leverage: number; started_at: Date | null; halted_until: string | null;
+};
+type AutoStrategy = {
+  id: string; client_id: string; kind: StrategyKind; name: string; symbols: string[];
+  allocation: number; state: 'running' | 'paused'; created_at: Date;
+};
+type AutoOpen = {
+  id: string; strategy_id: string | null; symbol: string; side: Direction; qty: number;
+  price: number; fee: number; stop_loss: number | null; take_profit: number | null;
+  reason: string | null; filled_at: Date;
+};
+type AutoClosed = AutoOpen & { exit_price: number; exit_fee: number; exit_at: Date; exit_type: string; exit_reason: string | null };
+
+const asDirection = (side: string): Direction => (side === 'buy' ? 'long' : 'short');
+const exitReason = (x: { exit_type: string; exit_reason: string | null }) =>
+  x.exit_reason ?? (x.exit_type === 'limit' ? 'Take profit' : x.exit_type === 'stop' ? 'Stop loss' : 'Closed');
+
+async function autoSettings(clientId: string): Promise<AutoSettings> {
+  const { rows: [s] } = await pool.query<AutoSettings>(
+    `INSERT INTO auto_settings (client_id) VALUES ($1)
+     ON CONFLICT (client_id) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [clientId]);
+  return { ...s!, risk_per_trade: Number(s!.risk_per_trade), max_daily_loss: Number(s!.max_daily_loss),
+    max_leverage: Number(s!.max_leverage) };
+}
+
+async function autoLog(clientId: string, level: 'info' | 'trade' | 'win' | 'loss' | 'warn', message: string, strategyId: string | null = null) {
+  await pool.query('INSERT INTO auto_log (client_id, strategy_id, level, message) VALUES ($1,$2,$3,$4)',
+    [clientId, strategyId, level, message.slice(0, 500)]);
+}
+
+async function autoStrategies(clientId: string): Promise<AutoStrategy[]> {
+  const { rows } = await pool.query<AutoStrategy>(
+    'SELECT * FROM auto_strategies WHERE client_id = $1 ORDER BY created_at', [clientId]);
+  return rows.map((s) => ({ ...s, allocation: Number(s.allocation) }));
+}
+
+/** Bot entries that have filled and whose exits have not: what the bot is holding. */
+async function autoOpenTrades(clientId: string): Promise<AutoOpen[]> {
+  const { rows } = await pool.query(
+    `SELECT e.id, e.strategy_id, e.symbol, e.side, e.qty, e.stop_loss, e.take_profit, e.reason,
+            f.price, f.fee, f.filled_at
+       FROM orders e JOIN fills f ON f.order_id = e.id
+      WHERE e.client_id = $1 AND e.source = 'auto' AND e.parent_order_id IS NULL AND e.status = 'filled'
+        AND NOT EXISTS (SELECT 1 FROM orders x WHERE x.parent_order_id = e.id AND x.status = 'filled')
+      ORDER BY f.filled_at DESC`, [clientId]);
+  return rows.map((r) => ({ ...r, side: asDirection(r.side), qty: Number(r.qty), price: Number(r.price), fee: Number(r.fee),
+    stop_loss: r.stop_loss === null ? null : Number(r.stop_loss), take_profit: r.take_profit === null ? null : Number(r.take_profit) }));
+}
+
+/** Bot entries paired with the exit that closed them. */
+async function autoClosedTrades(clientId: string, limit = 500): Promise<AutoClosed[]> {
+  const { rows } = await pool.query(
+    `SELECT e.id, e.strategy_id, e.symbol, e.side, e.qty, e.stop_loss, e.take_profit, e.reason,
+            f.price, f.fee, f.filled_at,
+            x.type AS exit_type, x.reason AS exit_reason, xf.price AS exit_price, xf.fee AS exit_fee, xf.filled_at AS exit_at
+       FROM orders e
+       JOIN fills f   ON f.order_id = e.id
+       JOIN orders x  ON x.parent_order_id = e.id AND x.status = 'filled'
+       JOIN fills xf  ON xf.order_id = x.id
+      WHERE e.client_id = $1 AND e.source = 'auto' AND e.parent_order_id IS NULL
+      ORDER BY xf.filled_at DESC LIMIT $2`, [clientId, limit]);
+  return rows.map((r) => ({ ...r, side: asDirection(r.side), qty: Number(r.qty), price: Number(r.price), fee: Number(r.fee),
+    stop_loss: r.stop_loss === null ? null : Number(r.stop_loss), take_profit: r.take_profit === null ? null : Number(r.take_profit),
+    exit_price: Number(r.exit_price), exit_fee: Number(r.exit_fee) }));
+}
+
+/** Place one of the bot's orders and fill it now, the way a market order from the ticket fills. */
+async function autoOrder(clientId: string, accountId: string, o: {
+  symbol: string; side: Side; qty: number; take_profit?: number | null; stop_loss?: number | null;
+  strategy_id: string | null; reason: string; parent_order_id?: string | null;
+}): Promise<OrderRow> {
+  const order = await tx('engine', async (c) => {
+    const { rows } = await c.query<OrderRow>(
+      `INSERT INTO orders (account_id, client_id, symbol, side, type, qty, take_profit, stop_loss,
+                           status, source, strategy_id, reason, parent_order_id)
+       VALUES ($1,$2,$3,$4,'market',$5,$6,$7,'working','auto',$8,$9,$10) RETURNING *`,
+      [accountId, clientId, o.symbol, o.side, o.qty, o.take_profit ?? null, o.stop_loss ?? null,
+       o.strategy_id, o.reason, o.parent_order_id ?? null]);
+    await logActivity(c, {
+      client_id: clientId, kind: 'order.placed', actor: 'engine',
+      summary: `Auto trader placed ${o.side} ${o.qty} ${o.symbol} — ${o.reason}`,
+      ref_table: 'orders', ref_id: rows[0]!.id, data: { ...o, source: 'auto' },
+    });
+    return rows[0]!;
+  });
+  notify(clientId, { type: 'order', order });
+  await fillOrder(order, spot(order.symbol));
+  return order;
+}
+
+/** What the fill for one order came to, read back after fillOrder. */
+async function fillOf(orderId: string): Promise<{ price: number; fee: number } | null> {
+  const { rows: [f] } = await pool.query('SELECT price, fee FROM fills WHERE order_id = $1', [orderId]);
+  return f ? { price: Number(f.price), fee: Number(f.fee) } : null;
+}
+
+const money2 = (n: number) => (n < 0 ? '-' : '+') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
+/** Close one bot trade at market, pointing the close at its entry so the pair is a join. */
+async function autoClose(clientId: string, accountId: string, t: AutoOpen, reason: string) {
+  const close = await autoOrder(clientId, accountId, {
+    symbol: t.symbol, side: t.side === 'long' ? 'sell' : 'buy', qty: t.qty,
+    strategy_id: t.strategy_id, reason, parent_order_id: t.id,
+  });
+  const f = await fillOf(close.id);
+  if (!f) return;
+  const p = pairTrade({ side: t.side, qty: t.qty, price: t.price, fee: t.fee, stop: t.stop_loss }, f);
+  await autoLog(clientId, p.net >= 0 ? 'win' : 'loss',
+    `${reason} ${t.symbol} ${money2(p.net)}${p.r !== null ? ` · ${p.r >= 0 ? '+' : ''}${p.r.toFixed(1)}R` : ''}`, t.strategy_id);
+}
+
+const autoWarned = new Map<string, number>();
+/** A warning the bot would otherwise repeat every ten seconds, said once an hour. */
+async function autoWarn(clientId: string, key: string, message: string) {
+  const k = `${clientId}:${key}`;
+  const last = autoWarned.get(k) ?? 0;
+  if (Date.now() - last < 60 * 60_000) return;
+  autoWarned.set(k, Date.now());
+  await autoLog(clientId, 'warn', message);
+}
+
+/** One pass for one client: manage exits, honour the budgets, look for entries. */
+async function autoTickClient(clientId: string) {
+  const [settings, strategies, account, open, closed] = await Promise.all([
+    autoSettings(clientId), autoStrategies(clientId), demoAccount(clientId),
+    autoOpenTrades(clientId), autoClosedTrades(clientId),
+  ]);
+  const allocated = strategies.reduce((a, s) => a + s.allocation, 0);
+  const realised = closed.reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
+  const unrealised = open.reduce((a, t) => a + (spot(t.symbol) - t.price) * t.qty * (t.side === 'long' ? 1 : -1), 0);
+  const equity = allocated + realised + unrealised;
+  const today = startOfToday();
+  const todayNet = closed.filter((c) => new Date(c.exit_at) >= today)
+    .reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0) + unrealised;
+
+  // The daily budget: when it is spent, everything closes and nothing new opens today.
+  const halted = settings.halted_until !== null && new Date(settings.halted_until) >= today;
+  const budget = equity > 0 ? equity * settings.max_daily_loss / 100 : 0;
+  if (!halted && budget > 0 && todayNet <= -budget) {
+    for (const t of open) await autoClose(clientId, account.id, t, 'Daily loss limit');
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    await pool.query('UPDATE auto_settings SET halted_until = $2 WHERE client_id = $1', [clientId, tomorrow.toISOString().slice(0, 10)]);
+    await autoLog(clientId, 'warn', `Daily loss limit reached (${money2(todayNet)} against a ${settings.max_daily_loss}% budget) · closed everything · no new entries until tomorrow`);
+    return;
+  }
+
+  // Exits the strategies decide themselves. The stop and the target are the book's job.
+  let holding = [...open];
+  for (const t of open) {
+    const s = strategies.find((x) => x.id === t.strategy_id);
+    if (!s) continue;
+    const sig = evaluate(s.kind, candles(t.symbol, '1m', AUTO_HISTORY), t.side);
+    if (sig.action === 'exit') {
+      await autoClose(clientId, account.id, t, sig.reason);
+      holding = holding.filter((h) => h.id !== t.id);
+    }
+  }
+  if (halted) return;
+
+  // Entries.
+  const balance = Number(account.balance);
+  if (!(balance > 0)) { await autoWarn(clientId, 'nofunds', 'The account has no balance to trade with · fund it to let the bot work'); return; }
+  const totalNotional = () => holding.reduce((a, t) => a + t.qty * t.price, 0);
+  for (const s of strategies) {
+    if (s.state !== 'running') continue;
+    if (!(s.allocation > 0)) { await autoWarn(clientId, `alloc:${s.id}`, `${s.name} has no allocation · give it some of the account to trade with`); continue; }
+    for (const symbol of s.symbols) {
+      if (holding.length >= settings.max_open_positions) {
+        await autoWarn(clientId, 'maxopen', `At the open-position limit (${settings.max_open_positions}) · skipping new entries`);
+        return;
+      }
+      if (holding.some((t) => t.strategy_id === s.id && t.symbol === symbol)) continue;
+      const lastExit = closed.find((c) => c.strategy_id === s.id && c.symbol === symbol);
+      if (lastExit && Date.now() - new Date(lastExit.exit_at).getTime() < AUTO_COOLDOWN_MS) continue;
+      if (!await knownSymbol(symbol)) continue;
+
+      const sig = evaluate(s.kind, candles(symbol, '1m', AUTO_HISTORY), null);
+      if (sig.action !== 'enter') continue;
+      const price = spot(symbol);
+      const stratNotional = holding.filter((t) => t.strategy_id === s.id).reduce((a, t) => a + t.qty * t.price, 0);
+      const maxNotional = Math.min(
+        s.allocation * settings.max_leverage - stratNotional,
+        balance * settings.max_leverage - totalNotional(),
+      );
+      const qty = sizeFor({ riskUsd: equity * settings.risk_per_trade / 100, price, stop: sig.stop, maxNotional });
+      if (!qty) continue;
+      const order = await autoOrder(clientId, account.id, {
+        symbol, side: sig.side === 'long' ? 'buy' : 'sell', qty,
+        take_profit: sig.target, stop_loss: sig.stop, strategy_id: s.id, reason: sig.reason,
+      });
+      const f = await fillOf(order.id);
+      holding.push({ id: order.id, strategy_id: s.id, symbol, side: sig.side, qty, price: f?.price ?? price, fee: f?.fee ?? 0,
+        stop_loss: sig.stop, take_profit: sig.target, reason: sig.reason, filled_at: new Date() });
+      await autoLog(clientId, 'trade',
+        `${sig.side === 'long' ? 'BUY' : 'SELL'} ${symbol} ${qty} @ ${f?.price ?? price} · ${s.name} · ${sig.reason} · confidence ${sig.confidence.toFixed(2)}`, s.id);
+    }
+  }
+}
+
+let autoTicking = false;
+/** Every running bot, one after another, never two passes at once. */
+async function autoTick() {
+  if (autoTicking) return;
+  autoTicking = true;
+  try {
+    const { rows } = await pool.query<{ id: string }>('SELECT id FROM clients WHERE auto_trader');
+    for (const r of rows) {
+      await autoTickClient(r.id).catch((err: unknown) => app.log.error({ err, client: r.id }, 'auto trader pass failed'));
+    }
+  } finally {
+    autoTicking = false;
+  }
+}
+
+let autoTimer: NodeJS.Timeout | null = null;
+function startAutoTrader() {
+  if (autoTimer) return;
+  autoTimer = setInterval(() => { autoTick().catch((err: unknown) => app.log.error({ err }, 'auto trader tick failed')); }, AUTO_TICK_MS);
+}
+
+/** Everything the page shows, computed from the book. */
+async function autoDashboard(clientId: string) {
+  const [settings, strategies, account, open, closed, me] = await Promise.all([
+    autoSettings(clientId), autoStrategies(clientId), demoAccount(clientId),
+    autoOpenTrades(clientId), autoClosedTrades(clientId),
+    pool.query<{ auto_trader: boolean }>('SELECT auto_trader FROM clients WHERE id = $1', [clientId]),
+  ]);
+  const { rows: log } = await pool.query(
+    'SELECT id, strategy_id, at, level, message FROM auto_log WHERE client_id = $1 ORDER BY at DESC, id DESC LIMIT 40', [clientId]);
+  const pair = (c: AutoClosed) => pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee });
+  const allocated = strategies.reduce((a, s) => a + s.allocation, 0);
+  const positions = open.map((t) => {
+    const mark = spot(t.symbol);
+    const s = strategies.find((x) => x.id === t.strategy_id);
+    return {
+      id: t.id, symbol: t.symbol, side: t.side, qty: t.qty, entry: t.price, mark,
+      stop_loss: t.stop_loss, take_profit: t.take_profit,
+      unrealised: round8((mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1)),
+      strategy: s?.name ?? null, strategy_id: t.strategy_id, opened_at: t.filled_at, reason: t.reason,
+    };
+  });
+  const unrealised = round8(positions.reduce((a, p) => a + p.unrealised, 0));
+  const closedRows = closed.map((c) => ({ c, p: pair(c) }));
+  const st = botStats(closedRows.map(({ c, p }) => ({ net: p.net, r: p.r, at: new Date(c.exit_at) })), allocated, unrealised);
+  const today = startOfToday();
+  const todays = closedRows.filter(({ c }) => new Date(c.exit_at) >= today);
+  const perStrategy = strategies.map((s) => {
+    const mine = closedRows.filter(({ c }) => c.strategy_id === s.id);
+    const wins = mine.filter(({ p }) => p.net > 0).length;
+    return {
+      ...s, about: STRATEGIES[s.kind].about,
+      open: open.filter((t) => t.strategy_id === s.id).length,
+      realised: round8(mine.reduce((a, { p }) => a + p.net, 0)),
+      closed: mine.length, win_rate: mine.length ? round8(wins / mine.length) : null,
+    };
+  });
+  const since = settings.started_at ? new Date(settings.started_at) : null;
+  return {
+    on: me.rows[0]?.auto_trader ?? false,
+    since,
+    halted_until: settings.halted_until,
+    settings: {
+      risk_per_trade: settings.risk_per_trade, max_daily_loss: settings.max_daily_loss,
+      max_open_positions: settings.max_open_positions, max_leverage: settings.max_leverage,
+    },
+    account: { balance: Number(account.balance), currency: account.currency },
+    strategies: perStrategy,
+    kpis: {
+      equity: st.equity, allocated: round8(allocated), realised: st.realised, unrealised,
+      return_pct: allocated > 0 ? round8((st.equity - allocated) / allocated) : null,
+      today_net: round8(todays.reduce((a, { p }) => a + p.net, 0) + unrealised),
+      today_trades: todays.length,
+      today_fees: round8(todays.reduce((a, { c }) => a + c.fee + c.exit_fee, 0)),
+      wins: st.wins, losses: st.losses, closed: st.closed, win_rate: st.win_rate,
+      profit_factor: st.profit_factor, avg_win_r: st.avg_win_r, avg_loss_r: st.avg_loss_r,
+      max_drawdown: st.max_drawdown, drawdown_at: st.drawdown_at, open: open.length,
+      daily_loss_used: (() => { const b = st.equity > 0 ? st.equity * settings.max_daily_loss / 100 : 0; const used = -Math.min(0, todays.reduce((a, { p }) => a + p.net, 0) + unrealised); return b > 0 ? round8(Math.min(1, used / b)) : 0; })(),
+    },
+    curve: [{ at: since ?? new Date(), equity: round8(allocated) }, ...st.curve],
+    positions,
+    closed: closedRows.slice(0, 30).map(({ c, p }) => ({
+      id: c.id, symbol: c.symbol, side: c.side, qty: c.qty, entry: c.price, exit: c.exit_price,
+      net: p.net, r: p.r, fees: round8(c.fee + c.exit_fee),
+      strategy: strategies.find((x) => x.id === c.strategy_id)?.name ?? null,
+      exit_reason: exitReason(c), opened_at: c.filled_at, closed_at: c.exit_at,
+    })),
+    log,
+  };
+}
+
+app.get('/me/auto-trader', { preHandler: trader }, async (req: any) => autoDashboard(req.principal.sub));
+
+/**
+ * The switch. Turning it on for the first time sets the bot up with the three standard
+ * strategies, each given a share of the account to work with. Turning it off stops new
+ * entries; what is open keeps its stop and its target, because pulling those would leave
+ * a position with no exit at all.
+ */
 app.post('/me/auto-trader', { preHandler: trader }, async (req: any, reply) => {
   const body = z.object({ on: z.boolean() }).safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-  return tx(req.principal.sub, async (c) => {
-    const { rows } = await c.query(
-      'UPDATE clients SET auto_trader = $2 WHERE id = $1 RETURNING auto_trader',
-      [req.principal.sub, body.data.on]);
+  const clientId = req.principal.sub;
+  await tx(clientId, async (c) => {
+    await c.query('UPDATE clients SET auto_trader = $2 WHERE id = $1', [clientId, body.data.on]);
     await logActivity(c, {
-      client_id: req.principal.sub, kind: 'note', actor: req.principal.sub,
+      client_id: clientId, kind: 'note', actor: clientId,
       summary: `Auto trader switched ${body.data.on ? 'on' : 'off'}`,
     });
-    return { on: rows[0].auto_trader };
   });
+  if (body.data.on) {
+    await autoSettings(clientId);
+    await pool.query('UPDATE auto_settings SET started_at = coalesce(started_at, now()) WHERE client_id = $1', [clientId]);
+    const existing = await autoStrategies(clientId);
+    if (!existing.length) {
+      const account = await demoAccount(clientId);
+      const balance = Number(account.balance);
+      for (const [kind, def] of Object.entries(STRATEGIES) as [StrategyKind, typeof STRATEGIES[StrategyKind]][]) {
+        await pool.query(
+          'INSERT INTO auto_strategies (client_id, kind, name, symbols, allocation) VALUES ($1,$2,$3,$4,$5)',
+          [clientId, kind, def.name, def.symbols, round8(Math.max(0, balance * def.share))]);
+      }
+      await autoLog(clientId, 'info', balance > 0
+        ? `Set up three strategies with ${money2(balance * 0.5).slice(1)} of the account allocated`
+        : 'Set up three strategies · fund the account to give them something to trade with');
+    }
+    await autoLog(clientId, 'info', 'Switched on');
+  } else {
+    await autoLog(clientId, 'info', 'Switched off · open positions keep their stops and targets');
+  }
+  return reply.send({ on: body.data.on });
+});
+
+/** Evaluate now rather than at the next tick. Harmless: it does what the tick does. */
+app.post('/me/auto-trader/tick', { preHandler: trader }, async (req: any) => {
+  const { rows: [me] } = await pool.query<{ auto_trader: boolean }>('SELECT auto_trader FROM clients WHERE id = $1', [req.principal.sub]);
+  if (me?.auto_trader) await autoTickClient(req.principal.sub);
+  return autoDashboard(req.principal.sub);
+});
+
+const autoSettingsBody = z.object({
+  risk_per_trade: z.number().min(0.1).max(5).optional(),
+  max_daily_loss: z.number().min(0.5).max(20).optional(),
+  max_open_positions: z.number().int().min(1).max(20).optional(),
+  max_leverage: z.number().min(1).max(50).optional(),
+}).refine((o) => Object.keys(o).length > 0, 'nothing to change');
+
+app.patch('/me/auto-trader/settings', { preHandler: trader }, async (req: any, reply) => {
+  const body = autoSettingsBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  await autoSettings(req.principal.sub);
+  const entries = Object.entries(body.data);
+  await tx(req.principal.sub, (c) => c.query(
+    `UPDATE auto_settings SET ${entries.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE client_id = $1`,
+    [req.principal.sub, ...entries.map(([, v]) => v)]));
+  await autoLog(req.principal.sub, 'info', `Risk controls changed · ${entries.map(([k, v]) => `${k.replaceAll('_', ' ')} ${v}`).join(' · ')}`);
+  return autoDashboard(req.principal.sub);
+});
+
+const strategyBody = z.object({
+  kind: z.enum(['trend', 'mean_reversion', 'grid']),
+  name: z.string().min(1).max(60).optional(),
+  symbols: z.array(z.string().max(20)).min(1).max(6).optional(),
+  allocation: z.number().min(0).max(1e9),
+});
+
+app.post('/me/auto-trader/strategies', { preHandler: trader }, async (req: any, reply) => {
+  const body = strategyBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const b = body.data;
+  const symbols = b.symbols ?? STRATEGIES[b.kind].symbols;
+  for (const s of symbols) if (!await knownSymbol(s)) return reply.code(404).send({ error: `unknown symbol ${s}` });
+  const { rows: [made] } = await tx(req.principal.sub, (c) => c.query<AutoStrategy>(
+    'INSERT INTO auto_strategies (client_id, kind, name, symbols, allocation) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+    [req.principal.sub, b.kind, b.name ?? STRATEGIES[b.kind].name, symbols, b.allocation]));
+  await autoLog(req.principal.sub, 'info', `Added ${made!.name} on ${symbols.join(', ')}`, made!.id);
+  return reply.code(201).send(made);
+});
+
+app.patch('/me/auto-trader/strategies/:id', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({
+    state: z.enum(['running', 'paused']).optional(),
+    allocation: z.number().min(0).max(1e9).optional(),
+    symbols: z.array(z.string().max(20)).min(1).max(6).optional(),
+    name: z.string().min(1).max(60).optional(),
+  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  if (body.data.symbols) for (const s of body.data.symbols) if (!await knownSymbol(s)) return reply.code(404).send({ error: `unknown symbol ${s}` });
+  const entries = Object.entries(body.data);
+  const { rows: [after] } = await tx(req.principal.sub, (c) => c.query<AutoStrategy>(
+    `UPDATE auto_strategies SET ${entries.map(([k], i) => `${k} = $${i + 3}`).join(', ')}
+      WHERE id = $1 AND client_id = $2 RETURNING *`,
+    [req.params.id, req.principal.sub, ...entries.map(([, v]) => v)]));
+  if (!after) return reply.code(404).send({ error: 'no such strategy' });
+  await autoLog(req.principal.sub, 'info', `${after.name} · ${entries.map(([k, v]) => `${k} ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ')}`, after.id);
+  return after;
+});
+
+app.delete('/me/auto-trader/strategies/:id', { preHandler: trader }, async (req: any, reply) => {
+  const open = (await autoOpenTrades(req.principal.sub)).some((t) => t.strategy_id === req.params.id);
+  if (open) return reply.code(409).send({ error: 'this strategy still has a position open — pause it, or close the position first' });
+  const { rowCount } = await tx(req.principal.sub, (c) => c.query(
+    'DELETE FROM auto_strategies WHERE id = $1 AND client_id = $2', [req.params.id, req.principal.sub]));
+  if (!rowCount) return reply.code(404).send({ error: 'no such strategy' });
+  return { ok: true };
+});
+
+/** Close everything the bot holds, cancel what it has resting, and switch it off. */
+app.post('/me/auto-trader/kill', { preHandler: trader }, async (req: any) => {
+  const clientId = req.principal.sub;
+  const account = await demoAccount(clientId);
+  const open = await autoOpenTrades(clientId);
+  for (const t of open) await autoClose(clientId, account.id, t, 'Kill switch');
+  await tx(clientId, async (c) => {
+    await c.query(`UPDATE orders SET status = 'cancelled' WHERE client_id = $1 AND source = 'auto' AND status IN ('new','working')`, [clientId]);
+    await c.query('UPDATE clients SET auto_trader = false WHERE id = $1', [clientId]);
+    await logActivity(c, { client_id: clientId, kind: 'note', actor: clientId, summary: `Auto trader kill switch: closed ${open.length} position${open.length === 1 ? '' : 's'} and stopped` });
+  });
+  await autoLog(clientId, 'warn', `Kill switch · closed ${open.length} position${open.length === 1 ? '' : 's'} · stopped`);
+  return autoDashboard(clientId);
 });
 
 app.get('/portfolios/:id/transactions', { preHandler: auth() }, async (req: any, reply) => {
@@ -5691,6 +6122,7 @@ if (process.argv[1]?.endsWith('server.ts')) {
 
   // Settlement must not depend on anyone being connected — see startTicker.
   startTicker().catch((err: unknown) => app.log.error({ err }, 'could not start the ticker'));
+  startAutoTrader();
 
   // Interest is posted per whole day, so an hourly sweep is ample: it catches the day
   // rollover wherever the server happens to be, and picks up anything a restart missed.

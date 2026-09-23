@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 131 acceptance checks against the running stack
+    npm run test:e2e # 137 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -614,6 +614,41 @@ and nowhere else, the fields by their exact names, the stream as a field rather 
 the unsubscribe headers on list mail and their absence on a one-to-one message — and about
 what the desk reads back when Postmark refuses, which is Postmark's reason and never the
 token.
+
+## The auto trader
+
+A bot that trades the client's own demo account through the same book as their hand.
+`GET|POST /me/auto-trader` · `POST /me/auto-trader/tick` · `PATCH /me/auto-trader/settings` ·
+`POST /me/auto-trader/strategies` · `PATCH|DELETE /me/auto-trader/strategies/:id` ·
+`POST /me/auto-trader/kill`
+
+Every order it places is an order. It fills through the same path as a market order from the
+ticket, moves the position, realises onto the balance and lands on the timeline; what marks
+it as the bot's is `source = 'auto'`, the strategy that decided it and the reason it gave. A
+bot trade is an entry with a stop and a target attached, which the book turns into two
+resting exits; whichever fills closes the trade. The bot closes a trade itself only when its
+signal reverses, and it does that with a market order whose `parent_order_id` is the entry —
+so the pairing of entry to exit is a join, never a guess, and a closed trade's P&L, R-multiple
+and exit reason are read back from the fills.
+
+The decisions are pure functions in `src/autotrader.ts`: three textbook strategies (a
+moving-average trend follower, a z-score mean reversion, a grid), a stop that clears one and a
+half average ranges, sizing that risks a fixed share of the bot's equity against that stop,
+and the statistics — hit rate, profit factor, average R, the equity curve and its worst
+peak-to-trough. The engine in `server.ts` is thin: every ten seconds, for each client with the
+switch on, manage exits, honour the budgets, look for entries.
+
+Money is capped three ways. Risk per trade is a percentage of the bot's equity. Notional is
+capped by the strategy's allocation times the leverage ceiling, and by the account. And a
+daily loss budget, when spent, closes everything and halts new entries until tomorrow. The
+kill switch does the first two on demand and switches the bot off. Turning the switch off
+alone stops new entries but leaves open positions with their stops and targets, because
+pulling those would leave a position with no exit at all.
+
+The first switch-on sets the client up with the three strategies, each given a share of the
+account: nothing is traded until the account is funded, and the log says so rather than
+silently doing nothing. The page reads everything from the book and follows it every few
+seconds; there is no preview any more, so every number on it is money that moved.
 
 ## Uploads live in the database
 
