@@ -572,8 +572,9 @@ desk edits every word before it goes anywhere.
 
 **Writing to one client** is a different thing and is built as one. It sits on the client's own
 record, below their open tasks, because that is where somebody is when they decide to write —
-they have just read the timeline and seen the outstanding document.  ·
- · .
+they have just read the timeline and seen the outstanding document.
+`POST /clients/:id/email` · `GET /clients/:id/emails` ·
+`GET|POST /admin/email-templates` · `PATCH|DELETE /admin/email-templates/:id`
 
 There is no recipient count to confirm, because the recipient is on the screen; no unsubscribe
 link, because one message from an account manager is not a list anybody joined; and the
