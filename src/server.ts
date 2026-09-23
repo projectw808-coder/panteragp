@@ -5139,6 +5139,26 @@ const RECIPIENTS = `
 
 app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
   const cfg = mailConfig();
+  /**
+   * Which of the settings are present — names and booleans, never values.
+   *
+   * "Not configured" on its own sends somebody to check five variables when four of them are
+   * fine. Whether a name is set is an operational fact and leaks nothing; what it is set to
+   * is a credential and stays in the process. SMTP_HOST and SMTP_FROM are the two that
+   * decide whether anything can be sent at all, which is why their absence is what the
+   * screen names first.
+   */
+  const set = (name: string) => (process.env[name]?.trim() ?? '') !== '';
+  const settings = {
+    SMTP_HOST: set('SMTP_HOST'),
+    SMTP_FROM: set('SMTP_FROM'),
+    SMTP_PORT: set('SMTP_PORT'),
+    SMTP_USER: set('SMTP_USER'),
+    SMTP_PASS: set('SMTP_PASS'),
+    SMTP_MESSAGE_STREAM: set('SMTP_MESSAGE_STREAM'),
+    PUBLIC_URL: set('PUBLIC_URL'),
+  };
+  const missing = (['SMTP_HOST', 'SMTP_FROM'] as const).filter((n) => !settings[n]);
   const { rows: [n] } = await pool.query<{ eligible: number; opted_out: number }>(`
     SELECT (SELECT count(*)::int ${RECIPIENTS}) AS eligible,
            (SELECT count(*)::int FROM clients WHERE email_opt_out) AS opted_out`);
@@ -5152,6 +5172,8 @@ app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
     from: cfg?.from ?? null,
     message_stream: cfg?.messageStream ?? null,
     authenticated: cfg?.user !== null && cfg?.user !== undefined,
+    settings,
+    missing,
     eligible: n.eligible,
     opted_out: n.opted_out,
   };

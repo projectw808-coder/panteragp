@@ -14,6 +14,7 @@ import { api, useApi } from './api.ts';
 type Status = {
   configured: boolean; host: string | null; port: number | null; secure: boolean | null;
   from: string | null; authenticated: boolean; eligible: number; opted_out: number;
+  settings?: Record<string, boolean>; missing?: string[];
 };
 
 type Campaign = {
@@ -74,15 +75,39 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
 
       {/* Whether mail can go out at all, before offering a button that would fail. */}
       {!status.data ? <p className="text-sm text-slate-ink">Loading…</p> : !s?.configured ? (
-        <div className={`${card} space-y-2`}>
-          <p className="text-sm font-medium">Email is not configured.</p>
+        <div className={`${card} space-y-3`}>
+          <p className="text-sm font-medium">
+            Email is not configured{s?.missing?.length
+              ? `: ${s.missing.join(' and ')} ${s.missing.length > 1 ? 'are' : 'is'} not set.`
+              : '.'}
+          </p>
+
+          {/* Which names the process can actually see. Names and ticks only — what they are
+              set to is a credential and never leaves the server. Without this the screen
+              sends somebody to check five variables when four of them are already right. */}
+          {s?.settings && (
+            <div className="grid gap-1 sm:grid-cols-2">
+              {Object.entries(s.settings).map(([name, present]) => (
+                <span key={name} className="flex items-center gap-2 font-mono text-xs">
+                  <span className={present ? 'text-up' : 'text-slate-ink'}>{present ? '✓' : '·'}</span>
+                  <span className={present ? '' : 'text-slate-ink'}>{name}</span>
+                  {!present && (name === 'SMTP_HOST' || name === 'SMTP_FROM') && (
+                    <span className="text-down">required</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
           <p className="text-xs text-slate-ink">
-            Set <code className="font-mono">SMTP_HOST</code> and{' '}
-            <code className="font-mono">SMTP_FROM</code> in the environment, and{' '}
-            <code className="font-mono">SMTP_USER</code> and{' '}
-            <code className="font-mono">SMTP_PASS</code> if the server wants them.{' '}
-            <code className="font-mono">PUBLIC_URL</code> is what the links in a message point at.
-            Nothing can be sent until then, which is why there is no button.
+            <code className="font-mono">SMTP_HOST</code> and{' '}
+            <code className="font-mono">SMTP_FROM</code> are what decide whether anything can
+            be sent; <code className="font-mono">SMTP_USER</code> and{' '}
+            <code className="font-mono">SMTP_PASS</code> are needed if the server wants them,{' '}
+            <code className="font-mono">PUBLIC_URL</code> is what the links in a message point
+            at, and <code className="font-mono">SMTP_MESSAGE_STREAM</code> names the provider's
+            stream where one is required. This reads the environment the running process has,
+            so a variable added without a restart shows as missing here.
           </p>
         </div>
       ) : (
