@@ -77,8 +77,8 @@ let cached: { key: string; transport: Transporter } | null = null;
  *
  * The timeouts are short on purpose. nodemailer's defaults wait two minutes to connect, and
  * a host that silently drops outbound SMTP — which is what a blocked port looks like — would
- * leave an admin staring at a spinner for that long and then reading a generic error. Ten
- * seconds is longer than any real server takes to answer and short enough to be an answer.
+ * leave an admin staring at a spinner for that long and then reading a generic error. These
+ * bound each phase; `within` bounds the whole attempt, because the phases add up.
  */
 export function transport(env = process.env): Transporter | null {
   const cfg = mailConfig(env);
@@ -104,6 +104,26 @@ export function transport(env = process.env): Transporter | null {
   };
   return cached.transport;
 }
+
+/**
+ * A hard stop around an SMTP attempt.
+ *
+ * nodemailer's connection, greeting and socket timeouts each bound one phase, and a host that
+ * drops packets can spend all three in turn: measured on Railway, a "10 second" verify took
+ * thirty. The person waiting was told one number and given another. This bounds the whole
+ * attempt, so the sentence they read is true.
+ */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => {
+      reject(Object.assign(new Error(`no answer in ${ms / 1000}s`), { code: 'ETIMEDOUT' }));
+    }, ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+const SMTP_VERIFY_MS = 12_000;
+const SMTP_SEND_MS = 45_000;
 
 /** A fetch that gives up, because a request to a provider that never answers must not hang the route. */
 async function timed(url: string, init: RequestInit, ms: number): Promise<Response> {
@@ -146,11 +166,12 @@ export async function verify(env = process.env): Promise<{ ok: true } | { ok: fa
 
   const t = transport(env);
   if (!t) return { ok: false, error: 'SMTP is not configured: set SMTP_HOST and SMTP_FROM' };
+  const t0 = Date.now();
   try {
-    await t.verify();
+    await within(t.verify(), SMTP_VERIFY_MS);
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: smtpError(err as Error & { code?: string }) };
+    return { ok: false, error: smtpError(err as Error & { code?: string }, t0) };
   }
 }
 
@@ -159,9 +180,9 @@ export async function verify(env = process.env): Promise<{ ok: true } | { ok: fa
  * in a settings screen, so the sentence names that instead. A timeout, in particular, is the
  * signature of a host that drops outbound SMTP rather than a server that is slow.
  */
-function smtpError(err: Error & { code?: string }): string {
+function smtpError(err: Error & { code?: string }, startedAt: number): string {
   if (err.code === 'ETIMEDOUT' || (err.code === 'ESOCKET' && /timed? ?out/i.test(err.message))) {
-    return 'The SMTP server did not answer in 10s. On a host that blocks outbound SMTP — Railway does below its Pro plan — this is what a blocked port looks like; set POSTMARK_SERVER_TOKEN to send over HTTPS instead.';
+    return `The SMTP server did not answer in ${Math.round((Date.now() - startedAt) / 1000)}s. On a host that blocks outbound SMTP — Railway does below its Pro plan — this is what a blocked port looks like; set POSTMARK_SERVER_TOKEN to send over HTTPS instead.`;
   }
   if (err.code === 'EAUTH') return 'The SMTP server rejected the username or password.';
   return err.message;
@@ -294,17 +315,18 @@ export async function send(a: {
 
   const t = transport(env);
   if (!t) return { ok: false, error: 'SMTP is not configured' };
+  const t0 = Date.now();
   try {
-    const info = await t.sendMail({
+    const info = await within(t.sendMail({
       from: cfg.from,
       to: a.to,
       subject: a.subject,
       text: a.text,
       html: a.html,
       headers: headersFor(a, cfg),
-    });
+    }), SMTP_SEND_MS);
     return { ok: true, id: String(info.messageId ?? '') };
   } catch (err) {
-    return { ok: false, error: smtpError(err as Error & { code?: string }) };
+    return { ok: false, error: smtpError(err as Error & { code?: string }, t0) };
   }
 }

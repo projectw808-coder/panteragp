@@ -538,9 +538,11 @@ than bouncing the message. Set it to the broadcast stream’s id. It is ignored 
 that do not use streams, and omitted when unset. With no sender, or no way out, the feature
 reports itself unconfigured and offers no button, rather than presenting one that fails. The
 status endpoint says what is set and never what it is set to — a password has no business
-leaving the process that reads it. The SMTP path gives up after ten seconds instead of
-nodemailer's two minutes, and says so in terms of a blocked port, because that is what a
-silent timeout means on a host that drops SMTP.
+leaving the process that reads it. The SMTP path gives up after twelve seconds instead of
+nodemailer's two minutes — a deadline around the whole attempt, because nodemailer's own
+timers bound one phase each and a host that drops packets spends all of them in turn — and
+says so in terms of a blocked port, because that is what a silent timeout means on a host
+that drops SMTP.
 
 **Everything here is shaped by one fact: a message cannot be recalled.**
 
