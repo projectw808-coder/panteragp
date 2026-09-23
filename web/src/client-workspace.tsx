@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
 import { ClientEmail } from './client-email.tsx';
+import { ClientAutoTrader } from './client-autotrader.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
 import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm, DepositForm, PnlForm } from './wallet.tsx';
@@ -346,6 +347,7 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
         </div>
         <ClientEmail clientId={id} clientName={c.name} clientEmail={c.email}
           optedOut={c.email_opt_out} />
+        <ClientAutoTrader clientId={id} admin={admin} />
       </div>
       <div className="space-y-4">
         {admin && <DepositForm clientId={id} onDone={onChanged} />}

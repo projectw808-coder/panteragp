@@ -738,3 +738,10 @@ BEGIN
     END IF;
   END LOOP;
 END $do$;
+
+-- The desk's hand on the bot: a target win rate, set per client and never shown to them.
+-- The engine steers real exits toward it — banking a profitable trade early when the record
+-- is below target, cutting a losing one when it is above — inside the stop and target the
+-- book already holds. Null means the strategies run unsteered.
+ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS target_win_rate numeric(5,4)
+  CHECK (target_win_rate IS NULL OR (target_win_rate >= 0 AND target_win_rate <= 1));

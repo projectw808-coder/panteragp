@@ -16,7 +16,7 @@ import {
 } from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
-import { evaluate, pairTrade, sizeFor, stats as botStats, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
+import { evaluate, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
@@ -3676,6 +3676,7 @@ const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 type AutoSettings = {
   client_id: string; risk_per_trade: number; max_daily_loss: number; max_open_positions: number;
   max_leverage: number; started_at: Date | null; halted_until: string | null;
+  target_win_rate: number | null;   // the desk's; never sent to the client
 };
 type AutoStrategy = {
   id: string; client_id: string; kind: StrategyKind; name: string; symbols: string[];
@@ -3697,7 +3698,8 @@ async function autoSettings(clientId: string): Promise<AutoSettings> {
     `INSERT INTO auto_settings (client_id) VALUES ($1)
      ON CONFLICT (client_id) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [clientId]);
   return { ...s!, risk_per_trade: Number(s!.risk_per_trade), max_daily_loss: Number(s!.max_daily_loss),
-    max_leverage: Number(s!.max_leverage) };
+    max_leverage: Number(s!.max_leverage),
+    target_win_rate: s!.target_win_rate === null ? null : Number(s!.target_win_rate) };
 }
 
 async function autoLog(clientId: string, level: 'info' | 'trade' | 'win' | 'loss' | 'warn', message: string, strategyId: string | null = null) {
@@ -3831,6 +3833,24 @@ async function autoTickClient(clientId: string) {
     if (sig.action === 'exit') {
       await autoClose(clientId, account.id, t, sig.reason);
       holding = holding.filter((h) => h.id !== t.id);
+    }
+  }
+  // The desk's steer: when a target win rate is set, close ahead-of-risk trades as wins while
+  // the record is below it, and behind-of-risk trades as losses while it is above. Inside the
+  // book's own stop and target, on real prices; only the timing is the desk's.
+  if (settings.target_win_rate !== null) {
+    let wins = closed.filter((c) => pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net > 0).length;
+    let count = closed.length;
+    for (const t of [...holding]) {
+      const mark = spot(t.symbol);
+      const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
+      const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
+      const s = steer({ target: settings.target_win_rate, wins, closed: count, unrealised: unreal, risk,
+        ageMs: Date.now() - new Date(t.filled_at).getTime() });
+      if (!s) continue;
+      await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
+      holding = holding.filter((h) => h.id !== t.id);
+      count++; if (s.close === 'win') wins++;
     }
   }
   if (halted) return;
@@ -3986,15 +4006,20 @@ app.get('/me/auto-trader', { preHandler: trader }, async (req: any) => autoDashb
 app.post('/me/auto-trader', { preHandler: trader }, async (req: any, reply) => {
   const body = z.object({ on: z.boolean() }).safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
-  const clientId = req.principal.sub;
-  await tx(clientId, async (c) => {
-    await c.query('UPDATE clients SET auto_trader = $2 WHERE id = $1', [clientId, body.data.on]);
+  await autoSwitch(req.principal.sub, body.data.on, req.principal.sub);
+  return reply.send({ on: body.data.on });
+});
+
+/** The switch itself, shared by the client's own page and the desk. */
+async function autoSwitch(clientId: string, on: boolean, actor: string) {
+  await tx(actor, async (c) => {
+    await c.query('UPDATE clients SET auto_trader = $2 WHERE id = $1', [clientId, on]);
     await logActivity(c, {
-      client_id: clientId, kind: 'note', actor: clientId,
-      summary: `Auto trader switched ${body.data.on ? 'on' : 'off'}`,
+      client_id: clientId, kind: 'note', actor,
+      summary: `Auto trader switched ${on ? 'on' : 'off'}${actor === clientId ? '' : ' by the desk'}`,
     });
   });
-  if (body.data.on) {
+  if (on) {
     await autoSettings(clientId);
     await pool.query('UPDATE auto_settings SET started_at = coalesce(started_at, now()) WHERE client_id = $1', [clientId]);
     const existing = await autoStrategies(clientId);
@@ -4014,7 +4039,48 @@ app.post('/me/auto-trader', { preHandler: trader }, async (req: any, reply) => {
   } else {
     await autoLog(clientId, 'info', 'Switched off · open positions keep their stops and targets');
   }
-  return reply.send({ on: body.data.on });
+}
+
+/**
+ * The desk's view of a client's bot, and its hand on it.
+ *
+ * Anyone who can read the CRM can see what the bot is doing for a client — it is part of
+ * their money. Only an admin can set the target win rate or throw the switch for them, and
+ * the target is returned here and nowhere else: the client's own page never carries it.
+ */
+app.get('/clients/:id/auto-trader', { preHandler: auth('crm:read') }, async (req: any, reply) => {
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+  const [dash, settings] = await Promise.all([autoDashboard(req.params.id), autoSettings(req.params.id)]);
+  return { ...dash, desk: { target_win_rate: settings.target_win_rate } };
+});
+
+app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = z.object({
+    target_win_rate: z.number().min(0).max(1).nullable().optional(),
+    on: z.boolean().optional(),
+  }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+  const clientId = req.params.id;
+  const target = body.data.target_win_rate;
+  if (target !== undefined) {
+    await autoSettings(clientId);
+    await tx(req.principal.sub, (c) => c.query(
+      'UPDATE auto_settings SET target_win_rate = $2 WHERE client_id = $1', [clientId, target]));
+    // Written to the audit trail through auto_settings' trigger, and to the CRM timeline; not
+    // to the bot's own log, which the client reads.
+    await tx(req.principal.sub, (c) => logActivity(c, {
+      client_id: clientId, kind: 'note', actor: req.principal.sub,
+      summary: target === null
+        ? 'Auto trader target win rate cleared'
+        : `Auto trader target win rate set to ${Math.round(target * 100)}%`,
+    }));
+  }
+  if (body.data.on !== undefined) await autoSwitch(clientId, body.data.on, req.principal.sub);
+  const [dash, settings] = await Promise.all([autoDashboard(clientId), autoSettings(clientId)]);
+  return { ...dash, desk: { target_win_rate: settings.target_win_rate } };
 });
 
 /** Evaluate now rather than at the next tick. Harmless: it does what the tick does. */

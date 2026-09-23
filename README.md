@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 137 acceptance checks against the running stack
+    npm run test:e2e # 138 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -649,6 +649,16 @@ The first switch-on sets the client up with the three strategies, each given a s
 account: nothing is traded until the account is funded, and the log says so rather than
 silently doing nothing. The page reads everything from the book and follows it every few
 seconds; there is no preview any more, so every number on it is money that moved.
+
+**The desk's hand.** `GET|PATCH /clients/:id/auto-trader` — anyone who can read the CRM sees
+what a client's bot holds, has made and has logged; an admin can throw the switch for them and
+set a *target win rate*. The target is a target for the record, not a rewrite of it: nothing
+invents a price. The engine only chooses *when* an open trade closes, inside the stop and
+target the book already holds — below target, a trade ahead by a quarter of its risk is banked
+as a win; above target, one behind by that much is cut as a loss; a trade under two minutes old
+is left alone. The target is returned on the desk route and nowhere else: the client's page
+never carries it, and setting it lands on the CRM timeline and the audit log, not on the bot's
+own log, which the client reads.
 
 ## Uploads live in the database
 

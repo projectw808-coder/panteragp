@@ -2198,6 +2198,24 @@ await step("risk controls are the client's to set, within bounds", async () => {
   assert.equal(await status('/me/auto-trader/strategies', { token: T, method: 'POST', body: { kind: 'trend', symbols: ['NOPE'], allocation: 10 } }), 404);
   assert.equal(await status('/me/auto-trader', { token: A }), 403, 'staff have no bot of their own');
 });
+await step("the desk can read a client's bot and set a target win rate the client never sees", async () => {
+  const d = await get(`/clients/${client.id}/auto-trader`, { token: A });
+  assert.equal(d.on, true);
+  assert.equal(d.desk.target_win_rate, null);
+  const set = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: 0.7 } });
+  assert.equal(set.desk.target_win_rate, 0.7);
+  assert.equal(await status(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: 1.5 } }), 400);
+  const mine = await get('/me/auto-trader', { token: T });
+  assert.equal('desk' in mine, false, 'the target is not on the client\'s page');
+  assert.equal('target_win_rate' in mine.settings, false);
+  assert.equal(await status(`/clients/${client.id}/auto-trader`, { token: T }), 403, 'and the desk route is not theirs');
+  // the desk can throw the switch too, and it is written down as the desk's doing
+  const off = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { on: false } });
+  assert.equal(off.on, false);
+  const tl = await get(`/clients/${client.id}/timeline`, { token: A });
+  assert.ok(tl.some((e) => /switched off by the desk/.test(e.summary)));
+  await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { on: true } });
+});
 await step('the kill switch closes everything, cancels everything, and stops', async () => {
   const d = await get('/me/auto-trader/kill', { token: T, method: 'POST' });
   assert.equal(d.on, false);

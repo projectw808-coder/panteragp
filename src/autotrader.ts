@@ -200,3 +200,26 @@ export function stats(closed: Closed[], start: number, unrealised = 0) {
     curve,
   };
 }
+
+/**
+ * The desk's steer.
+ *
+ * A target win rate is a target for the record, not a rewrite of it: nothing here invents a
+ * price. It decides only WHEN an open trade is closed, inside the stop and target the book
+ * already holds. Below target, a trade that is ahead by a quarter of its risk is banked as
+ * a win; above target, one that is behind by that much is cut as a loss. A trade younger
+ * than two minutes is left alone, so a steer is never an instant flip, and with no record
+ * yet the steer leans toward whichever side the target is on.
+ */
+export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 120_000, minR = 0.25 }: {
+  target: number | null; wins: number; closed: number; unrealised: number; risk: number;
+  ageMs: number; minAgeMs?: number; minR?: number;
+}): { close: 'win' | 'loss' } | null {
+  if (target === null || !(risk > 0) || !(ageMs >= minAgeMs)) return null;
+  const rate = closed > 0 ? wins / closed : null;
+  const r = unrealised / risk;
+  const below = rate === null ? target > 0.5 : rate < target;
+  if (below && r >= minR) return { close: 'win' };
+  if (rate !== null && rate > target && r <= -minR) return { close: 'loss' };
+  return null;
+}

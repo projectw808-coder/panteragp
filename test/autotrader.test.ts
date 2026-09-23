@@ -154,3 +154,31 @@ describe('the record', () => {
   });
   function round(n: number) { return Number(n.toFixed(8)); }
 });
+
+describe("the desk's steer", () => {
+  const base = { wins: 5, closed: 10, unrealised: 30, risk: 100, ageMs: 5 * 60_000 };
+  it('does nothing without a target, without a stop, or on a trade too young', async () => {
+    const { steer } = await import('../src/autotrader.ts');
+    assert.equal(steer({ ...base, target: null }), null);
+    assert.equal(steer({ ...base, target: 0.8, risk: 0 }), null);
+    assert.equal(steer({ ...base, target: 0.8, ageMs: 30_000 }), null);
+  });
+  it('banks a trade that is ahead when the record is below target', async () => {
+    const { steer } = await import('../src/autotrader.ts');
+    assert.deepEqual(steer({ ...base, target: 0.8 }), { close: 'win' });
+    // not far enough ahead: a quarter of its risk is the bar
+    assert.equal(steer({ ...base, target: 0.8, unrealised: 10 }), null);
+    // behind, below target: hold and hope, never cut
+    assert.equal(steer({ ...base, target: 0.8, unrealised: -60 }), null);
+  });
+  it('cuts a trade that is behind when the record is above target', async () => {
+    const { steer } = await import('../src/autotrader.ts');
+    assert.deepEqual(steer({ ...base, target: 0.3, unrealised: -60 }), { close: 'loss' });
+    assert.equal(steer({ ...base, target: 0.3, unrealised: 60 }), null, 'ahead and above target: the book decides');
+  });
+  it('leans toward the target before there is a record', async () => {
+    const { steer } = await import('../src/autotrader.ts');
+    assert.deepEqual(steer({ ...base, wins: 0, closed: 0, target: 0.7 }), { close: 'win' });
+    assert.equal(steer({ ...base, wins: 0, closed: 0, target: 0.3, unrealised: -60 }), null);
+  });
+});
