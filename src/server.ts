@@ -3801,6 +3801,9 @@ async function autoWarn(clientId: string, key: string, message: string) {
 
 /** One pass for one client: manage exits, honour the budgets, look for entries. */
 async function autoTickClient(clientId: string) {
+  // A switch left on from before the bot was real has no strategies behind it. Set it up
+  // rather than ticking over an empty list forever.
+  if (!(await autoStrategies(clientId)).length) await autoSetup(clientId);
   const [settings, strategies, account, open, closed] = await Promise.all([
     autoSettings(clientId), autoStrategies(clientId), demoAccount(clientId),
     autoOpenTrades(clientId), autoClosedTrades(clientId),
@@ -4020,25 +4023,34 @@ async function autoSwitch(clientId: string, on: boolean, actor: string) {
     });
   });
   if (on) {
-    await autoSettings(clientId);
-    await pool.query('UPDATE auto_settings SET started_at = coalesce(started_at, now()) WHERE client_id = $1', [clientId]);
-    const existing = await autoStrategies(clientId);
-    if (!existing.length) {
-      const account = await demoAccount(clientId);
-      const balance = Number(account.balance);
-      for (const [kind, def] of Object.entries(STRATEGIES) as [StrategyKind, typeof STRATEGIES[StrategyKind]][]) {
-        await pool.query(
-          'INSERT INTO auto_strategies (client_id, kind, name, symbols, allocation) VALUES ($1,$2,$3,$4,$5)',
-          [clientId, kind, def.name, def.symbols, round8(Math.max(0, balance * def.share))]);
-      }
-      await autoLog(clientId, 'info', balance > 0
-        ? `Set up three strategies with ${money2(balance * 0.5).slice(1)} of the account allocated`
-        : 'Set up three strategies · fund the account to give them something to trade with');
-    }
+    await autoSetup(clientId);
     await autoLog(clientId, 'info', 'Switched on');
   } else {
     await autoLog(clientId, 'info', 'Switched off · open positions keep their stops and targets');
   }
+}
+
+/**
+ * The bot's first day: settings, a start time, and the three standard strategies with a
+ * share of the account each. Idempotent, and run from the engine as well as the switch —
+ * a client whose switch was already on before the bot became real would otherwise sit
+ * "running" with nothing to run.
+ */
+async function autoSetup(clientId: string) {
+  await autoSettings(clientId);
+  await pool.query('UPDATE auto_settings SET started_at = coalesce(started_at, now()) WHERE client_id = $1', [clientId]);
+  const existing = await autoStrategies(clientId);
+  if (existing.length) return;
+  const account = await demoAccount(clientId);
+  const balance = Number(account.balance);
+  for (const [kind, def] of Object.entries(STRATEGIES) as [StrategyKind, typeof STRATEGIES[StrategyKind]][]) {
+    await pool.query(
+      'INSERT INTO auto_strategies (client_id, kind, name, symbols, allocation) VALUES ($1,$2,$3,$4,$5)',
+      [clientId, kind, def.name, def.symbols, round8(Math.max(0, balance * def.share))]);
+  }
+  await autoLog(clientId, 'info', balance > 0
+    ? `Set up three strategies with ${money2(balance * 0.5).slice(1)} of the account allocated`
+    : 'Set up three strategies · fund the account to give them something to trade with');
 }
 
 /**
