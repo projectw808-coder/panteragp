@@ -544,8 +544,11 @@ function Editor({ id, admin, onChanged, onClose }: {
 
   const run = async (what: () => Promise<string>) => {
     setBusy(true); setError(null); setNote(null);
-    try { setNote(await what()); one.reload(); onChanged(); }
-    catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+    try { setNote(await what()); }
+    catch (err) { setError((err as Error).message); }
+    // Reloaded either way: a refused count means the number changed, and a run that
+    // delivered nothing still moved the campaign out of draft and wrote its reasons down.
+    finally { setBusy(false); one.reload(); onChanged(); }
   };
 
   async function save(e: FormEvent<HTMLFormElement>) {
@@ -696,6 +699,9 @@ function Editor({ id, admin, onChanged, onClose }: {
                     const out = await api<{ sent: number; failed: number }>(
                       `/admin/campaigns/${id}/send`,
                       { method: 'POST', body: JSON.stringify({ confirm_recipients: c.eligible }) });
+                    // A run where nobody got it is a failure and is said as one, not as
+                    // "sent to 0" in the colour of success.
+                    if (!out.sent) throw new Error(`Nothing was delivered. ${out.failed} ${out.failed === 1 ? 'attempt' : 'attempts'} failed — the reason is under "Who it reached".`);
                     return `Sent to ${out.sent}.${out.failed ? ` ${out.failed} could not be delivered.` : ''}`;
                   })}>
                   {busy ? 'Sending…' : c.audience === 'selected'
@@ -716,8 +722,9 @@ function Editor({ id, admin, onChanged, onClose }: {
               <tbody>
                 {c.deliveries.map((d, n) => (
                   <tr key={n} className="border-t border-pebble first:border-0 dark:border-white/10">
-                    <td className="py-1.5 pr-3">{d.name}</td>
-                    <td className="py-1.5 pr-3 font-mono text-xs text-slate-ink">{d.email}</td>
+                    {/* A long error must not squeeze the name into one letter per line. */}
+                    <td className="py-1.5 pr-3 whitespace-nowrap">{d.name}</td>
+                    <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap text-slate-ink">{d.email}</td>
                     <td className="py-1.5 pr-3">
                       <span className={`font-mono text-[10px] tracking-wide uppercase ${
                         d.status === 'sent' ? 'text-up' : 'text-down'}`}>{d.status}</span>
