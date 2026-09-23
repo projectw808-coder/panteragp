@@ -57,7 +57,11 @@ export type ClientRow = {
   /** False until someone sets a password: the record exists, the login does not. */
   has_login: boolean;
 };
-export type Client = ClientRow & { phone: string | null; country: string | null };
+export type Client = ClientRow & {
+  phone: string | null; country: string | null;
+  /** Opted out of the weekly update. Account mail still reaches them. */
+  email_opt_out?: boolean;
+};
 export type Activity = {
   id: number; at: string; kind: string; actor: string | null; summary: string;
   ref_table: string | null; ref_id: string | null; data: Record<string, unknown>;

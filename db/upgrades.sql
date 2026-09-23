@@ -600,3 +600,69 @@ BEGIN
              FOR EACH ROW EXECUTE FUNCTION touch()';
   END IF;
 END $do$;
+
+-- ---------------------------------------------- writing to one client, from their record
+--
+-- A weekly update goes to a list; this is one person, from the member of staff who looks
+-- after them, composed on their record where the context is. Different enough from a
+-- campaign to be its own thing: no consent list, no recipient count to confirm, and no
+-- unsubscribe link, because a reply to an account manager is not a mailing list somebody
+-- joined. The marketing opt-out does not silence it for the same reason — the client who
+-- asked not to receive updates still needs to hear that their document expired.
+
+CREATE TABLE IF NOT EXISTS email_templates (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL UNIQUE,
+  subject    text NOT NULL,
+  body       text NOT NULL,
+  created_by uuid REFERENCES staff(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Every message to a client, kept whether it left or not. Support will be asked "did you
+-- email them?" and the honest answer needs the text that was sent, not the template it came
+-- from — a template edited next month must not silently rewrite what was said last month.
+CREATE TABLE IF NOT EXISTS client_emails (
+  id          bigserial PRIMARY KEY,
+  client_id   uuid NOT NULL REFERENCES clients(id),
+  email       text NOT NULL,
+  subject     text NOT NULL,
+  body        text NOT NULL,
+  template_id uuid REFERENCES email_templates(id) ON DELETE SET NULL,
+  sent_by     uuid REFERENCES staff(id),
+  status      text NOT NULL CHECK (status IN ('sent','failed')),
+  error       text,
+  sent_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS client_emails_by_client ON client_emails (client_id, sent_at DESC);
+
+-- Starter templates. Reference data like instruments, so they reach deployments that already
+-- exist; ON CONFLICT DO NOTHING so an edited one is never overwritten by a deploy.
+-- {{name}} and {{email}} are filled per recipient.
+INSERT INTO email_templates (name, subject, body) VALUES
+  ('Document needed',
+   'We need one more document for your account',
+   E'We are reviewing your account and need one more document before we can finish.\n\nPlease sign in and upload it from the Documents page. If you are not sure which document is outstanding, reply to this message and we will tell you.\n\nThank you,\nThe desk'),
+  ('Welcome',
+   'Welcome to Pantera GP',
+   E'Your account is open and ready to use.\n\nYou can sign in to see your balances, portfolios and any offerings that are open for subscription. If anything looks wrong or you have a question, reply to this message — it reaches your account manager directly.\n\nWelcome aboard,\nThe desk'),
+  ('Checking in',
+   'Checking in on your account',
+   E'I wanted to check in and see how things are going with your account.\n\nIf there is anything you would like to talk through — a position, a portfolio, or something you are considering — reply here and we will find a time.\n\nBest regards,\nThe desk')
+ON CONFLICT (name) DO NOTHING;
+
+DO $do$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['email_templates'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = t || '_audit') THEN
+      EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON %I
+                      FOR EACH ROW EXECUTE FUNCTION audit()', t, t);
+    END IF;
+  END LOOP;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'email_templates_touch') THEN
+    EXECUTE 'CREATE TRIGGER email_templates_touch BEFORE UPDATE ON email_templates
+             FOR EACH ROW EXECUTE FUNCTION touch()';
+  END IF;
+END $do$;

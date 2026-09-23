@@ -109,7 +109,7 @@ const escapeHtml = (s: string) => s
  * angle bracket would otherwise eat the rest of the message.
  */
 export function render(a: {
-  subject: string; body: string; name: string; unsubscribeUrl: string; publicUrl: string;
+  subject: string; body: string; name: string; unsubscribeUrl?: string | null; publicUrl: string;
 }) {
   const paragraphs = a.body.replace(/\r\n/g, '\n').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
 
@@ -120,8 +120,10 @@ export function render(a: {
     '—',
     'This is a simulated trading platform. Nothing in this message is investment advice,',
     'and every balance it refers to is simulated.',
-    '',
-    `Stop receiving these: ${a.unsubscribeUrl}`,
+    // Only where there is something to unsubscribe FROM. A message written to one client by
+    // the desk that holds their account is not a list they joined, and offering to leave one
+    // that does not exist is a button that does nothing — which is worse than no button.
+    ...(a.unsubscribeUrl ? ['', `Stop receiving these: ${a.unsubscribeUrl}`] : []),
   ].join('\n');
 
   const html = `<!doctype html>
@@ -144,9 +146,9 @@ export function render(a: {
     every balance it refers to is simulated.
   </p>
   <p style="margin:0;">
-    <a href="${escapeHtml(a.publicUrl)}" style="color:#9a4000;">Open your account</a>
+    <a href="${escapeHtml(a.publicUrl)}" style="color:#9a4000;">Open your account</a>${a.unsubscribeUrl ? `
     &nbsp;·&nbsp;
-    <a href="${escapeHtml(a.unsubscribeUrl)}" style="color:#66666e;">Stop receiving these</a>
+    <a href="${escapeHtml(a.unsubscribeUrl)}" style="color:#66666e;">Stop receiving these</a>` : ''}
   </p>
 </td></tr>
 </table>
@@ -166,7 +168,7 @@ export function render(a: {
  * as spam — which is the thing that damages a sending domain for everybody else on it.
  */
 export async function send(a: {
-  to: string; subject: string; text: string; html: string; unsubscribeUrl: string;
+  to: string; subject: string; text: string; html: string; unsubscribeUrl?: string | null;
 }, env = process.env): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const cfg = mailConfig(env);
   const t = transport(env);
@@ -179,8 +181,12 @@ export async function send(a: {
       text: a.text,
       html: a.html,
       headers: {
-        'List-Unsubscribe': `<${a.unsubscribeUrl}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        // Set only for list mail. On a one-to-one message it would render as an Unsubscribe
+        // button in the reader's mail client that leaves nothing, because there is no list.
+        ...(a.unsubscribeUrl ? {
+          'List-Unsubscribe': `<${a.unsubscribeUrl}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        } : {}),
         ...(cfg.messageStream ? { 'X-PM-Message-Stream': cfg.messageStream } : {}),
       },
     });

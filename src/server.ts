@@ -5446,6 +5446,142 @@ app.get('/unsubscribe', async (req: any, reply) => {
 </div></body></html>`);
 });
 
+
+// -------------------------------------------------- writing to one client, from their record
+/*
+ * A message to one person, composed on their record by whoever looks after them.
+ *
+ * Deliberately not a campaign of one. There is no recipient count to confirm, because the
+ * recipient is on the screen; no unsubscribe link, because one message from an account
+ * manager is not a list anybody joined; and the marketing opt-out does not silence it, for
+ * the same reason — somebody who asked not to receive the weekly update still needs to hear
+ * that their document expired. The screen shows their opt-out state so the sender knows what
+ * kind of message would be unwelcome, which is a judgement a person should make, not a
+ * filter.
+ *
+ * What is stored is the text that was sent, never a reference to the template it came from:
+ * a template edited next month must not silently rewrite what was said last month.
+ */
+
+/** {{name}} and {{email}} only — a template language is not what this needs to be. */
+const fillTemplate = (s: string, c: { name: string; email: string }) =>
+  s.replaceAll('{{name}}', c.name).replaceAll('{{email}}', c.email);
+
+app.get('/admin/email-templates', { preHandler: auth('crm:read') }, async () =>
+  (await pool.query(`
+    SELECT t.id, t.name, t.subject, t.body, t.updated_at, s.name AS created_by
+      FROM email_templates t LEFT JOIN staff s ON s.id = t.created_by
+     ORDER BY t.name`)).rows);
+
+const templateBody = z.object({
+  name: z.string().min(1).max(80),
+  subject: z.string().min(1).max(200),
+  body: z.string().min(1).max(20_000),
+});
+
+app.post('/admin/email-templates', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = templateBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  try {
+    return await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `INSERT INTO email_templates (name, subject, body, created_by)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [body.data.name, body.data.subject, body.data.body, req.principal.sub]);
+      return reply.code(201).send(rows[0]);
+    });
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'a template with that name exists' });
+    throw err;
+  }
+});
+
+app.patch('/admin/email-templates/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const body = templateBody.partial()
+    .refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const entries = Object.entries(body.data);
+  try {
+    const out = await tx(req.principal.sub, async (c) => {
+      const { rows } = await c.query(
+        `UPDATE email_templates SET ${entries.map(([k], i) => `${k} = ${i + 2}`).join(', ')}
+          WHERE id = $1 RETURNING *`, [req.params.id, ...entries.map(([, v]) => v)]);
+      return rows[0] ?? null;
+    });
+    if (!out) return reply.code(404).send({ error: 'no such template' });
+    return out;
+  } catch (err: any) {
+    if (err?.code === '23505') return reply.code(409).send({ error: 'a template with that name exists' });
+    throw err;
+  }
+});
+
+app.delete('/admin/email-templates/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  // Messages already sent keep their text and lose only the link back, by ON DELETE SET NULL:
+  // deleting a template must not erase the record of what somebody was told.
+  const out = await tx(req.principal.sub, async (c) =>
+    (await c.query('DELETE FROM email_templates WHERE id = $1 RETURNING id', [req.params.id])).rows[0] ?? null);
+  if (!out) return reply.code(404).send({ error: 'no such template' });
+  return { ok: true };
+});
+
+/** What has been written to this client, newest first. */
+app.get('/clients/:id/emails', { preHandler: clientScope }, async (req: any, reply) => {
+  if (req.principal.kind === 'client') {
+    return reply.code(403).send({ error: 'staff only' });
+  }
+  return (await pool.query(`
+    SELECT e.id, e.subject, e.body, e.email, e.status, e.error, e.sent_at, s.name AS sent_by
+      FROM client_emails e LEFT JOIN staff s ON s.id = e.sent_by
+     WHERE e.client_id = $1 ORDER BY e.sent_at DESC LIMIT 50`, [req.params.id])).rows;
+});
+
+app.post('/clients/:id/email', { preHandler: auth('crm:write') }, async (req: any, reply) => {
+  const body = z.object({
+    subject: z.string().min(1).max(200),
+    body: z.string().min(1).max(20_000),
+    template_id: z.string().uuid().nullable().optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+  const cfg = mailConfig();
+  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+
+  const { rows: [client] } = await pool.query<{ id: string; name: string; email: string }>(
+    'SELECT id, name, email FROM clients WHERE id = $1', [req.params.id]);
+  if (!client) return reply.code(404).send({ error: 'no such client' });
+  if (!client.email) return reply.code(422).send({ error: 'this client has no email address' });
+
+  const subject = fillTemplate(body.data.subject, client);
+  const text = fillTemplate(body.data.body, client);
+  // No unsubscribe link: this is one message to one person from the desk that holds their
+  // account, not a list. renderMail wants a url, so it gets the account page — the footer
+  // reads as "open your account" and offers nothing to opt out of.
+  const { html } = renderMail({
+    subject, body: text, name: client.name, publicUrl: cfg.publicUrl,
+  });
+
+  const out = await sendMail({ to: client.email, subject, text, html });
+
+  await tx(req.principal.sub, async (c) => {
+    await c.query(
+      `INSERT INTO client_emails (client_id, email, subject, body, template_id, sent_by, status, error)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [client.id, client.email, subject, text, body.data.template_id ?? null,
+       req.principal.sub, out.ok ? 'sent' : 'failed', out.ok ? null : out.error.slice(0, 500)]);
+    // On the client's own timeline, because "we emailed them this" is part of the record of
+    // the relationship and the next person to pick up the account needs to see it.
+    await logActivity(c, {
+      client_id: client.id, kind: 'note', actor: req.principal.sub,
+      summary: out.ok ? `Emailed: ${subject}` : `Email failed: ${subject}`,
+      ref_table: 'client_emails', data: { ok: out.ok },
+    });
+  });
+
+  if (!out.ok) return reply.code(502).send({ error: out.error });
+  return { ok: true, to: client.email };
+});
+
 if (process.argv[1]?.endsWith('server.ts')) {
   // Refuse to start misconfigured, rather than serving 500s at the login screen.
   try {

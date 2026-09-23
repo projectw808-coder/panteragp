@@ -570,6 +570,24 @@ what matured. It contains no market commentary, no outlook and no suggestion abo
 anybody should do with their money: this desk is simulated and the author is a program. The
 desk edits every word before it goes anywhere.
 
+**Writing to one client** is a different thing and is built as one. It sits on the client's own
+record, below their open tasks, because that is where somebody is when they decide to write —
+they have just read the timeline and seen the outstanding document.  ·
+ · .
+
+There is no recipient count to confirm, because the recipient is on the screen; no unsubscribe
+link, because one message from an account manager is not a list anybody joined; and the
+marketing opt-out does not silence it, because somebody who declined the weekly update still
+needs to hear that their document expired. Their opt-out state is shown next to the compose
+box so the person writing can judge whether this particular message is one of those — a
+judgement a person should make, not a filter.
+
+Templates fill the box and then stop mattering: the text is the sender's to change, and what
+is stored against the client is what was actually sent. A template edited next month must not
+silently rewrite what somebody was told last month, which is also why deleting one keeps the
+messages and drops only the link back. Every send lands on the client's timeline, because the
+next person to pick up the account needs to see what they were told.
+
 Tested against a real SMTP conversation rather than a mock: a local sink that speaks RFC 5321
 accepts the mail, refuses one address on purpose, and the assertions are about what actually
 arrived — both MIME parts, the per-recipient token, the unsubscribe round trip, and that a

@@ -164,6 +164,117 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
       )}
 
       {open && <Editor id={open} admin={admin} onChanged={refresh} onClose={() => setOpen(null)} />}
+
+      <Templates admin={admin} />
+    </div>
+  );
+}
+
+type Template = { id: string; name: string; subject: string; body: string; updated_at: string };
+
+/**
+ * The templates a one-to-one message can start from, edited here and picked on a client's
+ * own record.
+ *
+ * They are a starting point and nothing more: picking one fills the box and the text is then
+ * the sender's to change. What gets stored against the client is what was actually sent, so
+ * editing a template here never rewrites a message somebody already received.
+ */
+function Templates({ admin }: { admin: boolean }) {
+  const rows = useApi<Template[]>('/admin/email-templates');
+  const [editing, setEditing] = useState<Template | 'new' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const body = {
+      name: String(f.get('name')), subject: String(f.get('subject')), body: String(f.get('body')),
+    };
+    setBusy(true); setError(null);
+    try {
+      if (editing === 'new') await api('/admin/email-templates', { method: 'POST', body: JSON.stringify(body) });
+      else if (editing) await api(`/admin/email-templates/${editing.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      setEditing(null);
+      rows.reload();
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-3 border-t border-pebble pt-5 dark:border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="section-title">Templates</span>
+        {admin && (
+          <button className="rounded-full border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
+            onClick={() => setEditing(editing === 'new' ? null : 'new')}>
+            {editing === 'new' ? 'Cancel' : 'New template'}
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-ink">
+        Used when writing to one client, from their own record. Picking one fills the box —
+        the text is then yours to change, and what is stored against the client is what you
+        actually sent.
+      </p>
+
+      {error && <p role="alert" className={alertBox}>{error}</p>}
+
+      {editing && (
+        <form onSubmit={save} className={`${card} space-y-2`}>
+          <label className="block">
+            <span className="metric-label mb-1 block">Name</span>
+            <input name="name" required maxLength={80} className={`${field} w-full`}
+              defaultValue={editing === 'new' ? '' : editing.name} />
+          </label>
+          <label className="block">
+            <span className="metric-label mb-1 block">Subject</span>
+            <input name="subject" required maxLength={200} className={`${field} w-full`}
+              defaultValue={editing === 'new' ? '' : editing.subject} />
+          </label>
+          <label className="block">
+            <span className="metric-label mb-1 block">Message</span>
+            <textarea name="body" required rows={8} maxLength={20000} className={`${field} w-full`}
+              defaultValue={editing === 'new' ? '' : editing.body} />
+            <span className="mt-1 block text-xs text-slate-ink">
+              <code className="font-mono">{'{{name}}'}</code> and{' '}
+              <code className="font-mono">{'{{email}}'}</code> are filled in per client.
+            </span>
+          </label>
+          <div className="flex gap-2">
+            <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => setEditing(null)}
+              className="rounded-full border border-pebble px-3 py-1.5 text-sm text-slate-ink dark:border-white/10">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {rows.data?.map((t) => (
+          <div key={t.id} className={`${card} space-y-1`}>
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-sm font-medium">{t.name}</span>
+              {admin && (
+                <span className="flex gap-1">
+                  <button className="rounded-full border border-pebble px-2 py-0.5 text-[11px] text-slate-ink dark:border-white/10"
+                    onClick={() => setEditing(t)}>Edit</button>
+                  <button className="rounded-full border border-pebble px-2 py-0.5 text-[11px] text-slate-ink dark:border-white/10"
+                    onClick={async () => {
+                      setError(null);
+                      try { await api(`/admin/email-templates/${t.id}`, { method: 'DELETE' }); rows.reload(); }
+                      catch (err) { setError((err as Error).message); }
+                    }}>Delete</button>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-ink">{t.subject}</p>
+            <p className="line-clamp-3 text-xs whitespace-pre-line text-slate-ink opacity-80">{t.body}</p>
+          </div>
+        ))}
+      </div>
+      {rows.data?.length === 0 && <p className="text-sm text-slate-ink">No templates yet.</p>}
     </div>
   );
 }
