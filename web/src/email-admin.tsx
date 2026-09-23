@@ -12,7 +12,8 @@ import { api, useApi } from './api.ts';
  */
 
 type Status = {
-  configured: boolean; host: string | null; port: number | null; secure: boolean | null;
+  configured: boolean; transport: 'postmark-api' | 'smtp' | null;
+  host: string | null; port: number | null; secure: boolean | null;
   from: string | null; authenticated: boolean; eligible: number; opted_out: number;
   settings?: Record<string, boolean>; missing?: string[];
 };
@@ -91,8 +92,12 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
                 <span key={name} className="flex items-center gap-2 font-mono text-xs">
                   <span className={present ? 'text-up' : 'text-slate-ink'}>{present ? '✓' : '·'}</span>
                   <span className={present ? '' : 'text-slate-ink'}>{name}</span>
-                  {!present && (name === 'SMTP_HOST' || name === 'SMTP_FROM') && (
+                  {!present && name === 'SMTP_FROM' && (
                     <span className="text-down">required</span>
+                  )}
+                  {!present && (name === 'POSTMARK_SERVER_TOKEN' || name === 'SMTP_HOST')
+                    && !s.settings?.POSTMARK_SERVER_TOKEN && !s.settings?.SMTP_HOST && (
+                    <span className="text-down">one of these</span>
                   )}
                 </span>
               ))}
@@ -100,10 +105,12 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
           )}
 
           <p className="text-xs text-slate-ink">
-            <code className="font-mono">SMTP_HOST</code> and{' '}
-            <code className="font-mono">SMTP_FROM</code> are what decide whether anything can
-            be sent; <code className="font-mono">SMTP_USER</code> and{' '}
-            <code className="font-mono">SMTP_PASS</code> are needed if the server wants them,{' '}
+            <code className="font-mono">SMTP_FROM</code> is the sender and is always needed.
+            Then one way out: <code className="font-mono">POSTMARK_SERVER_TOKEN</code> sends over
+            HTTPS and works on any host, or <code className="font-mono">SMTP_HOST</code> with{' '}
+            <code className="font-mono">SMTP_USER</code> and <code className="font-mono">SMTP_PASS</code>{' '}
+            if the server wants them — but some hosts block outbound SMTP altogether, and Railway
+            does below its Pro plan, so the token is the one that works there.{' '}
             <code className="font-mono">PUBLIC_URL</code> is what the links in a message point
             at, and <code className="font-mono">SMTP_MESSAGE_STREAM</code> names the provider's
             stream where one is required. This reads the environment the running process has,
@@ -117,10 +124,11 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
             <span className="font-mono text-sm">{s.from}</span>
           </span>
           <span>
-            <span className="metric-label block">Server</span>
+            <span className="metric-label block">{s.transport === 'postmark-api' ? 'Through' : 'Server'}</span>
             <span className="font-mono text-sm">
-              {s.host}:{s.port} {s.secure ? 'TLS' : 'STARTTLS'}
-              {s.authenticated ? '' : ' · no auth'}
+              {s.transport === 'postmark-api'
+                ? 'Postmark API over HTTPS'
+                : `${s.host}:${s.port} ${s.secure ? 'TLS' : 'STARTTLS'}${s.authenticated ? '' : ' · no auth'}`}
             </span>
           </span>
           <span>

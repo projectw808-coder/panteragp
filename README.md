@@ -525,16 +525,22 @@ An article the desk writes once and sends to everyone who has not opted out.
 `POST /admin/campaigns/:id/send` · `GET /admin/email/status` · `POST /admin/email/verify` ·
 `GET /unsubscribe`
 
-Configuration is environment only: `SMTP_HOST`, `SMTP_PORT` (587 by default), `SMTP_USER`,
-`SMTP_PASS`, `SMTP_FROM`, and `PUBLIC_URL` for the links inside a message. `SMTP_SECURE`
-overrides the guess, which is implicit TLS on 465 and STARTTLS otherwise. `SMTP_MESSAGE_STREAM`
-names a provider stream where one is required: Postmark separates transactional mail from
-broadcasts and treats a newsletter on the transactional stream as a terms violation, which
-suspends the account rather than bouncing the message. Set it to the broadcast stream’s id.
-The header is ignored by providers that do not use streams, and omitted when unset. With no host and no
-sender the feature reports itself unconfigured and offers no button, rather than presenting
-one that fails. The status endpoint says what is set and never what it is set to — a password
-has no business leaving the process that reads it.
+Configuration is environment only, and there are two ways out. `POSTMARK_SERVER_TOKEN` sends
+through Postmark's HTTPS API and is preferred when set, because the host this runs on may not
+allow outbound SMTP at all: Railway blocks ports 25, 465 and 587 below its Pro plan, and a
+blocked port does not refuse, it hangs. Otherwise `SMTP_HOST`, `SMTP_PORT` (587 by default),
+`SMTP_USER` and `SMTP_PASS` reach any SMTP server, with `SMTP_SECURE` overriding the guess,
+which is implicit TLS on 465 and STARTTLS otherwise. Both need `SMTP_FROM` for the sender and
+`PUBLIC_URL` for the links inside a message. `SMTP_MESSAGE_STREAM` names a provider stream
+where one is required: Postmark separates transactional mail from broadcasts and treats a
+newsletter on the transactional stream as a terms violation, which suspends the account rather
+than bouncing the message. Set it to the broadcast stream’s id. It is ignored by providers
+that do not use streams, and omitted when unset. With no sender, or no way out, the feature
+reports itself unconfigured and offers no button, rather than presenting one that fails. The
+status endpoint says what is set and never what it is set to — a password has no business
+leaving the process that reads it. The SMTP path gives up after ten seconds instead of
+nodemailer's two minutes, and says so in terms of a blocked port, because that is what a
+silent timeout means on a host that drops SMTP.
 
 **Everything here is shaped by one fact: a message cannot be recalled.**
 
@@ -589,10 +595,12 @@ silently rewrite what somebody was told last month, which is also why deleting o
 messages and drops only the link back. Every send lands on the client's timeline, because the
 next person to pick up the account needs to see what they were told.
 
-Tested against a real SMTP conversation rather than a mock: a local sink that speaks RFC 5321
-accepts the mail, refuses one address on purpose, and the assertions are about what actually
-arrived — both MIME parts, the per-recipient token, the unsubscribe round trip, and that a
-second send delivers nothing.
+The Postmark path is tested against a stand-in on localhost that answers the way Postmark
+answers: the assertions are about what the provider would receive — the token in its header
+and nowhere else, the fields by their exact names, the stream as a field rather than a header,
+the unsubscribe headers on list mail and their absence on a one-to-one message — and about
+what the desk reads back when Postmark refuses, which is Postmark's reason and never the
+token.
 
 ## Uploads live in the database
 

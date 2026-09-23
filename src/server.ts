@@ -5150,15 +5150,21 @@ app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
    */
   const set = (name: string) => (process.env[name]?.trim() ?? '') !== '';
   const settings = {
-    SMTP_HOST: set('SMTP_HOST'),
     SMTP_FROM: set('SMTP_FROM'),
+    POSTMARK_SERVER_TOKEN: set('POSTMARK_SERVER_TOKEN'),
+    SMTP_HOST: set('SMTP_HOST'),
     SMTP_PORT: set('SMTP_PORT'),
     SMTP_USER: set('SMTP_USER'),
     SMTP_PASS: set('SMTP_PASS'),
     SMTP_MESSAGE_STREAM: set('SMTP_MESSAGE_STREAM'),
     PUBLIC_URL: set('PUBLIC_URL'),
   };
-  const missing = (['SMTP_HOST', 'SMTP_FROM'] as const).filter((n) => !settings[n]);
+  // A sender, and one way out: the Postmark token (HTTPS, works on any host) or an SMTP host
+  // (blocked outright on some — Railway below its Pro plan). Named in that order because the
+  // token is the one that works where this is deployed.
+  const missing: string[] = [];
+  if (!settings.SMTP_FROM) missing.push('SMTP_FROM');
+  if (!settings.POSTMARK_SERVER_TOKEN && !settings.SMTP_HOST) missing.push('POSTMARK_SERVER_TOKEN or SMTP_HOST');
   const { rows: [n] } = await pool.query<{ eligible: number; opted_out: number }>(`
     SELECT (SELECT count(*)::int ${RECIPIENTS}) AS eligible,
            (SELECT count(*)::int FROM clients WHERE email_opt_out) AS opted_out`);
@@ -5166,6 +5172,7 @@ app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
     // What is set, never what it is set to: a host and a sender are operational facts, a
     // password is not, and it has no business leaving the process that reads it.
     configured: cfg !== null,
+    transport: cfg?.transport ?? null,
     host: cfg?.host ?? null,
     port: cfg?.port ?? null,
     secure: cfg?.secure ?? null,
@@ -5324,7 +5331,7 @@ app.post('/admin/campaigns/:id/test', { preHandler: auth('admin') }, async (req:
   if (!c) return reply.code(404).send({ error: 'no such campaign' });
 
   const cfg = mailConfig();
-  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+  if (!cfg) return reply.code(503).send({ error: 'Email is not configured' });
   // A test carries an unsubscribe link that goes nowhere real: it is not addressed to a
   // client, so there is no consent to withdraw and nothing to look up.
   const unsubscribeUrl = `${cfg.publicUrl}/unsubscribe?token=test`;
@@ -5351,7 +5358,7 @@ app.post('/admin/campaigns/:id/send', { preHandler: auth('admin') }, async (req:
     return reply.code(400).send({ error: 'confirm_recipients must state how many this will reach' });
   }
   const cfg = mailConfig();
-  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+  if (!cfg) return reply.code(503).send({ error: 'Email is not configured' });
 
   // Claim the campaign: moving it out of draft inside a transaction is what stops two
   // admins, or one admin clicking twice, both starting the same run.
@@ -5567,7 +5574,7 @@ app.post('/clients/:id/email', { preHandler: auth('crm:write') }, async (req: an
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
   const cfg = mailConfig();
-  if (!cfg) return reply.code(503).send({ error: 'SMTP is not configured' });
+  if (!cfg) return reply.code(503).send({ error: 'Email is not configured' });
 
   const { rows: [client] } = await pool.query<{ id: string; name: string; email: string }>(
     'SELECT id, name, email FROM clients WHERE id = $1', [req.params.id]);

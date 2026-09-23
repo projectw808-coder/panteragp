@@ -8,31 +8,45 @@ import nodemailer, { type Transporter } from 'nodemailer';
  * is a loop over real people's inboxes. Everything here is built so the mistakes that are
  * cheap in the app are also cheap here.
  *
- * Configuration is environment only — SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS,
- * SMTP_FROM, and PUBLIC_URL for the links inside a message. Credentials never reach the
- * database, an API or a screen; `configured()` reports whether they are present without
- * revealing any of them.
+ * Two ways out, chosen by what is set:
+ *
+ *   POSTMARK_SERVER_TOKEN  → Postmark's HTTPS API. Preferred when present, because the host
+ *                            this runs on may not allow outbound SMTP at all: Railway blocks
+ *                            ports 25, 465 and 587 below its Pro plan, and a blocked port does
+ *                            not refuse, it hangs. HTTPS is never blocked.
+ *   SMTP_HOST              → any SMTP server, over STARTTLS or implicit TLS.
+ *
+ * SMTP_FROM is required for both, PUBLIC_URL is what the links inside a message point at,
+ * and SMTP_MESSAGE_STREAM names the provider's stream where one is required. Credentials
+ * never reach the database, an API or a screen; the status route reports whether they are
+ * present without revealing any of them.
  */
 
 export type MailConfig = {
-  host: string; port: number; secure: boolean;
+  transport: 'postmark-api' | 'smtp';
+  host: string | null; port: number | null; secure: boolean | null;
   user: string | null; pass: string | null;
   from: string; publicUrl: string;
   messageStream: string | null;
+  /** Never copied anywhere: not into a response, a log line or an error message. */
+  postmarkToken: string | null;
+  postmarkApi: string;
 };
 
 /** What is set, read once at the point of use so a restart is all a change needs. */
 export function mailConfig(env = process.env): MailConfig | null {
-  const host = env.SMTP_HOST?.trim();
   const from = env.SMTP_FROM?.trim();
-  if (!host || !from) return null;
+  const host = env.SMTP_HOST?.trim() || null;
+  const token = env.POSTMARK_SERVER_TOKEN?.trim() || null;
+  if (!from || (!host && !token)) return null;
   const port = Number(env.SMTP_PORT ?? 587);
   return {
+    transport: token ? 'postmark-api' : 'smtp',
     host,
-    port,
+    port: host ? port : null,
     // 465 is implicit TLS; 587 and 25 start plain and upgrade with STARTTLS. Getting this
     // backwards is the most common reason a working mailbox refuses a connection.
-    secure: env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : port === 465,
+    secure: host ? (env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : port === 465) : null,
     user: env.SMTP_USER?.trim() || null,
     pass: env.SMTP_PASS || null,
     from,
@@ -43,6 +57,9 @@ export function mailConfig(env = process.env): MailConfig | null {
     // account — the one failure here that costs more than a bounced message. The header is
     // theirs, is ignored by everyone else, and is omitted entirely when unset.
     messageStream: env.SMTP_MESSAGE_STREAM?.trim() || null,
+    postmarkToken: token,
+    // Overridable so a test can stand in for Postmark on localhost. Nothing else sets it.
+    postmarkApi: (env.POSTMARK_API_URL ?? 'https://api.postmarkapp.com').replace(/\/+$/, ''),
   };
 }
 
@@ -52,44 +69,102 @@ export const mailReady = (env = process.env) => mailConfig(env) !== null;
 let cached: { key: string; transport: Transporter } | null = null;
 
 /**
- * One transport, reused.
+ * One SMTP transport, reused.
  *
  * A fresh connection per message is a TLS handshake per message, and a provider that sees a
  * hundred of them in a minute treats it as what it looks like. The pool holds a small number
  * of connections and paces itself under the rate most providers actually enforce.
+ *
+ * The timeouts are short on purpose. nodemailer's defaults wait two minutes to connect, and
+ * a host that silently drops outbound SMTP — which is what a blocked port looks like — would
+ * leave an admin staring at a spinner for that long and then reading a generic error. Ten
+ * seconds is longer than any real server takes to answer and short enough to be an answer.
  */
 export function transport(env = process.env): Transporter | null {
   const cfg = mailConfig(env);
-  if (!cfg) return null;
+  if (!cfg || cfg.transport !== 'smtp' || !cfg.host) return null;
   const key = JSON.stringify([cfg.host, cfg.port, cfg.secure, cfg.user]);
   if (cached?.key === key) return cached.transport;
   cached = {
     key,
     transport: nodemailer.createTransport({
       host: cfg.host,
-      port: cfg.port,
-      secure: cfg.secure,
+      port: cfg.port ?? 587,
+      secure: cfg.secure ?? false,
       auth: cfg.user ? { user: cfg.user, pass: cfg.pass ?? '' } : undefined,
       pool: true,
       maxConnections: 3,
       maxMessages: 50,
       rateDelta: 1000,
       rateLimit: 8,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
     }),
   };
   return cached.transport;
 }
 
-/** Ask the server whether it would accept us, without sending anything to anybody. */
+/** A fetch that gives up, because a request to a provider that never answers must not hang the route. */
+async function timed(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Postmark's error shape, and a sentence that says what it means without repeating the token. */
+function postmarkError(status: number, body: unknown): string {
+  const b = body as { ErrorCode?: number; Message?: string } | null;
+  if (status === 401) return 'Postmark rejected the server token (401). Check POSTMARK_SERVER_TOKEN.';
+  if (b?.Message) return `Postmark refused it (${b.ErrorCode ?? status}): ${b.Message}`;
+  return `Postmark answered ${status} with no explanation`;
+}
+
+/** Ask the provider whether it would accept us, without sending anything to anybody. */
 export async function verify(env = process.env): Promise<{ ok: true } | { ok: false; error: string }> {
+  const cfg = mailConfig(env);
+  if (!cfg) return { ok: false, error: 'Email is not configured: set SMTP_FROM and either POSTMARK_SERVER_TOKEN or SMTP_HOST' };
+
+  if (cfg.transport === 'postmark-api') {
+    // GET /server is the cheapest authenticated call Postmark has. Its body lists the
+    // server's API tokens, so only the status code is read — the body is never parsed,
+    // logged or returned.
+    try {
+      const r = await timed(`${cfg.postmarkApi}/server`, {
+        headers: { Accept: 'application/json', 'X-Postmark-Server-Token': cfg.postmarkToken! },
+      }, 10_000);
+      if (r.ok) return { ok: true };
+      return { ok: false, error: postmarkError(r.status, null) };
+    } catch (err) {
+      return { ok: false, error: `Could not reach Postmark: ${(err as Error).name === 'AbortError' ? 'no answer in 10s' : (err as Error).message}` };
+    }
+  }
+
   const t = transport(env);
   if (!t) return { ok: false, error: 'SMTP is not configured: set SMTP_HOST and SMTP_FROM' };
   try {
     await t.verify();
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    return { ok: false, error: smtpError(err as Error & { code?: string }) };
   }
+}
+
+/**
+ * nodemailer's errors name the mechanism. The person reading them is deciding what to change
+ * in a settings screen, so the sentence names that instead. A timeout, in particular, is the
+ * signature of a host that drops outbound SMTP rather than a server that is slow.
+ */
+function smtpError(err: Error & { code?: string }): string {
+  if (err.code === 'ETIMEDOUT' || (err.code === 'ESOCKET' && /timed? ?out/i.test(err.message))) {
+    return 'The SMTP server did not answer in 10s. On a host that blocks outbound SMTP — Railway does below its Pro plan — this is what a blocked port looks like; set POSTMARK_SERVER_TOKEN to send over HTTPS instead.';
+  }
+  if (err.code === 'EAUTH') return 'The SMTP server rejected the username or password.';
+  return err.message;
 }
 
 const escapeHtml = (s: string) => s
@@ -158,21 +233,67 @@ export function render(a: {
 }
 
 /**
+ * The headers a message carries, the same for either transport.
+ *
+ * List-Unsubscribe is a real header, not decoration: mail clients surface it as a button,
+ * and a reader who can unsubscribe in one click does that instead of reporting the message
+ * as spam — which is the thing that damages a sending domain for everybody else on it. It is
+ * set only for list mail. On a one-to-one message it would render as an Unsubscribe button
+ * in the reader's mail client that leaves nothing, because there is no list.
+ */
+function headersFor(a: { unsubscribeUrl?: string | null }, cfg: MailConfig): Record<string, string> {
+  return {
+    ...(a.unsubscribeUrl ? {
+      'List-Unsubscribe': `<${a.unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    } : {}),
+    // Over SMTP the stream travels as a header; over the API it is a field of its own, and
+    // sending both is harmless, so the header is kept for the sake of one code path.
+    ...(cfg.messageStream && cfg.transport === 'smtp' ? { 'X-PM-Message-Stream': cfg.messageStream } : {}),
+  };
+}
+
+/**
  * Send one message.
  *
  * Returns rather than throws, because the caller is in a loop over a client list and one
  * address that no longer exists must not end the run for everybody after it.
- *
- * List-Unsubscribe is a real header, not decoration: mail clients surface it as a button,
- * and a reader who can unsubscribe in one click does that instead of reporting the message
- * as spam — which is the thing that damages a sending domain for everybody else on it.
  */
 export async function send(a: {
   to: string; subject: string; text: string; html: string; unsubscribeUrl?: string | null;
 }, env = process.env): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const cfg = mailConfig(env);
+  if (!cfg) return { ok: false, error: 'Email is not configured' };
+
+  if (cfg.transport === 'postmark-api') {
+    try {
+      const r = await timed(`${cfg.postmarkApi}/email`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Postmark-Server-Token': cfg.postmarkToken!,
+        },
+        body: JSON.stringify({
+          From: cfg.from,
+          To: a.to,
+          Subject: a.subject,
+          TextBody: a.text,
+          HtmlBody: a.html,
+          ...(cfg.messageStream ? { MessageStream: cfg.messageStream } : {}),
+          Headers: Object.entries(headersFor(a, cfg)).map(([Name, Value]) => ({ Name, Value })),
+        }),
+      }, 15_000);
+      const body = await r.json().catch(() => null) as { ErrorCode?: number; Message?: string; MessageID?: string } | null;
+      if (r.ok && body && body.ErrorCode === 0) return { ok: true, id: String(body.MessageID ?? '') };
+      return { ok: false, error: postmarkError(r.status, body) };
+    } catch (err) {
+      return { ok: false, error: `Could not reach Postmark: ${(err as Error).name === 'AbortError' ? 'no answer in 15s' : (err as Error).message}` };
+    }
+  }
+
   const t = transport(env);
-  if (!cfg || !t) return { ok: false, error: 'SMTP is not configured' };
+  if (!t) return { ok: false, error: 'SMTP is not configured' };
   try {
     const info = await t.sendMail({
       from: cfg.from,
@@ -180,18 +301,10 @@ export async function send(a: {
       subject: a.subject,
       text: a.text,
       html: a.html,
-      headers: {
-        // Set only for list mail. On a one-to-one message it would render as an Unsubscribe
-        // button in the reader's mail client that leaves nothing, because there is no list.
-        ...(a.unsubscribeUrl ? {
-          'List-Unsubscribe': `<${a.unsubscribeUrl}>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        } : {}),
-        ...(cfg.messageStream ? { 'X-PM-Message-Stream': cfg.messageStream } : {}),
-      },
+      headers: headersFor(a, cfg),
     });
     return { ok: true, id: String(info.messageId ?? '') };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    return { ok: false, error: smtpError(err as Error & { code?: string }) };
   }
 }
