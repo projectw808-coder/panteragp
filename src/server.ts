@@ -313,7 +313,9 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
             -- Whether they can sign in at all, never the hash itself. A client created
             -- from the CRM has no password until someone sets one, and that state was
             -- invisible here: the row looked identical to an account that works.
-            c.password_hash IS NOT NULL AS has_login
+            c.password_hash IS NOT NULL AS has_login,
+            -- So a screen choosing who to email can say who has asked not to be.
+            c.email_opt_out
        FROM clients c
        JOIN pipeline_stages s ON s.id = c.stage_id
        LEFT JOIN staff o ON o.id = c.owner_staff_id
@@ -5137,6 +5139,24 @@ const RECIPIENTS = `
  WHERE c.email_opt_out = false
    AND c.email IS NOT NULL AND c.email <> ''`;
 
+/**
+ * The people one campaign reaches.
+ *
+ * Either the whole list or the ones the desk picked — and in both cases never anybody who
+ * opted out, because a name on a hand-picked list is not consent. The same fragment counts
+ * them for the confirmation, counts them again under the row lock, and selects them for the
+ * loop, so the number the screen showed is the number that goes out.
+ */
+const audienceOf = (c: { audience: string; recipient_ids: string[] | null }) => (c.audience === 'selected'
+  ? {
+    sql: `FROM clients c
+          WHERE c.id = ANY($1::uuid[])
+            AND c.email_opt_out = false
+            AND c.email IS NOT NULL AND c.email <> ''`,
+    params: [c.recipient_ids ?? []] as unknown[],
+  }
+  : { sql: RECIPIENTS, params: [] as unknown[] });
+
 app.get('/admin/email/status', { preHandler: auth('admin') }, async () => {
   const cfg = mailConfig();
   /**
@@ -5263,42 +5283,75 @@ const campaignBody = z.object({
 app.get('/admin/campaigns', { preHandler: auth('admin') }, async () =>
   (await pool.query(`
     SELECT c.id, c.kind, c.subject, c.status, c.created_at, c.started_at, c.finished_at,
-           c.recipients, c.failures, s.name AS created_by
+           c.recipients, c.failures, s.name AS created_by,
+           c.audience, cardinality(c.recipient_ids) AS chosen
       FROM email_campaigns c LEFT JOIN staff s ON s.id = c.created_by
      ORDER BY c.created_at DESC LIMIT 50`)).rows);
 
 app.get('/admin/campaigns/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
-  const { rows: [c] } = await pool.query('SELECT * FROM email_campaigns WHERE id = $1', [req.params.id]);
+  const { rows: [c] } = await pool.query<{ audience: string; recipient_ids: string[] | null }>(
+    'SELECT * FROM email_campaigns WHERE id = $1', [req.params.id]);
   if (!c) return reply.code(404).send({ error: 'no such campaign' });
+  const who = audienceOf(c);
   const { rows: [n] } = await pool.query<{ eligible: number }>(
-    `SELECT count(*)::int AS eligible ${RECIPIENTS}`);
+    `SELECT count(*)::int AS eligible ${who.sql}`, who.params);
+  // The picked list as people, with the reason any of them will be skipped, so the screen
+  // can say "these three, and not that one" rather than show a number that does not add up.
+  const { rows: chosen_clients } = c.audience === 'selected'
+    ? await pool.query(
+      `SELECT id, name, email, email_opt_out FROM clients WHERE id = ANY($1::uuid[]) ORDER BY name`,
+      [c.recipient_ids ?? []])
+    : { rows: [] };
   const { rows: deliveries } = await pool.query(`
     SELECT d.status, d.email, d.error, d.sent_at, cl.name
       FROM email_deliveries d JOIN clients cl ON cl.id = d.client_id
      WHERE d.campaign_id = $1 ORDER BY d.sent_at DESC LIMIT 200`, [req.params.id]);
-  return { ...c, eligible: n.eligible, deliveries };
+  return { ...c, eligible: n.eligible, chosen_clients, deliveries };
 });
 
-/** Create a draft. With no subject and body of its own, one is written from the week. */
+/** Who a campaign is for. A hand-picked list has to have somebody on it. */
+const audienceBody = z.object({
+  audience: z.enum(['all', 'selected']).optional(),
+  recipient_ids: z.array(z.string().uuid()).max(5000).optional(),
+}).refine((o) => o.audience !== 'selected' || (o.recipient_ids?.length ?? 0) > 0,
+  { message: 'choose at least one client', path: ['recipient_ids'] });
+
+/**
+ * Create a draft.
+ *
+ * `mode` decides the words: 'weekly' is written from what happened on the desk, 'blank' is
+ * an empty page the desk fills in. A subject and body given outright are used as they are.
+ * The audience is chosen here too, before there is a text box to get lost in, and can be
+ * changed on the draft afterwards.
+ */
 app.post('/admin/campaigns', { preHandler: auth('admin') }, async (req: any, reply) => {
-  const given = campaignBody.partial().safeParse(req.body ?? {});
+  const given = campaignBody.partial().extend({ mode: z.enum(['weekly', 'blank']).optional() })
+    .and(audienceBody).safeParse(req.body ?? {});
   if (!given.success) return reply.code(400).send({ error: given.error.flatten() });
-  const draft = given.data.subject && given.data.body
-    ? { subject: given.data.subject, body: given.data.body }
-    : await draftWeeklyUpdate();
+  const g = given.data;
+  const draft = g.subject && g.body ? { kind: 'custom', subject: g.subject, body: g.body }
+    : g.mode === 'blank' ? { kind: 'custom', subject: '', body: '' }
+      : { kind: 'weekly_update', ...(await draftWeeklyUpdate()) };
+  const audience = g.audience ?? 'all';
 
   return await tx(req.principal.sub, async (c) => {
     const { rows: [made] } = await c.query(
-      `INSERT INTO email_campaigns (subject, body, created_by) VALUES ($1,$2,$3) RETURNING *`,
-      [draft.subject, draft.body, req.principal.sub]);
+      `INSERT INTO email_campaigns (kind, subject, body, created_by, audience, recipient_ids)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [draft.kind, draft.subject, draft.body, req.principal.sub, audience,
+       audience === 'selected' ? g.recipient_ids : null]);
     return reply.code(201).send(made);
   });
 });
 
 app.patch('/admin/campaigns/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
-  const body = campaignBody.partial().refine((o) => Object.keys(o).length > 0, 'nothing to change')
+  const body = campaignBody.partial().and(audienceBody)
+    .refine((o) => Object.keys(o).length > 0, 'nothing to change')
     .safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  // Going back to everyone drops the list, so the record never carries a list it ignores.
+  if (body.data.audience === 'all') body.data.recipient_ids = null as unknown as undefined;
+  if (body.data.recipient_ids && !body.data.audience) body.data.audience = 'selected';
 
   const out = await tx(req.principal.sub, async (c) => {
     const { rows: [before] } = await c.query<{ status: string }>(
@@ -5309,7 +5362,7 @@ app.patch('/admin/campaigns/:id', { preHandler: auth('admin') }, async (req: any
     if (before.status !== 'draft') return { kind: 'not-draft', status: before.status } as const;
     const entries = Object.entries(body.data);
     const { rows: [after] } = await c.query(
-      `UPDATE email_campaigns SET ${entries.map(([k], i) => `${k} = ${i + 2}`).join(', ')}
+      `UPDATE email_campaigns SET ${entries.map(([k], i) => `${k} = $${i + 2}`).join(', ')}
         WHERE id = $1 RETURNING *`,
       [req.params.id, ...entries.map(([, v]) => v)]);
     return { kind: 'ok', campaign: after } as const;
@@ -5363,24 +5416,38 @@ app.post('/admin/campaigns/:id/send', { preHandler: auth('admin') }, async (req:
   // Claim the campaign: moving it out of draft inside a transaction is what stops two
   // admins, or one admin clicking twice, both starting the same run.
   const claim = await tx(req.principal.sub, async (c) => {
-    const { rows: [row] } = await c.query<{ id: string; status: string; subject: string; body: string }>(
-      'SELECT id, status, subject, body FROM email_campaigns WHERE id = $1 FOR UPDATE', [req.params.id]);
+    const { rows: [row] } = await c.query<{
+      id: string; status: string; subject: string; body: string;
+      audience: string; recipient_ids: string[] | null;
+    }>(
+      `SELECT id, status, subject, body, audience, recipient_ids
+         FROM email_campaigns WHERE id = $1 FOR UPDATE`, [req.params.id]);
     if (!row) return { kind: 'missing' } as const;
     if (row.status !== 'draft') return { kind: 'busy', status: row.status } as const;
+    // A blank page can be created on purpose; it cannot be sent by accident.
+    if (!row.subject.trim() || !row.body.trim()) return { kind: 'blank' } as const;
 
+    const who = audienceOf(row);
     const { rows: [n] } = await c.query<{ eligible: number }>(
-      `SELECT count(*)::int AS eligible ${RECIPIENTS}`);
+      `SELECT count(*)::int AS eligible ${who.sql}`, who.params);
     if (n.eligible !== body.data.confirm_recipients) {
       return { kind: 'changed', eligible: n.eligible } as const;
     }
+    if (n.eligible === 0) return { kind: 'nobody' } as const;
     await c.query(`UPDATE email_campaigns SET status = 'sending', started_at = now() WHERE id = $1`,
       [row.id]);
-    return { kind: 'ok', campaign: row, eligible: n.eligible } as const;
+    return { kind: 'ok', campaign: row, eligible: n.eligible, who } as const;
   });
 
   if (claim.kind === 'missing') return reply.code(404).send({ error: 'no such campaign' });
   if (claim.kind === 'busy') {
     return reply.code(409).send({ error: `this campaign is already ${claim.status}` });
+  }
+  if (claim.kind === 'blank') {
+    return reply.code(422).send({ error: 'write a subject and a message before sending' });
+  }
+  if (claim.kind === 'nobody') {
+    return reply.code(422).send({ error: 'nobody on this list can be emailed — they have no address or have opted out' });
   }
   if (claim.kind === 'changed') {
     return reply.code(409).send({
@@ -5403,7 +5470,7 @@ app.post('/admin/campaigns/:id/send', { preHandler: auth('admin') }, async (req:
 
   const { rows: people } = await pool.query<{
     id: string; name: string; email: string; unsubscribe_token: string;
-  }>(`SELECT c.id, c.name, c.email, c.unsubscribe_token ${RECIPIENTS} ORDER BY c.created_at`);
+  }>(`SELECT c.id, c.name, c.email, c.unsubscribe_token ${claim.who.sql} ORDER BY c.created_at`, claim.who.params);
 
   let sent = 0;
   let failed = 0;

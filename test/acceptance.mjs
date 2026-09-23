@@ -2100,6 +2100,67 @@ await step('an allocation reaches the desk-side holdings and the timeline', asyn
   assert.ok(timeline.some((e) => e.kind === 'ipo'), 'the subscription is not on the timeline');
 });
 
+console.log('\nClient email');
+// Sending needs a mail provider, which this environment may not have. Everything about who
+// a campaign is for is asserted either way; the send itself only where it can actually go.
+const mail = await get('/admin/email/status', { token: A });
+await step('a campaign to chosen clients reaches those clients and nobody else', async () => {
+  const one = await get('/clients', { token: A, method: 'POST', body: { name: 'Pick One', email: unique('pick1'), country: 'IE', password: 'devpassword' } });
+  const two = await get('/clients', { token: A, method: 'POST', body: { name: 'Pick Two', email: unique('pick2'), country: 'IE', password: 'devpassword' } });
+  const made = await get('/admin/campaigns', { token: A, method: 'POST', body: {
+    mode: 'blank', audience: 'selected', recipient_ids: [one.id, two.id] } });
+  assert.equal(made.audience, 'selected');
+  assert.equal(made.kind, 'custom');
+  assert.equal(made.subject, '', 'a blank draft starts blank');
+
+  const full = await get(`/admin/campaigns/${made.id}`, { token: A });
+  assert.equal(full.eligible, 2);
+  assert.deepEqual(full.chosen_clients.map((c) => c.name).sort(), ['Pick One', 'Pick Two']);
+
+  // A blank page can be created on purpose but not sent by accident.
+  assert.equal(await status(`/admin/campaigns/${made.id}/send`, { token: A, method: 'POST', body: { confirm_recipients: 2 } }),
+    mail.configured ? 422 : 503);
+
+  const saved = await get(`/admin/campaigns/${made.id}`, { token: A, method: 'PATCH', body: { subject: 'Hello', body: 'A note for two people.' } });
+  assert.equal(saved.subject, 'Hello');
+
+  // The count the caller states has to be the count the server finds.
+  if (mail.configured) {
+    assert.equal(await status(`/admin/campaigns/${made.id}/send`, { token: A, method: 'POST', body: { confirm_recipients: 5 } }), 409);
+  }
+
+  // Back to everyone drops the list; the count becomes the whole list's.
+  const everyone = await get(`/admin/campaigns/${made.id}`, { token: A, method: 'PATCH', body: { audience: 'all' } });
+  assert.equal(everyone.audience, 'all');
+  assert.equal(everyone.recipient_ids, null);
+  assert.equal((await get(`/admin/campaigns/${made.id}`, { token: A })).eligible, (await get('/admin/email/status', { token: A })).eligible);
+
+  // And a chosen list has to have somebody on it.
+  assert.equal(await status(`/admin/campaigns/${made.id}`, { token: A, method: 'PATCH', body: { audience: 'selected', recipient_ids: [] } }), 400);
+  const narrowed = await get(`/admin/campaigns/${made.id}`, { token: A, method: 'PATCH', body: { audience: 'selected', recipient_ids: [one.id] } });
+  assert.equal(narrowed.audience, 'selected');
+  assert.equal((await get(`/admin/campaigns/${made.id}`, { token: A })).eligible, 1);
+
+  if (mail.configured) {
+    const out = await get(`/admin/campaigns/${made.id}/send`, { token: A, method: 'POST', body: { confirm_recipients: 1 } });
+    assert.equal(out.recipients, 1, 'it went to the one chosen client and nobody else');
+    const after = await get(`/admin/campaigns/${made.id}`, { token: A });
+    assert.equal(after.deliveries.length, 1);
+    assert.equal(after.deliveries[0].email, one.email);
+    assert.notEqual(after.status, 'draft');
+  }
+});
+await step('a weekly draft is written from the desk, for everyone unless told otherwise', async () => {
+  const made = await get('/admin/campaigns', { token: A, method: 'POST', body: { mode: 'weekly' } });
+  assert.equal(made.kind, 'weekly_update');
+  assert.equal(made.audience, 'all');
+  assert.match(made.subject, /^Weekly update/);
+  assert.ok(made.body.length > 40, 'the draft says something');
+  const row = (await get('/admin/campaigns', { token: A })).find((c) => c.id === made.id);
+  assert.equal(row.audience, 'all');
+  assert.equal(row.chosen, null);
+});
+
 console.log('\nCross-cutting');
 await step('a token for a deleted subject is unauthorised, not a crash', async () => {
   const forged = await forge({ kind: 'client', role: 'trader' }, '00000000-0000-0000-0000-000000000000');

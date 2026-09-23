@@ -520,10 +520,21 @@ than a PDF library.
 
 ## Client email
 
-An article the desk writes once and sends to everyone who has not opted out.
+An article the desk writes once and sends to everyone who has not opted out, or to the
+clients it picks.
 `GET|POST /admin/campaigns` · `PATCH /admin/campaigns/:id` · `POST /admin/campaigns/:id/test` ·
 `POST /admin/campaigns/:id/send` · `GET /admin/email/status` · `POST /admin/email/verify` ·
 `GET /unsubscribe`
+
+A new email asks two questions before it shows a text box. *What to send*: this week's update,
+drafted from what the desk actually did, or a blank page (`mode: weekly | blank`). *Who gets
+it*: everyone, or a list picked by name (`audience: all | selected`, with `recipient_ids`).
+The questions come first because a box that appears already full of the week's news makes
+the second one easy to forget. Both can be changed on the draft. A hand-picked list is still
+filtered by opt-out at send time — a name on a list is not consent — and the screen shows
+who on the list will be skipped and why, so the number it promises is the number that goes
+out. A blank draft can be created on purpose but not sent by accident: the send refuses an
+empty subject or body, and a list on which nobody can be reached.
 
 Configuration is environment only, and there are two ways out. `POSTMARK_SERVER_TOKEN` sends
 through Postmark's HTTPS API and is preferred when set, because the host this runs on may not

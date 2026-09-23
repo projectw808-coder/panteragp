@@ -666,3 +666,14 @@ BEGIN
              FOR EACH ROW EXECUTE FUNCTION touch()';
   END IF;
 END $do$;
+
+-- Who a campaign goes to. 'all' is everyone who has not opted out. 'selected' is a list the
+-- desk picked by hand — still filtered by opt-out at send time, because a name on a list is
+-- not consent, and the list is kept on the row so the record says who it was meant for.
+ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS audience      text NOT NULL DEFAULT 'all';
+ALTER TABLE email_campaigns ADD COLUMN IF NOT EXISTS recipient_ids uuid[];
+DO $do$ BEGIN
+  ALTER TABLE email_campaigns
+    ADD CONSTRAINT email_campaigns_audience_check CHECK (audience IN ('all','selected'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $do$;
