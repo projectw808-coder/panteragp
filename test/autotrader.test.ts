@@ -107,8 +107,13 @@ describe('sizing', () => {
     assert.equal(sizeFor({ riskUsd: 50, price: 63_954.25, stop: 63_000, maxNotional: 50_000 }), 0.0524);
     assert.equal(sizeFor({ riskUsd: 50, price: 0.00002420, stop: 0.00002300, maxNotional: 5_000 }), 41_670_000);
   });
-  it('refuses a trade worth less than a dollar, or with no stop', () => {
+  it('refuses dust: under a dollar, or under the floor the caller sets', () => {
     assert.equal(sizeFor({ riskUsd: 0.001, price: 100, stop: 99, maxNotional: 1000 }), 0);
+    // the cap squeezed this to $1.40 of exposure; with a $75 floor that is not a trade
+    assert.equal(sizeFor({ riskUsd: 125, price: 3105, stop: 3096, maxNotional: 1.4, minNotional: 75 }), 0);
+    assert.ok(sizeFor({ riskUsd: 125, price: 3105, stop: 3096, maxNotional: 12_500, minNotional: 75 }) > 0);
+  });
+  it('refuses a trade with no stop or no room', () => {
     assert.equal(sizeFor({ riskUsd: 100, price: 100, stop: 100, maxNotional: 1000 }), 0);
     assert.equal(sizeFor({ riskUsd: 100, price: 100, stop: 98, maxNotional: 0 }), 0);
   });

@@ -139,14 +139,16 @@ export function evaluate(kind: StrategyKind, cs: Candle[], open: Direction | nul
  * strategy is allowed to carry. Four significant figures, the same precision the book uses
  * for anything priced in thousands and anything priced in cents alike.
  */
-export function sizeFor({ riskUsd, price, stop, maxNotional }: {
-  riskUsd: number; price: number; stop: number; maxNotional: number;
+export function sizeFor({ riskUsd, price, stop, maxNotional, minNotional = 1 }: {
+  riskUsd: number; price: number; stop: number; maxNotional: number; minNotional?: number;
 }): number {
   const perUnit = Math.abs(price - stop);
   if (!(perUnit > 0) || !(riskUsd > 0) || !(price > 0) || !(maxNotional > 0)) return 0;
   const qty = Math.min(riskUsd / perUnit, maxNotional / price);
   const rounded = Number(qty.toPrecision(4));
-  return rounded * price < 1 ? 0 : rounded;   // nothing under a dollar; it is not a trade
+  // Below the floor it is not a trade, it is dust: a position the cap squeezed to nothing,
+  // paying commission to hold a few cents of exposure.
+  return rounded * price < Math.max(1, minNotional) ? 0 : rounded;
 }
 
 export type Leg = { price: number; fee: number };

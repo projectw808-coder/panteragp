@@ -3855,12 +3855,21 @@ async function autoTickClient(clientId: string) {
       const sig = evaluate(s.kind, candles(symbol, '1m', AUTO_HISTORY), null);
       if (sig.action !== 'enter') continue;
       const price = spot(symbol);
+      // Each symbol gets an equal slice of what the strategy may carry, so the first trade
+      // cannot spend the whole allocation and leave the others sized to dust — which is
+      // what happened when the cap was shared: one bitcoin position took all of it and
+      // the ether entry behind it was worth a dollar and a half.
+      const stratCap = s.allocation * settings.max_leverage;
       const stratNotional = holding.filter((t) => t.strategy_id === s.id).reduce((a, t) => a + t.qty * t.price, 0);
       const maxNotional = Math.min(
-        s.allocation * settings.max_leverage - stratNotional,
+        stratCap / s.symbols.length,
+        stratCap - stratNotional,
         balance * settings.max_leverage - totalNotional(),
       );
-      const qty = sizeFor({ riskUsd: equity * settings.risk_per_trade / 100, price, stop: sig.stop, maxNotional });
+      const qty = sizeFor({
+        riskUsd: equity * settings.risk_per_trade / 100, price, stop: sig.stop, maxNotional,
+        minNotional: s.allocation * 0.01,
+      });
       if (!qty) continue;
       const order = await autoOrder(clientId, account.id, {
         symbol, side: sig.side === 'long' ? 'buy' : 'sell', qty,

@@ -48,12 +48,17 @@ type Dash = {
   log: Log[];
 };
 
-const money = (n: number, sign = false) => (sign && n > 0 ? '+' : n < 0 ? '−' : '')
-  + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Anything that rounds to zero is shown as zero, unsigned: "−$0.00" is a loss of nothing
+// wearing the colour of a loss.
+const money = (n: number, sign = false) => {
+  const v = Math.abs(n) < 0.005 ? 0 : n;
+  return (sign && v > 0 ? '+' : v < 0 ? '−' : '')
+    + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 const pct = (n: number | null, digits = 1) => (n === null ? '—' : `${(n * 100).toFixed(digits)}%`);
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-const toneOf = (n: number) => (n > 0 ? 'text-up' : n < 0 ? 'text-down' : '');
+const toneOf = (n: number) => (n >= 0.005 ? 'text-up' : n <= -0.005 ? 'text-down' : '');
 
 function sinceText(iso: string | null) {
   if (!iso) return '';
