@@ -2209,6 +2209,12 @@ await step("the desk can read a client's bot and set a target win rate the clien
   assert.equal(await status(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: 1.5 } }), 400);
   const back = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: null } });
   assert.equal(back.desk.target_win_rate, 0.72, 'null goes back to the default');
+  // The record can be started again; the book is untouched.
+  const fillsBefore = (await get('/trades', { token: T })).length;
+  const reset = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { reset_record: true } });
+  assert.ok(reset.desk.record_since, 'the record knows when it started');
+  assert.equal(reset.kpis.closed, 0, 'nothing closed since');
+  assert.equal((await get('/trades', { token: T })).length, fillsBefore, 'not one fill went anywhere');
   const mine = await get('/me/auto-trader', { token: T });
   assert.equal('desk' in mine, false, 'the target is not on the client\'s page');
   assert.equal('target_win_rate' in mine.settings, false);

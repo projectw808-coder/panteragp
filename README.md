@@ -663,12 +663,14 @@ seconds; there is no preview any more, so every number on it is money that moved
 `DEFAULT_WIN_RATE` is what every bot is steered to until the desk says otherwise, and
 `GET|PATCH /clients/:id/auto-trader` is the desk's hand: anyone who can read the CRM sees what a
 client's bot holds, has made and has logged; an admin can throw the switch for them and set that
-client's own target, any rate, with null going back to the default. The target is a target for
-the record, not a rewrite of it: nothing invents a price. The engine only chooses *when* an open
-trade closes — below target, anything that clears its fees is banked as a win and a loser is
-held for the price to come back; at or above target, a trade a full risk ahead is banked, and a
-loss is taken only if the record stays above target once it is counted; a trade under two
-minutes old is left alone. Bot entries carry a stop three times as wide as the strategy asked,
+client's own target, any rate, with null going back to the default. The desk can also start a client's
+record again: every fill and every balance movement stays, and the win rate and the curve count
+from that moment. The target is a target for the record, not a rewrite of it: nothing invents a
+price. The engine only chooses *when* an open
+trade closes: a trade a minute old that has cleared its fees by two percent of its risk is
+banked as a win, and a loser is held for the price to come back — the steer never cuts one,
+and a strategy's own reversal signal is honoured only when leaving is a win. Only the book's
+stop takes a loss. Bot entries carry a stop three times as wide as the strategy asked,
 so the book rarely takes that decision away, and risk per trade is measured against that wider
 stop, so the position is smaller for it. The target is returned on the desk route and nowhere
 else: the client's page never carries it, and setting it lands on the CRM timeline and the

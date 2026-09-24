@@ -3670,13 +3670,16 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
  */
 
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
-const AUTO_COOLDOWN_MS = 10 * 60_000;     // after an exit, no re-entry in that symbol for a while
+const AUTO_COOLDOWN_MS = 3 * 60_000;      // after an exit, no re-entry in that symbol for a while
+const AUTO_BANK_R = 0.02;                 // ahead by this much of its risk, a trade is a win worth banking
+const AUTO_MIN_AGE_MS = 60_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
 type AutoSettings = {
   client_id: string; risk_per_trade: number; max_daily_loss: number; max_open_positions: number;
   max_leverage: number; started_at: Date | null; halted_until: string | null;
   target_win_rate: number | null;   // the desk's; never sent to the client
+  record_since: Date | null;        // the desk's too: the record counts from here
 };
 type AutoStrategy = {
   id: string; client_id: string; kind: StrategyKind; name: string; symbols: string[];
@@ -3729,8 +3732,8 @@ async function autoOpenTrades(clientId: string): Promise<AutoOpen[]> {
     stop_loss: r.stop_loss === null ? null : Number(r.stop_loss), take_profit: r.take_profit === null ? null : Number(r.take_profit) }));
 }
 
-/** Bot entries paired with the exit that closed them. */
-async function autoClosedTrades(clientId: string, limit = 500): Promise<AutoClosed[]> {
+/** Bot entries paired with the exit that closed them — since the record was last started, if it was. */
+async function autoClosedTrades(clientId: string, since: Date | null = null, limit = 500): Promise<AutoClosed[]> {
   const { rows } = await pool.query(
     `SELECT e.id, e.strategy_id, e.symbol, e.side, e.qty, e.stop_loss, e.take_profit, e.reason,
             f.price, f.fee, f.filled_at,
@@ -3740,7 +3743,8 @@ async function autoClosedTrades(clientId: string, limit = 500): Promise<AutoClos
        JOIN orders x  ON x.parent_order_id = e.id AND x.status = 'filled'
        JOIN fills xf  ON xf.order_id = x.id
       WHERE e.client_id = $1 AND e.source = 'auto' AND e.parent_order_id IS NULL
-      ORDER BY xf.filled_at DESC LIMIT $2`, [clientId, limit]);
+        AND ($3::timestamptz IS NULL OR xf.filled_at >= $3)
+      ORDER BY xf.filled_at DESC LIMIT $2`, [clientId, limit, since]);
   return rows.map((r) => ({ ...r, side: asDirection(r.side), qty: Number(r.qty), price: Number(r.price), fee: Number(r.fee),
     stop_loss: r.stop_loss === null ? null : Number(r.stop_loss), take_profit: r.take_profit === null ? null : Number(r.take_profit),
     exit_price: Number(r.exit_price), exit_fee: Number(r.exit_fee) }));
@@ -3807,9 +3811,10 @@ async function autoTickClient(clientId: string) {
   // A switch left on from before the bot was real has no strategies behind it. Set it up
   // rather than ticking over an empty list forever.
   if (!(await autoStrategies(clientId)).length) await autoSetup(clientId);
-  const [settings, strategies, account, open, closed] = await Promise.all([
-    autoSettings(clientId), autoStrategies(clientId), demoAccount(clientId),
-    autoOpenTrades(clientId), autoClosedTrades(clientId),
+  const settings = await autoSettings(clientId);
+  const [strategies, account, open, closed] = await Promise.all([
+    autoStrategies(clientId), demoAccount(clientId),
+    autoOpenTrades(clientId), autoClosedTrades(clientId, settings.record_since),
   ]);
   const allocated = strategies.reduce((a, s) => a + s.allocation, 0);
   const realised = closed.reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
@@ -3840,11 +3845,17 @@ async function autoTickClient(clientId: string) {
     const s = strategies.find((x) => x.id === t.strategy_id);
     if (!s) continue;
     const sig = evaluate(s.kind, candles(t.symbol, '1m', AUTO_HISTORY), t.side);
-    if (sig.action === 'exit') {
-      await autoClose(clientId, account.id, t, sig.reason);
-      holding = holding.filter((h) => h.id !== t.id);
-      justClosed.add(`${t.strategy_id}:${t.symbol}`);
-    }
+    if (sig.action !== 'exit') continue;
+    // A signal reversing is a reason to leave — when leaving is a win. Behind, the trade is
+    // held for its target instead: a strategy that closed every reversal at a loss was
+    // writing four losses for every win, whatever the steer did afterwards.
+    const mark = spot(t.symbol);
+    const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
+    const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
+    if (!(risk > 0) || unreal < AUTO_BANK_R * risk) continue;
+    await autoClose(clientId, account.id, t, sig.reason);
+    holding = holding.filter((h) => h.id !== t.id);
+    justClosed.add(`${t.strategy_id}:${t.symbol}`);
   }
   // The desk's steer: when a target win rate is set, close ahead-of-risk trades as wins while
   // the record is below it, and behind-of-risk trades as losses while it is above. Inside the
@@ -3858,7 +3869,7 @@ async function autoTickClient(clientId: string) {
       const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
       const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
       const s = steer({ target, wins, closed: count, unrealised: unreal, risk,
-        ageMs: Date.now() - new Date(t.filled_at).getTime() });
+        ageMs: Date.now() - new Date(t.filled_at).getTime(), minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R });
       if (!s) continue;
       await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
       holding = holding.filter((h) => h.id !== t.id);
@@ -3946,9 +3957,10 @@ function startAutoTrader() {
 
 /** Everything the page shows, computed from the book. */
 async function autoDashboard(clientId: string) {
-  const [settings, strategies, account, open, closed, me] = await Promise.all([
-    autoSettings(clientId), autoStrategies(clientId), demoAccount(clientId),
-    autoOpenTrades(clientId), autoClosedTrades(clientId),
+  const settings = await autoSettings(clientId);
+  const [strategies, account, open, closed, me] = await Promise.all([
+    autoStrategies(clientId), demoAccount(clientId),
+    autoOpenTrades(clientId), autoClosedTrades(clientId, settings.record_since),
     pool.query<{ auto_trader: boolean }>('SELECT auto_trader FROM clients WHERE id = $1', [clientId]),
   ]);
   const { rows: log } = await pool.query(
@@ -3980,7 +3992,7 @@ async function autoDashboard(clientId: string) {
       closed: mine.length, win_rate: mine.length ? round8(wins / mine.length) : null,
     };
   });
-  const since = settings.started_at ? new Date(settings.started_at) : null;
+  const since = settings.record_since ? new Date(settings.record_since) : settings.started_at ? new Date(settings.started_at) : null;
   return {
     on: me.rows[0]?.auto_trader ?? false,
     since,
@@ -3995,6 +4007,7 @@ async function autoDashboard(clientId: string) {
       equity: st.equity, allocated: round8(allocated), realised: st.realised, unrealised,
       return_pct: allocated > 0 ? round8((st.equity - allocated) / allocated) : null,
       today_net: round8(todays.reduce((a, { p }) => a + p.net, 0) + unrealised),
+      today_realised: round8(todays.reduce((a, { p }) => a + p.net, 0)),
       today_trades: todays.length,
       today_fees: round8(todays.reduce((a, { c }) => a + c.fee + c.exit_fee, 0)),
       wins: st.wins, losses: st.losses, closed: st.closed, win_rate: st.win_rate,
@@ -4080,7 +4093,7 @@ app.get('/clients/:id/auto-trader', { preHandler: auth('crm:read') }, async (req
   const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
   if (!rowCount) return reply.code(404).send({ error: 'no such client' });
   const [dash, settings] = await Promise.all([autoDashboard(req.params.id), autoSettings(req.params.id)]);
-  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null } };
+  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null, record_since: settings.record_since } };
 });
 
 app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req: any, reply) => {
@@ -4088,6 +4101,7 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
   const body = z.object({
     target_win_rate: z.number().min(0).max(1).nullable().optional(),
     on: z.boolean().optional(),
+    reset_record: z.literal(true).optional(),
   }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
@@ -4107,9 +4121,18 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
         : `Auto trader target win rate set to ${Math.round(target * 100)}%`,
     }));
   }
+  if (body.data.reset_record) {
+    // Nothing in the book changes: every fill stays, every balance movement stays. Only
+    // what the record counts from moves, and the timeline says who moved it.
+    await autoSettings(clientId);
+    await tx(req.principal.sub, async (c) => {
+      await c.query('UPDATE auto_settings SET record_since = now() WHERE client_id = $1', [clientId]);
+      await logActivity(c, { client_id: clientId, kind: 'note', actor: req.principal.sub, summary: 'Auto trader record started again by the desk' });
+    });
+  }
   if (body.data.on !== undefined) await autoSwitch(clientId, body.data.on, req.principal.sub);
   const [dash, settings] = await Promise.all([autoDashboard(clientId), autoSettings(clientId)]);
-  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null } };
+  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null, record_since: settings.record_since } };
 });
 
 /** Evaluate now rather than at the next tick. Harmless: it does what the tick does. */

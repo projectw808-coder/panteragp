@@ -18,7 +18,7 @@ type Dash = {
   kpis: { equity: number; allocated: number; realised: number; unrealised: number; win_rate: number | null; wins: number; losses: number; closed: number; open: number; today_net: number };
   positions: { id: string; symbol: string; side: string; qty: number; entry: number; mark: number; unrealised: number; strategy: string | null }[];
   log: { id: number; at: string; level: string; message: string }[];
-  desk: { target_win_rate: number; default: number; custom: boolean };
+  desk: { target_win_rate: number; default: number; custom: boolean; record_since: string | null };
 };
 
 const money = (n: number, sign = false) => {
@@ -56,10 +56,17 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
           {d.on ? 'running' : 'off'}
         </span>
         {admin && (
-          <button type="button" disabled={busy} onClick={() => patch({ on: !d.on })}
-            className="ml-auto rounded-full border border-pebble px-3 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-            {d.on ? 'Switch off' : 'Switch on'}
-          </button>
+          <span className="ml-auto flex gap-2">
+            <button type="button" disabled={busy}
+              onClick={() => { if (window.confirm('Start this client\'s record again from now? Every trade stays in the book and on the balance; the win rate and the curve count from here.')) patch({ reset_record: true }); }}
+              className="rounded-full border border-pebble px-3 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+              Reset record
+            </button>
+            <button type="button" disabled={busy} onClick={() => patch({ on: !d.on })}
+              className="rounded-full border border-pebble px-3 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
+              {d.on ? 'Switch off' : 'Switch on'}
+            </button>
+          </span>
         )}
       </div>
 
@@ -69,7 +76,7 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
         <div><span className="metric-label block">Bot equity</span><span className="font-mono">{money(k.equity)}</span></div>
         <div><span className="metric-label block">Realised</span><span className={`font-mono ${tone(k.realised)}`}>{money(k.realised, true)}</span></div>
         <div><span className="metric-label block">Open</span><span className="font-mono">{k.open} · <span className={tone(k.unrealised)}>{money(k.unrealised, true)}</span></span></div>
-        <div><span className="metric-label block">Win rate</span><span className="font-mono">{actual === null ? '—' : `${actual}%`} <span className="text-slate-ink">· {k.wins}/{k.closed}</span></span></div>
+        <div><span className="metric-label block">Win rate{d.desk.record_since ? ` · since ${new Date(d.desk.record_since).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}</span><span className="font-mono">{actual === null ? '—' : `${actual}%`} <span className="text-slate-ink">· {k.wins}/{k.closed}</span></span></div>
       </div>
 
       {/* The desk's number. Shown as what the engine is steering toward against what the

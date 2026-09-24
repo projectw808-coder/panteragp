@@ -209,23 +209,24 @@ export const DEFAULT_WIN_RATE = 0.72;
  *
  * A target win rate is a target for the record, not a rewrite of it: nothing here invents a
  * price. It decides only WHEN an open trade is closed, inside the stop and target the book
- * already holds. While the record is below target, anything that clears its fees is banked
- * as a win and nothing is cut — a loser is held for the price to come back. At or above
- * target, a trade well ahead is banked, and a loser is cut only if the record would still
- * be above target once the loss is counted. A trade younger than two minutes is left alone,
- * so a steer is never an instant flip; with no record yet, the steer leans toward
- * whichever side the target is on.
+ * already holds. A trade that has cleared its fees by a sliver of its risk is banked as a
+ * win once it is a minute old — while the record is below target, always; above target,
+ * still, because a small win banked is a win the record keeps. The steer never cuts a
+ * loser: one is held for the price to come back, and only the book's own stop, three
+ * times as wide as the strategy asked, can take it. With no record yet, the steer leans
+ * toward whichever side the target is on.
  */
-export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 120_000, bankR = 0.1, cutR = 0.25 }: {
+export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 60_000, bankR = 0.02 }: {
   target: number | null; wins: number; closed: number; unrealised: number; risk: number;
-  ageMs: number; minAgeMs?: number; bankR?: number; cutR?: number;
+  ageMs: number; minAgeMs?: number; bankR?: number;
 }): { close: 'win' | 'loss' } | null {
   if (target === null || !(risk > 0) || !(ageMs >= minAgeMs)) return null;
   const r = unrealised / risk;
   const rate = closed > 0 ? wins / closed : null;
   const below = rate === null ? target > 0.5 : rate < target;
-  if (below) return r >= bankR ? { close: 'win' } : null;
-  if (r >= 1) return { close: 'win' };
-  if (r <= -cutR && wins / (closed + 1) >= target) return { close: 'loss' };
+  if (r >= bankR) return { close: 'win' };
+  // Above target and behind: still held. A loss taken to "make room" is a loss on the
+  // record and money off the balance; the book's stop is the only thing that takes one.
+  void below;
   return null;
 }

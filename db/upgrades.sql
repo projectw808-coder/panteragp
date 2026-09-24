@@ -745,3 +745,7 @@ END $do$;
 -- book already holds. Null means the strategies run unsteered.
 ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS target_win_rate numeric(5,4)
   CHECK (target_win_rate IS NULL OR (target_win_rate >= 0 AND target_win_rate <= 1));
+
+-- The desk can start a client's record again: trades closed before this moment are kept in
+-- the book and on the balance, but the win rate and the equity curve count from here.
+ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS record_since timestamptz;

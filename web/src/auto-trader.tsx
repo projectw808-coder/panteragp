@@ -37,7 +37,7 @@ type Dash = {
   strategies: Strategy[];
   kpis: {
     equity: number; allocated: number; realised: number; unrealised: number; return_pct: number | null;
-    today_net: number; today_trades: number; today_fees: number;
+    today_net: number; today_realised: number; today_trades: number; today_fees: number;
     wins: number; losses: number; closed: number; win_rate: number | null; profit_factor: number | null;
     avg_win_r: number | null; avg_loss_r: number | null; max_drawdown: number; drawdown_at: string | null;
     open: number; daily_loss_used: number;
@@ -117,12 +117,12 @@ export function AutoTraderView() {
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Tile i={0} label="Bot equity" value={money(k.equity)} note={k.return_pct === null ? 'nothing allocated' : `${k.return_pct >= 0 ? '+' : ''}${pct(k.return_pct, 2)} since start`} />
-        <Tile i={1} label="Today" value={money(k.today_net, true)} tone={toneOf(k.today_net)} note={`${k.today_trades} closed · fees ${money(k.today_fees)}`} />
+        <Tile i={1} label="Today" value={money(k.today_realised, true)} tone={toneOf(k.today_realised)} note={`${k.today_trades} closed · fees ${money(k.today_fees)}`} />
         <Tile i={2} label="Win rate" value={pct(k.win_rate, 0)} note={`${k.wins} of ${k.closed} closed`} />
         <Tile i={3} label="Profit factor" value={k.profit_factor === null ? '—' : k.profit_factor.toFixed(2)}
           note={k.avg_win_r === null && k.avg_loss_r === null ? 'no closed trades yet' : `avg win ${k.avg_win_r?.toFixed(1) ?? '—'}R · avg loss ${k.avg_loss_r?.toFixed(1) ?? '—'}R`} />
         <Tile i={4} label="Max drawdown" value={k.max_drawdown ? `−${pct(k.max_drawdown)}` : '0%'} tone={k.max_drawdown ? 'text-down' : ''} note={k.drawdown_at ? `${day(k.drawdown_at)}` : 'no drawdown yet'} />
-        <Tile i={5} label="Open" value={String(k.open)} note={`${money(k.unrealised, true)} unrealised`} />
+        <Tile i={5} label="Open" value={String(k.open)} tone={toneOf(k.unrealised)} note={`${money(k.unrealised, true)} unrealised`} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,520px)_1fr]">

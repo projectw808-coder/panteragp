@@ -157,32 +157,22 @@ describe('the record', () => {
 
 describe("the desk's steer", () => {
   const base = { wins: 8, closed: 10, unrealised: 30, risk: 100, ageMs: 5 * 60_000 };
-  it('does nothing without a target, without a stop, or on a trade too young', async () => {
+  it('does nothing without a target, without a stop, or on a trade under a minute old', async () => {
     const { steer } = await import('../src/autotrader.ts');
     assert.equal(steer({ ...base, target: null }), null);
-    assert.equal(steer({ ...base, target: 0.8, risk: 0 }), null);
-    assert.equal(steer({ ...base, target: 0.8, ageMs: 30_000 }), null);
+    assert.equal(steer({ ...base, target: 0.72, risk: 0 }), null);
+    assert.equal(steer({ ...base, target: 0.72, ageMs: 30_000 }), null);
   });
-  it('below target: banks anything that clears its fees, and never cuts', async () => {
+  it('banks anything that has cleared its fees by a sliver of its risk', async () => {
     const { steer } = await import('../src/autotrader.ts');
-    const below = { ...base, wins: 6, closed: 10, target: 0.72 };
-    assert.deepEqual(steer({ ...below, unrealised: 12 }), { close: 'win' });
-    assert.equal(steer({ ...below, unrealised: 5 }), null, 'a tenth of the risk is the bar');
-    assert.equal(steer({ ...below, unrealised: -90 }), null, 'a loser is held for the price to come back');
+    assert.deepEqual(steer({ ...base, target: 0.72, unrealised: 2 }), { close: 'win' });
+    assert.deepEqual(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: 2 }), { close: 'win' }, 'above target too');
+    assert.equal(steer({ ...base, target: 0.72, unrealised: 1 }), null, 'two percent of the risk is the bar');
   });
-  it('at or above target: banks a trade a full risk ahead, cuts a loser only if the record survives it', async () => {
+  it('never cuts a loser, whatever the record', async () => {
     const { steer } = await import('../src/autotrader.ts');
-    const above = { ...base, wins: 9, closed: 10, target: 0.72 };            // 90%
-    assert.deepEqual(steer({ ...above, unrealised: 100 }), { close: 'win' });
-    assert.equal(steer({ ...above, unrealised: 30 }), null, 'a small gain waits for the target');
-    // 9 of 11 after the loss is 82%: still above, so the loss may be taken
-    assert.deepEqual(steer({ ...above, unrealised: -30 }), { close: 'loss' });
-    // 8 of 11 after the loss is 73%... but 8 of 10 with target 0.75: 8/11 = 72.7% < 75%: held
-    assert.equal(steer({ ...base, wins: 8, closed: 10, target: 0.75, unrealised: -30 }), null);
-  });
-  it('leans toward the target before there is a record', async () => {
-    const { steer } = await import('../src/autotrader.ts');
-    assert.deepEqual(steer({ ...base, wins: 0, closed: 0, target: 0.72, unrealised: 12 }), { close: 'win' });
+    assert.equal(steer({ ...base, wins: 6, closed: 10, target: 0.72, unrealised: -90 }), null);
+    assert.equal(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: -90 }), null);
     assert.equal(steer({ ...base, wins: 0, closed: 0, target: 0.72, unrealised: -60 }), null);
   });
 });
