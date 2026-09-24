@@ -319,6 +319,39 @@
   line-height: 1.1;
 }
 
+/* The links in the top bar. 12px in white rather than 11px in pebble: this is the one place
+   on the page where text sits on the darkest ground, and at the smaller size in the softer
+   grey it read faint whatever its contrast ratio said. Tracked a little wider to match the
+   buttons beside it, and underlined with an ember rule that draws in from the left, so the
+   hover state is a movement rather than a colour change that could be missed. */
+.landing .nav-link {
+  position: relative;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-vellum);
+  transition: color var(--motion-fast) var(--ease-enter);
+}
+.landing .nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--color-ember);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-deliberate) var(--ease-enter);
+}
+.landing .nav-link:hover { color: var(--color-ember); }
+.landing .nav-link:hover::after,
+.landing .nav-link:focus-visible::after { transform: scaleX(1); }
+@media (prefers-reduced-motion: reduce) {
+  .landing .nav-link::after { transition: none; }
+}
+
 /* Square outline buttons, 8px 16px, exactly as the reference draws them. */
 /* The page's actions speak in the same voice as the marks inside the product: mono,
    uppercase, tracked open. Sentence case at 14px read like body text that happened to have

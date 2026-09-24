@@ -22,6 +22,14 @@ const DISCLAIMER = 'This article is general market commentary from Pantera GP. I
 
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
+/**
+ * Whether to say "Updated": only for a revision on a later day. The service stamps an
+ * update a few milliseconds after the publish, and "Updated" on the day it appeared says
+ * nothing a reader can use.
+ */
+const revised = (a: Pick<Article, 'published_at' | 'updated_at'>) =>
+  !!a.updated_at && a.updated_at.slice(0, 10) > a.published_at.slice(0, 10);
+
 const CSS = `
 :root{--ember:#ff7817;--ember-ink:#9a4000;--canvas:#f7f6ff;--ink:#190501;--ink-soft:#4a3a35;--stage:#140402;--pebble:#e5e7eb;--mist:#a1a1aa;--vellum:#fff;--graphite:#000;--ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--ease:cubic-bezier(.22,1,.36,1)}
 *{box-sizing:border-box}html,body{margin:0}
@@ -33,8 +41,11 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--ember);outline-offs
 nav{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;padding:16px 32px;background:rgba(20,4,2,.85);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.1);color:var(--vellum)}
 nav .brand{display:flex;align-items:center;gap:8px;font-size:18px}
 nav .brand i{font:500 12px var(--mono);color:var(--ember);font-style:normal}
-nav .links{display:flex;gap:32px;margin-left:32px;color:var(--pebble)}
+nav .links{display:flex;gap:36px;margin-left:40px}
+nav .links a,nav .right a.mono{position:relative;padding:6px 0;font-size:12px;letter-spacing:.18em;color:var(--vellum);transition:color .18s var(--ease)}
+nav .links a::after,nav .right a.mono::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--ember);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
 nav .links a.on{color:var(--ember)}
+nav .links a.on::after,nav .links a:hover::after,nav .right a.mono:hover::after{transform:scaleX(1)}
 nav .links a:hover,nav .right a.mono:hover{color:var(--ember)}
 nav .right{margin-left:auto;display:flex;align-items:center;gap:16px}
 .btn-fill{display:inline-block;background:var(--ember);color:var(--graphite);padding:8px 16px;font:500 12px var(--mono);letter-spacing:.16em;text-transform:uppercase;transition:filter .14s var(--ease)}
@@ -240,7 +251,7 @@ export function articlePage(o: { article: Article; more: ArticleCard[]; publicUr
   <div class="eyebrow mono"><span>${esc(kicker)}</span><span><time datetime="${esc(a.published_at)}">${day(a.published_at)}</time></span><span>${a.read_minutes} min read</span></div>
   <h1 class="display">${esc(a.title)}</h1>
   ${a.excerpt ? `<p class="stand">${esc(a.excerpt)}</p>` : ''}
-  <div class="byline"><span class="avatar" aria-hidden="true">PG</span><span><strong>${BYLINE}</strong>${a.updated_at && a.updated_at > a.published_at ? ` · Updated <time datetime="${esc(a.updated_at)}">${day(a.updated_at)}</time>` : ''}</span></div>
+  <div class="byline"><span class="avatar" aria-hidden="true">PG</span><span><strong>${BYLINE}</strong>${revised(a) ? ` · Updated <time datetime="${esc(a.updated_at!)}">${day(a.updated_at!)}</time>` : ''}</span></div>
 </header>
 <div class="hero">
   <div class="img${a.cover_url ? '' : ' empty'}">${a.cover_url ? `<img src="${esc(a.cover_url)}" alt="">` : ''}</div>

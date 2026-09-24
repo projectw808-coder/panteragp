@@ -182,24 +182,17 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           {/* Set like the marks inside the product rather than like small grey body text.
               Contrast was never the problem — mist reads 7.82:1 on this ground — it was
               12px at almost no tracking, which looks faint whatever colour it is. */}
-          <div className="ml-8 hidden items-center gap-8 lg:flex">
+          <div className="ml-10 hidden items-center gap-9 lg:flex">
             {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
-              <button key={id} onClick={() => go(id)}
-                className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-pebble uppercase transition-colors hover:text-ember-ink">
+              <button key={id} onClick={() => go(id)} className="nav-link focus-ring">
                 {label}
               </button>
             ))}
             {/* A real link, not a scroll: the articles are served as their own pages. */}
-            <a href="/blog"
-              className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-pebble uppercase transition-colors hover:text-ember-ink">
-              Insights
-            </a>
+            <a href="/blog" className="nav-link focus-ring">Insights</a>
           </div>
           <div className="ml-auto flex items-center gap-4">
-            <button onClick={onSignIn}
-              className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-vellum uppercase transition-colors hover:text-ember-ink">
-              Sign in
-            </button>
+            <button onClick={onSignIn} className="nav-link focus-ring">Sign in</button>
             <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
           </div>
         </nav>
