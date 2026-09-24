@@ -2215,6 +2215,14 @@ await step("the desk can read a client's bot and set a target win rate the clien
   assert.ok(reset.desk.record_since, 'the record knows when it started');
   assert.equal(reset.kpis.closed, 0, 'nothing closed since');
   assert.equal((await get('/trades', { token: T })).length, fillsBefore, 'not one fill went anywhere');
+  // The desk can widen what a strategy covers and how much the bot may carry.
+  const wide = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: {
+    settings: { max_open_positions: 12 },
+    strategies: [{ id: reset.strategies[0].id, symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD', 'SOLUSD', 'BNBUSD'] }] } });
+  assert.equal(wide.settings.max_open_positions, 12);
+  assert.deepEqual(wide.strategies[0].symbols, ['BTCUSD', 'ETHUSD', 'XAUUSD', 'SOLUSD', 'BNBUSD']);
+  assert.equal(await status(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: {
+    strategies: [{ id: reset.strategies[0].id, symbols: ['NOPE'] }] } }), 404);
   const mine = await get('/me/auto-trader', { token: T });
   assert.equal('desk' in mine, false, 'the target is not on the client\'s page');
   assert.equal('target_win_rate' in mine.settings, false);

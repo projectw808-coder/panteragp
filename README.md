@@ -662,9 +662,10 @@ seconds; there is no preview any more, so every number on it is money that moved
 **The record is steered to 72% by default, or to whatever the desk sets for a client.**
 `DEFAULT_WIN_RATE` is what every bot is steered to until the desk says otherwise, and
 `GET|PATCH /clients/:id/auto-trader` is the desk's hand: anyone who can read the CRM sees what a
-client's bot holds, has made and has logged; an admin can throw the switch for them and set that
-client's own target, any rate, with null going back to the default. The desk can also start a client's
-record again: every fill and every balance movement stays, and the win rate and the curve count
+client's bot holds, has made and has logged; an admin can throw the switch for them, set that
+client's own target, any rate, with null going back to the default, and set the client's risk
+controls and each strategy's instruments and allocation from the same route. The desk can also
+start a client's record again: every fill and every balance movement stays, and the win rate and the curve count
 from that moment. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open
 trade closes: a trade a minute old that has cleared its fees by two percent of its risk is

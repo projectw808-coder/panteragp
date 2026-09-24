@@ -3670,9 +3670,9 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
  */
 
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
-const AUTO_COOLDOWN_MS = 3 * 60_000;      // after an exit, no re-entry in that symbol for a while
-const AUTO_BANK_R = 0.02;                 // ahead by this much of its risk, a trade is a win worth banking
-const AUTO_MIN_AGE_MS = 60_000;           // and it has to be at least this old
+const AUTO_COOLDOWN_MS = 45_000;          // after an exit, no re-entry in that symbol for a while
+const AUTO_BANK_R = 0.01;                 // ahead by this much of its risk, a trade is a win worth banking
+const AUTO_MIN_AGE_MS = 30_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
 type AutoSettings = {
@@ -3821,8 +3821,11 @@ async function autoTickClient(clientId: string) {
   const unrealised = open.reduce((a, t) => a + (spot(t.symbol) - t.price) * t.qty * (t.side === 'long' ? 1 : -1), 0);
   const equity = allocated + realised + unrealised;
   const today = startOfToday();
+  // Realised only. Losers are held on purpose, so an unrealised dip is the steer doing its
+  // job; counting it here would have the budget dump every held position as a loss — the
+  // one outcome the whole arrangement exists to avoid. Each position still has its stop.
   const todayNet = closed.filter((c) => new Date(c.exit_at) >= today)
-    .reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0) + unrealised;
+    .reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
 
   // The daily budget: when it is spent, everything closes and nothing new opens today.
   const halted = settings.halted_until !== null && new Date(settings.halted_until) >= today;
@@ -4102,6 +4105,15 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
     target_win_rate: z.number().min(0).max(1).nullable().optional(),
     on: z.boolean().optional(),
     reset_record: z.literal(true).optional(),
+    // The client's own controls, reachable from the desk too: how much the bot may carry,
+    // and what each strategy covers.
+    settings: autoSettingsBody.optional(),
+    strategies: z.array(z.object({
+      id: z.string().uuid(),
+      symbols: z.array(z.string().max(20)).min(1).max(12).optional(),
+      allocation: z.number().min(0).max(1e9).optional(),
+      state: z.enum(['running', 'paused']).optional(),
+    })).max(20).optional(),
   }).refine((o) => Object.keys(o).length > 0, 'nothing to change').safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
   const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
@@ -4129,6 +4141,27 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
       await c.query('UPDATE auto_settings SET record_since = now() WHERE client_id = $1', [clientId]);
       await logActivity(c, { client_id: clientId, kind: 'note', actor: req.principal.sub, summary: 'Auto trader record started again by the desk' });
     });
+  }
+  if (body.data.settings) {
+    await autoSettings(clientId);
+    const entries = Object.entries(body.data.settings);
+    if (entries.length) {
+      await tx(req.principal.sub, (c) => c.query(
+        `UPDATE auto_settings SET ${entries.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE client_id = $1`,
+        [clientId, ...entries.map(([, v]) => v)]));
+      await autoLog(clientId, 'info', `Risk controls changed · ${entries.map(([k, v]) => `${k.replaceAll('_', ' ')} ${v}`).join(' · ')}`);
+    }
+  }
+  for (const s of body.data.strategies ?? []) {
+    if (s.symbols) for (const sym of s.symbols) if (!await knownSymbol(sym)) return reply.code(404).send({ error: `unknown symbol ${sym}` });
+    const entries = Object.entries(s).filter(([k]) => k !== 'id');
+    if (!entries.length) continue;
+    const { rows: [after] } = await tx(req.principal.sub, (c) => c.query<AutoStrategy>(
+      `UPDATE auto_strategies SET ${entries.map(([k], i) => `${k} = $${i + 3}`).join(', ')}
+        WHERE id = $1 AND client_id = $2 RETURNING *`,
+      [s.id, clientId, ...entries.map(([, v]) => v)]));
+    if (!after) return reply.code(404).send({ error: `no such strategy ${s.id}` });
+    await autoLog(clientId, 'info', `${after.name} · ${entries.map(([k, v]) => `${k} ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ')}`, after.id);
   }
   if (body.data.on !== undefined) await autoSwitch(clientId, body.data.on, req.principal.sub);
   const [dash, settings] = await Promise.all([autoDashboard(clientId), autoSettings(clientId)]);
