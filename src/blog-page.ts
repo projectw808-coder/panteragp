@@ -42,8 +42,8 @@ nav{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;pa
 nav .brand{display:flex;align-items:center;gap:8px;font-size:18px}
 nav .brand i{font:500 12px var(--mono);color:var(--ember);font-style:normal}
 nav .links{display:flex;gap:36px;margin-left:40px}
-nav .links a,nav .right a.mono{position:relative;padding:6px 0;font-size:12px;letter-spacing:.18em;color:var(--vellum);transition:color .18s var(--ease)}
-nav .links a::after,nav .right a.mono::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--ember);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
+nav .links a,nav .right a.mono{position:relative;padding:6px 0;font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--vellum);transition:color .18s var(--ease)}
+nav .links a::after,nav .right a.mono::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ember);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
 nav .links a.on{color:var(--ember)}
 nav .links a.on::after,nav .links a:hover::after,nav .right a.mono:hover::after{transform:scaleX(1)}
 nav .links a:hover,nav .right a.mono:hover{color:var(--ember)}
@@ -162,7 +162,7 @@ function layout(o: {
 ${o.ogImage ? `<meta property="og:image" content="${esc(o.ogImage)}">\n<meta name="twitter:card" content="summary_large_image">` : '<meta name="twitter:card" content="summary">'}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>${CSS}</style>
 ${ld}
 </head>

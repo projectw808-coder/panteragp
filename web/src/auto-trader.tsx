@@ -106,8 +106,8 @@ export function AutoTraderView() {
       {error && <p role="alert" className={alertBox}>{error}</p>}
       {halted && (
         <p className={alertBox}>
-          The daily loss budget was spent, so the bot closed everything and will not open anything new until tomorrow.
-          Existing stops and targets still apply.
+          The daily loss budget was spent, so the bot will not open anything new until tomorrow.
+          Open positions are kept, with their stops and targets, and winners are still banked.
         </p>
       )}
       {d.on && !(d.account.balance > 0) && (

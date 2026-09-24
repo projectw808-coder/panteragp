@@ -3685,15 +3685,15 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
  * own signal reverses, and it does that with a market order that points at the entry as
  * its parent — so the pairing of entry to exit is a join, not a guess.
  *
- * Money is capped three ways: risk per trade against the bot's equity, notional against
- * the strategy's allocation times leverage, and a daily loss budget that closes everything
- * and halts new entries until tomorrow. The kill switch does the first two of those on
- * demand and switches the bot off.
+ * Money is capped four ways: risk per trade against the bot's equity, notional against
+ * the strategy's allocation times leverage, the risk every open stop adds up to against
+ * the day's loss budget, and that budget itself, which halts new entries until tomorrow
+ * once it is spent. The kill switch closes everything on demand and switches the bot off.
  */
 
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
 const AUTO_COOLDOWN_MS = 45_000;          // after an exit, no re-entry in that symbol for a while
-const AUTO_BANK_R = 0.005;                // ahead by this much of its risk, a trade is a win worth banking
+const AUTO_BANK_R = 0.3;                  // ahead by this much of its risk, a trade is a win worth banking
 const AUTO_MIN_AGE_MS = 15_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
@@ -3859,15 +3859,18 @@ async function autoTickClient(clientId: string) {
   const todayNet = closed.filter((c) => new Date(c.exit_at) >= today)
     .reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
 
-  // The daily budget: when it is spent, everything closes and nothing new opens today.
-  const halted = settings.halted_until !== null && new Date(settings.halted_until) >= today;
+  // The daily budget: when it is spent, nothing new opens today. What is open stays open,
+  // with the stop and the target the book already holds: this used to close every position
+  // at once, which turned one bad hour into a dozen realised losses at the worst moment of
+  // the day, and a budget that liquidates is a budget that manufactures the loss it was
+  // meant to cap. Exits below still run, so a winner is still banked and a stop still bites.
+  let halted = settings.halted_until !== null && new Date(settings.halted_until) >= today;
   const budget = equity > 0 ? equity * settings.max_daily_loss / 100 : 0;
   if (!halted && budget > 0 && todayNet <= -budget) {
-    for (const t of open) await autoClose(clientId, account.id, t, 'Daily loss limit');
+    halted = true;
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     await pool.query('UPDATE auto_settings SET halted_until = $2 WHERE client_id = $1', [clientId, tomorrow.toISOString().slice(0, 10)]);
-    await autoLog(clientId, 'warn', `Daily loss limit reached (${money2(todayNet)} against a ${settings.max_daily_loss}% budget) · closed everything · no new entries until tomorrow`);
-    return;
+    await autoLog(clientId, 'warn', `Daily loss limit reached (${money2(todayNet)} against a ${settings.max_daily_loss}% budget) · no new entries until tomorrow · open positions keep their stops and targets`);
   }
 
   // Exits the strategies decide themselves. The stop and the target are the book's job.
@@ -3918,6 +3921,12 @@ async function autoTickClient(clientId: string) {
   const balance = Number(account.balance);
   if (!(balance > 0)) { await autoWarn(clientId, 'nofunds', 'The account has no balance to trade with · fund it to let the bot work'); return; }
   const totalNotional = () => holding.reduce((a, t) => a + t.qty * t.price, 0);
+  // What every open stop adds up to. A new position may only risk what the day's budget has
+  // left after today's realised losses and after every stop already out there — so twelve
+  // positions at one percent each can no longer stack twelve percent of risk against a
+  // three percent budget, and a bad day ends at the budget rather than several times it.
+  const openRisk = () => holding.reduce((a, t) => a + (t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty), 0);
+  const riskLeft = () => (budget > 0 ? budget - Math.max(0, -todayNet) - openRisk() : Infinity);
   for (const s of strategies) {
     if (s.state !== 'running') continue;
     if (!(s.allocation > 0)) { await autoWarn(clientId, `alloc:${s.id}`, `${s.name} has no allocation · give it some of the account to trade with`); continue; }
@@ -3951,10 +3960,12 @@ async function autoTickClient(clientId: string) {
       // stop would take that decision away from the steer. Risk per trade is still the
       // budget — it is measured against this stop, so the position is smaller for it.
       const stop = round8(sig.side === 'long' ? price - (price - sig.stop) * 3 : price + (sig.stop - price) * 3);
-      const qty = sizeFor({
-        riskUsd: equity * settings.risk_per_trade / 100, price, stop, maxNotional,
-        minNotional: s.allocation * 0.01,
-      });
+      const riskUsd = Math.min(equity * settings.risk_per_trade / 100, riskLeft());
+      if (!(riskUsd > 0)) {
+        await autoWarn(clientId, 'riskfull', `The open stops already add up to today's loss budget · no new entries until one closes`);
+        return;
+      }
+      const qty = sizeFor({ riskUsd, price, stop, maxNotional, minNotional: s.allocation * 0.01 });
       if (!qty) continue;
       const order = await autoOrder(clientId, account.id, {
         symbol, side: sig.side === 'long' ? 'buy' : 'sell', qty,

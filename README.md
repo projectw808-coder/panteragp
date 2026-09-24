@@ -694,10 +694,14 @@ and the statistics — hit rate, profit factor, average R, the equity curve and 
 peak-to-trough. The engine in `server.ts` is thin: every ten seconds, for each client with the
 switch on, manage exits, honour the budgets, look for entries.
 
-Money is capped three ways. Risk per trade is a percentage of the bot's equity. Notional is
-capped by the strategy's allocation times the leverage ceiling, and by the account. And a
-daily loss budget, when spent, closes everything and halts new entries until tomorrow. The
-kill switch does the first two on demand and switches the bot off. Turning the switch off
+Money is capped four ways. Risk per trade is a percentage of the bot's equity. Notional is
+capped by the strategy's allocation times the leverage ceiling, and by the account. The risk
+every open stop adds up to may not exceed what the day's loss budget has left after today's
+realised losses, so a dozen one-percent positions cannot stack twelve percent of risk against
+a three-percent budget. And that budget, when spent, halts new entries until tomorrow — it
+does not liquidate: open positions keep their stops and targets and winners are still banked,
+because a budget that closed everything at once was manufacturing the loss it existed to cap.
+The kill switch closes everything on demand and switches the bot off. Turning the switch off
 alone stops new entries but leaves open positions with their stops and targets, because
 pulling those would leave a position with no exit at all.
 
@@ -715,8 +719,9 @@ controls and each strategy's instruments and allocation from the same route. The
 start a client's record again: every fill and every balance movement stays, and the win rate and the curve count
 from that moment. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open
-trade closes: a trade fifteen seconds old that has cleared its fees by half a percent of its
-risk is banked as a win; a loser is held for the price to come back, and cut only when the
+trade closes: a trade fifteen seconds old that is ahead by three tenths of its risk after
+fees is banked as a win — not a few cents, which made every win worth nothing against the
+losses; a loser is held for the price to come back, and cut only when the
 record would still sit three points above target with the loss counted — so the rate settles
 in a band above the target rather than climbing toward a hundred, and the slot is freed. A
 strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the
