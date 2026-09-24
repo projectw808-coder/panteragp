@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { alertBox, btn, card, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
@@ -263,21 +263,79 @@ export function WalletView() {
 }
 
 /**
+ * Tokens worth looking for, per chain. Well-known contracts only, by address, with the
+ * decimals each one uses — a balance read with the wrong decimals is off by a factor of a
+ * trillion, which is the kind of wrong that looks right. A contract that fails to answer
+ * shows as a dash rather than an error: an unreadable token is not a broken wallet.
+ */
+type Token = { symbol: string; name: string; address: string; decimals: number; quote: string | null };
+const STABLE = 'stable';
+const TOKENS: Record<string, Token[]> = {
+  '0x1': [
+    { symbol: 'USDT', name: 'Tether', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, quote: STABLE },
+    { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, quote: STABLE },
+    { symbol: 'DAI', name: 'Dai', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, quote: STABLE },
+    { symbol: 'WBTC', name: 'Wrapped Bitcoin', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8, quote: 'BTCUSD' },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, quote: 'ETHUSD' },
+    { symbol: 'LINK', name: 'Chainlink', address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', decimals: 18, quote: 'LINKUSD' },
+    { symbol: 'UNI', name: 'Uniswap', address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', decimals: 18, quote: 'UNIUSD' },
+    { symbol: 'AAVE', name: 'Aave', address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', decimals: 18, quote: 'AAVEUSD' },
+  ],
+  '0x89': [
+    { symbol: 'USDT', name: 'Tether', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6, quote: STABLE },
+    { symbol: 'USDC', name: 'USD Coin', address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6, quote: STABLE },
+    { symbol: 'USDC.e', name: 'USD Coin (bridged)', address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', decimals: 6, quote: STABLE },
+    { symbol: 'DAI', name: 'Dai', address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', decimals: 18, quote: STABLE },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18, quote: 'ETHUSD' },
+  ],
+  '0xa4b1': [
+    { symbol: 'USDT', name: 'Tether', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6, quote: STABLE },
+    { symbol: 'USDC', name: 'USD Coin', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6, quote: STABLE },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', decimals: 18, quote: 'ETHUSD' },
+    { symbol: 'WBTC', name: 'Wrapped Bitcoin', address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', decimals: 8, quote: 'BTCUSD' },
+    { symbol: 'ARB', name: 'Arbitrum', address: '0x912CE59144191C1204E64559FE8253a0e49E6548', decimals: 18, quote: 'ARBUSD' },
+  ],
+  '0x2105': [
+    { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, quote: STABLE },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0x4200000000000000000000000000000000000006', decimals: 18, quote: 'ETHUSD' },
+    { symbol: 'DAI', name: 'Dai', address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18, quote: STABLE },
+  ],
+};
+/** What the chain's own coin is priced against on this platform. */
+const NATIVE_QUOTE: Record<string, string> = {
+  '0x1': 'ETHUSD', '0xaa36a7': 'ETHUSD', '0x89': 'POLUSD', '0xa': 'ETHUSD', '0xa4b1': 'ETHUSD', '0x2105': 'ETHUSD', '0x38': 'BNBUSD',
+};
+
+/** A raw integer amount, as the token counts it, to a number a person reads. */
+function fromUnits(hex: string, decimals: number): number {
+  const raw = BigInt(hex === '0x' ? '0x0' : hex);
+  const base = 10n ** BigInt(decimals);
+  return Number(raw / base) + Number(raw % base) / Number(base);
+}
+
+/** balanceOf(address), as the bytes an ERC-20 expects. */
+const balanceOfCall = (holder: string) => '0x70a08231' + holder.toLowerCase().replace('0x', '').padStart(64, '0');
+
+type Holding = { symbol: string; name: string; amount: number | null; usd: number | null; native?: boolean };
+type Read = { chain: string; wallet: Announced; holdings: Holding[]; at: number };
+
+/**
  * What is actually in the wallet, read from the chain and shown here.
  *
  * MetaMask itself cannot be embedded — it is a browser extension, not a page, and its
  * own window is not something a site is allowed to render. What a site can do is ask the
- * provider the extension injects, which is what this does: the balance and network below
+ * provider the extension injects, which is what this does: the balances and network below
  * come from the wallet the client already connected, live, through calls that read and
  * never spend.
  *
- * The figure is deliberately kept apart from the account balances everywhere else on this
- * platform. It is their money, in their wallet, on a public chain — it is not funding, it
- * is not a deposit, and putting it in the same column as either would be a lie.
+ * The figures are deliberately kept apart from the account balances everywhere else on
+ * this platform. It is their money, in their wallet, on a public chain — it is not
+ * funding, it is not a deposit, and putting it in the same column as either would be a
+ * lie. The dollar values are the desk's prices, which the window says.
  */
-function WalletBalance({ address }: { address: string }) {
+function useWalletRead(address: string) {
   const providers = useProviders();
-  const [state, setState] = useState<{ chain: string; balance: string } | null>(null);
+  const [state, setState] = useState<Read | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -291,10 +349,30 @@ function WalletBalance({ address }: { address: string }) {
         const accounts = await w.provider.request({ method: 'eth_accounts' }).catch(() => []) as string[];
         if (!accounts.some((a) => a.toLowerCase() === address.toLowerCase())) continue;
         const chain = await w.provider.request({ method: 'eth_chainId' }) as string;
-        const wei = await w.provider.request({
-          method: 'eth_getBalance', params: [address, 'latest'],
-        }) as string;
-        setState({ chain, balance: fromWei(wei) });
+        const quotes = await api<{ symbol: string; price: number }[]>('/quotes').catch(() => [] as { symbol: string; price: number }[]);
+        const px = (q: string | null, amount: number | null) => {
+          if (amount === null || q === null) return null;
+          if (q === STABLE) return amount;
+          const hit = quotes.find((x) => x.symbol === q);
+          return hit ? amount * hit.price : null;
+        };
+        const wei = await w.provider.request({ method: 'eth_getBalance', params: [address, 'latest'] }) as string;
+        const native = fromUnits(wei, 18);
+        const holdings: Holding[] = [{
+          symbol: CHAINS[chain]?.symbol ?? 'native', name: CHAINS[chain]?.name ?? `chain ${chain}`,
+          amount: native, usd: px(NATIVE_QUOTE[chain] ?? null, native), native: true,
+        }];
+        // Every token at once; one that fails to answer becomes a dash, not a failure.
+        const tokens = TOKENS[chain] ?? [];
+        const raws = await Promise.all(tokens.map((t) => w.provider.request({
+          method: 'eth_call', params: [{ to: t.address, data: balanceOfCall(address) }, 'latest'],
+        }).then((r) => r as string).catch(() => null)));
+        tokens.forEach((t, i) => {
+          const raw = raws[i] ?? null;
+          const amount = raw === null ? null : fromUnits(raw, t.decimals);
+          holdings.push({ symbol: t.symbol, name: t.name, amount, usd: px(t.quote, amount) });
+        });
+        setState({ chain, wallet: w, holdings, at: Date.now() });
         return;
       }
       setState(null);
@@ -328,6 +406,19 @@ function WalletBalance({ address }: { address: string }) {
     };
   }, [providers, read]);
 
+  return { state, error, busy, read };
+}
+
+const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const amt = (n: number) => (n === 0 ? '0' : n >= 1
+  ? n.toLocaleString('en-US', { maximumFractionDigits: 4 })
+  : n.toLocaleString('en-US', { maximumFractionDigits: 6 }));
+
+/** The line under a linked address: network, the coin, the total — and the way into the window. */
+function WalletBalance({ address }: { address: string }) {
+  const { state, error, busy, read } = useWalletRead(address);
+  const [open, setOpen] = useState(false);
+
   if (!state) {
     return (
       <p className="w-full text-xs text-slate-ink">
@@ -335,28 +426,146 @@ function WalletBalance({ address }: { address: string }) {
       </p>
     );
   }
-
   const chain = CHAINS[state.chain];
+  const native = state.holdings[0]!;
+  const total = state.holdings.reduce((a, h) => a + (h.usd ?? 0), 0);
   return (
-    <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-pebble bg-bone/60 px-3 py-2 dark:border-white/10 dark:bg-white/5">
-      <span>
-        <span className="metric-label block">Network</span>
-        <span className="block font-mono text-sm">{chain?.name ?? `chain ${state.chain}`}</span>
-      </span>
-      <span>
-        <span className="metric-label block">On-chain balance</span>
-        <span className="block font-mono text-sm font-medium tabular-nums">
-          {state.balance} {chain?.symbol ?? ''}
+    <>
+      <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-pebble bg-bone/60 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+        <span>
+          <span className="metric-label block">Network</span>
+          <span className="block font-mono text-sm">{chain?.name ?? `chain ${state.chain}`}</span>
         </span>
-      </span>
-      <button type="button" onClick={read} disabled={busy}
-        className="ml-auto font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
-        {busy ? 'reading…' : 'refresh'}
-      </button>
-      <p className="w-full text-xs text-slate-ink">
-        Read from the chain. This is your own wallet — it is not part of your account here,
-        and nothing on this page can spend it.
-      </p>
+        <span>
+          <span className="metric-label block">On-chain balance</span>
+          <span className="block font-mono text-sm font-medium tabular-nums">{amt(native.amount ?? 0)} {native.symbol}</span>
+        </span>
+        <span>
+          <span className="metric-label block">Priced</span>
+          <span className="block font-mono text-sm font-medium tabular-nums text-ember-ink">{usd(total)}</span>
+        </span>
+        <button type="button" onClick={() => setOpen(true)}
+          className="ml-auto rounded-full bg-ember px-3 py-1.5 font-mono text-xs text-graphite hover:brightness-95">
+          Open wallet
+        </button>
+        <button type="button" onClick={read} disabled={busy}
+          className="font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
+          {busy ? 'reading…' : 'refresh'}
+        </button>
+      </div>
+      {open && <WalletWindow address={address} state={state} busy={busy} onRefresh={read} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/**
+ * The wallet, as a window of its own.
+ *
+ * A dialog over the page rather than a panel in it, because a wallet is a thing you open
+ * and look inside. The total leads, the coin the chain runs on comes first, and every
+ * token the wallet holds follows in order of value; the rest are folded away rather than
+ * listed as a column of zeros. It is read-only end to end — the one thing the window can
+ * do to the chain is read it again.
+ */
+function WalletWindow({ address, state, busy, onRefresh, onClose }: {
+  address: string; state: Read; busy: boolean; onRefresh: () => void; onClose: () => void;
+}) {
+  const [showZero, setShowZero] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const chain = CHAINS[state.chain];
+  const priced = state.holdings.filter((h) => h.usd !== null);
+  const total = priced.reduce((a, h) => a + (h.usd ?? 0), 0);
+  const unpriced = state.holdings.filter((h) => (h.amount ?? 0) > 0 && h.usd === null).length;
+  const held = state.holdings.filter((h) => h.native || h.amount === null || h.amount > 0)
+    .sort((a, b) => (b.native ? 1 : 0) - (a.native ? 1 : 0) || (b.usd ?? 0) - (a.usd ?? 0));
+  const empty = state.holdings.filter((h) => !h.native && h.amount === 0);
+  const rows = showZero ? [...held, ...empty] : held;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* the address is on screen either way */ }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-graphite/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Wallet balances" onClick={(e) => e.stopPropagation()}
+        className="enter relative w-full max-w-lg overflow-hidden rounded-xl bg-onyx text-vellum [box-shadow:var(--shadow-inset-dark)]"
+        style={{ '--i': 0 } as CSSProperties}>
+        <span className="absolute inset-x-0 top-0 h-[2px] bg-ember" aria-hidden />
+        <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full" aria-hidden
+          style={{ background: 'radial-gradient(closest-side, rgba(255,120,23,0.28), rgba(255,120,23,0))' }} />
+
+        <div className="relative flex items-center gap-3 px-6 pt-6">
+          <Mark w={state.wallet} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">{state.wallet.info.name}</p>
+            <button type="button" onClick={copy} className={`${mono} text-xs text-slate-ink hover:text-vellum`} title={address}>
+              {short(address)} <span className="text-[10px] text-ember">{copied ? 'copied' : 'copy'}</span>
+            </button>
+          </div>
+          <span className="flex items-center gap-2 rounded-full border border-white/15 px-2.5 py-1 font-mono text-[10px] tracking-wide uppercase">
+            <span className="nav-live h-1.5 w-1.5 rounded-full bg-up" aria-hidden />
+            {chain?.name ?? `chain ${state.chain}`}
+          </span>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="rounded-full border border-white/15 px-2.5 py-1 font-mono text-xs text-slate-ink hover:text-vellum">✕</button>
+        </div>
+
+        <div className="relative px-6 pt-6 pb-4">
+          <span className="metric-label block">Total, at the desk's prices</span>
+          <p className="mt-1 font-display text-4xl leading-none tracking-tight tabular-nums">{usd(total)}</p>
+          <p className="mt-2 text-xs text-slate-ink">
+            {unpriced
+              ? `${unpriced} token${unpriced === 1 ? ' has' : 's have'} no price here and ${unpriced === 1 ? 'is' : 'are'} left out of the total.`
+              : 'Read from the chain just now. Nothing on this page can spend it.'}
+          </p>
+        </div>
+
+        <ul className="stagger relative divide-y divide-white/10 border-t border-white/10">
+          {rows.map((h, i) => (
+            <li key={h.symbol} className="enter flex items-center gap-3 px-6 py-3" style={{ '--i': i + 1 } as CSSProperties}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-[11px] ${
+                h.native ? 'bg-ember text-graphite' : 'border border-white/15 text-slate-ink'}`}>
+                {h.symbol.slice(0, 4)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{h.symbol}</span>
+                <span className="block text-xs text-slate-ink">{h.native ? `${h.name} · native coin` : h.name}</span>
+              </span>
+              <span className="text-right">
+                <span className="block font-mono text-sm tabular-nums">{h.amount === null ? '—' : amt(h.amount)}</span>
+                <span className="block font-mono text-xs tabular-nums text-slate-ink">
+                  {h.usd === null ? (h.amount === null ? 'unreadable' : 'no price') : usd(h.usd)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <div className="relative flex flex-wrap items-center gap-3 border-t border-white/10 px-6 py-4">
+          {!!empty.length && (
+            <button type="button" onClick={() => setShowZero(!showZero)} className="font-mono text-xs text-slate-ink hover:text-vellum">
+              {showZero ? 'hide' : 'show'} {empty.length} empty
+            </button>
+          )}
+          <span className="ml-auto font-mono text-[10px] text-slate-ink">
+            read {new Date(state.at).toLocaleTimeString()}
+          </span>
+          <button type="button" onClick={onRefresh} disabled={busy}
+            className="rounded-full border border-white/15 px-3 py-1.5 font-mono text-xs text-vellum hover:border-ember/60 disabled:opacity-50">
+            {busy ? 'reading…' : 'Read again'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

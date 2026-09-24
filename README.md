@@ -176,6 +176,15 @@ price source is reported as unpriced and excluded from the total, and the UI nam
 rather than being silently valued at zero and understating the client's holdings.
 
 
+**A linked wallet can be looked inside.** `web/src/wallet-connect.tsx` reads the connected
+wallet through the provider the extension injects — `eth_getBalance` for the chain's own coin
+and `eth_call` to `balanceOf` for a short list of well-known tokens per chain, by contract
+address and decimals — and opens it as a window: the total at the desk's prices, the native
+coin first, every token held in order of value, the empty ones folded away. It follows the
+wallet's own account and network changes. Every call reads; none can spend, and the figures
+are kept apart from the account balances everywhere else, because it is the client's money in
+their own wallet, not funding.
+
 ## Portfolios
 
 A portfolio is a labelled pot: a named container with a product type, a currency, an
