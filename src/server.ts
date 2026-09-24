@@ -3834,6 +3834,16 @@ async function autoTickClient(clientId: string) {
   ]);
   const allocated = strategies.reduce((a, s) => a + s.allocation, 0);
   const realised = closed.reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
+  // What a trade would actually net if closed now: at the price the client gets, which
+  // carries their spread, less both commissions. Estimating from the mid banked "wins" that
+  // landed a few cents under water once the fill went through.
+  const { rows: [termRow] } = await pool.query<{ commission_bps: number | null; spread_bps: number | null }>(
+    'SELECT commission_bps, spread_bps FROM clients WHERE id = $1', [clientId]);
+  const terms = termsOf(termRow ?? null);
+  const netIfClosed = (t: AutoOpen, mark: number) => {
+    const px = executionPrice(mark, t.side === 'long' ? 'sell' : 'buy', terms);
+    return (px - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee - commission(t.qty, px, terms);
+  };
   const unrealised = open.reduce((a, t) => a + (spot(t.symbol) - t.price) * t.qty * (t.side === 'long' ? 1 : -1), 0);
   const equity = allocated + realised + unrealised;
   const today = startOfToday();
@@ -3869,7 +3879,7 @@ async function autoTickClient(clientId: string) {
     // held for its target instead: a strategy that closed every reversal at a loss was
     // writing four losses for every win, whatever the steer did afterwards.
     const mark = spot(t.symbol);
-    const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
+    const unreal = netIfClosed(t, mark);
     const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
     if (!(risk > 0) || unreal < AUTO_BANK_R * risk) continue;
     await autoClose(clientId, account.id, t, sig.reason);
@@ -3885,7 +3895,7 @@ async function autoTickClient(clientId: string) {
     let count = closed.length;
     for (const t of [...holding]) {
       const mark = spot(t.symbol);
-      const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
+      const unreal = netIfClosed(t, mark);
       const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
       const s = steer({ target, wins, closed: count, unrealised: unreal, risk,
         ageMs: Date.now() - new Date(t.filled_at).getTime(), minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R });
