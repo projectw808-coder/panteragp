@@ -58,7 +58,7 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
         {admin && (
           <span className="ml-auto flex gap-2">
             <button type="button" disabled={busy}
-              onClick={() => { if (window.confirm('Start this client\'s record again from now? Every trade stays in the book and on the balance; the win rate and the curve count from here.')) patch({ reset_record: true }); }}
+              onClick={() => { if (window.confirm('Start this client\'s record again from now? Every trade stays in the book and on the balance; the win rate and the curve count from here, and a daily halt is lifted.')) patch({ reset_record: true }); }}
               className="rounded-full border border-pebble px-3 py-1 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
               Reset record
             </button>

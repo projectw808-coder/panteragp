@@ -4178,12 +4178,15 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
   }
   if (body.data.reset_record) {
     // Nothing in the book changes: every fill stays, every balance movement stays. Only
-    // what the record counts from moves, and the timeline says who moved it.
+    // what the record counts from moves, and the timeline says who moved it. A day's halt
+    // belongs to the record it was spent on, so it is lifted with it: the desk starting a
+    // client again and the bot refusing to trade until tomorrow would be two hands.
     await autoSettings(clientId);
     await tx(req.principal.sub, async (c) => {
-      await c.query('UPDATE auto_settings SET record_since = now() WHERE client_id = $1', [clientId]);
+      await c.query('UPDATE auto_settings SET record_since = now(), halted_until = NULL WHERE client_id = $1', [clientId]);
       await logActivity(c, { client_id: clientId, kind: 'note', actor: req.principal.sub, summary: 'Auto trader record started again by the desk' });
     });
+    await autoLog(clientId, 'info', 'Record started again by the desk · any daily halt lifted');
   }
   if (body.data.settings) {
     await autoSettings(clientId);

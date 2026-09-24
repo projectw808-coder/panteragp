@@ -2221,6 +2221,7 @@ await step("the desk can read a client's bot and set a target win rate the clien
   const reset = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { reset_record: true } });
   assert.ok(reset.desk.record_since, 'the record knows when it started');
   assert.equal(reset.kpis.closed, 0, 'nothing closed since');
+  assert.equal(reset.halted_until, null, 'a daily halt is lifted with the record');
   assert.equal((await get('/trades', { token: T })).length, fillsBefore, 'not one fill went anywhere');
   // The desk can widen what a strategy covers and how much the bot may carry.
   const wide = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: {
