@@ -114,8 +114,8 @@ h1{font-size:52px;margin:0 0 20px}
 .more{padding:80px 0 72px}
 .more .head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:28px}
 .more h2,.index h1{font-size:32px;margin:6px 0 0}
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ink);border:1px solid var(--ink)}
-.card{background:var(--canvas);padding:22px;display:flex;flex-direction:column;gap:14px;min-height:300px;transition:background .3s var(--ease)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
+.card{background:var(--canvas);border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:22px;display:flex;flex-direction:column;gap:14px;min-height:300px;transition:background .3s var(--ease)}
 .card:hover{background:var(--vellum)}
 .card .thumb{height:140px;background:var(--stage);position:relative;overflow:hidden}
 .card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
