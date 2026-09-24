@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type CSSProperties } from 'react';
 import { api, token, useApi } from './api.ts';
 import { AdminView } from './admin.tsx';
 import { ChartsView } from './chart.tsx';
@@ -250,8 +250,21 @@ function Login({ mode, onDone, onMode, onBack }: {
             )}
           </label>
 
-          {/* Errors read as needs-attention, which is orange here rather than red. */}
-          {error && <p role="alert" className="font-mono text-xs text-ember-ink">{error}</p>}
+          {/* A failed sign-in stays on this form and says why, at the top of it and loud
+              enough to be seen: the person has just typed a password and is looking at
+              the button, not at a footnote. Orange, because it needs attention, not alarm. */}
+          {error && (
+            <div role="alert" aria-live="assertive"
+              className="enter fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
+              style={{ '--i': 0 } as CSSProperties}>
+              <div className="flex w-full max-w-md items-start gap-3 rounded-lg border border-ember bg-onyx px-4 py-3 text-vellum [box-shadow:var(--shadow-inset-dark)]">
+                <span className="mt-0.5 font-mono text-sm text-ember" aria-hidden>!</span>
+                <span className="flex-1 text-sm leading-snug">{error}</span>
+                <button type="button" onClick={() => setError(null)} aria-label="Dismiss"
+                  className="font-mono text-xs text-slate-ink hover:text-vellum">✕</button>
+              </div>
+            </div>
+          )}
 
           <button className={`w-full ${btn}`} disabled={busy}>
             {busy ? (registering ? 'Creating…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}

@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 138 acceptance checks against the running stack
+    npm run test:e2e # 139 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -668,10 +668,13 @@ controls and each strategy's instruments and allocation from the same route. The
 start a client's record again: every fill and every balance movement stays, and the win rate and the curve count
 from that moment. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open
-trade closes: a trade a minute old that has cleared its fees by two percent of its risk is
-banked as a win, and a loser is held for the price to come back — the steer never cuts one,
-and a strategy's own reversal signal is honoured only when leaving is a win. Only the book's
-stop takes a loss. Bot entries carry a stop three times as wide as the strategy asked,
+trade closes: a trade fifteen seconds old that has cleared its fees by half a percent of its
+risk is banked as a win; a loser is held for the price to come back, and cut only when the
+record would still sit three points above target with the loss counted — so the rate settles
+in a band above the target rather than climbing toward a hundred, and the slot is freed. A
+strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the
+book's stop takes a loss. The client's page shows these limits and cannot change them; the
+desk sets them from the record. Bot entries carry a stop three times as wide as the strategy asked,
 so the book rarely takes that decision away, and risk per trade is measured against that wider
 stop, so the position is smaller for it. The target is returned on the desk route and nowhere
 else: the client's page never carries it, and setting it lands on the CRM timeline and the

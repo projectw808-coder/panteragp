@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { alertBox, btn, card, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { price } from './format.ts';
@@ -64,7 +64,6 @@ export function AutoTraderView() {
   const dash = useApi<Dash>('/me/auto-trader');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
 
   // The book moves on its own; the page follows it every few seconds.
   useEffect(() => { const t = setInterval(() => dash.reload(), 5000); return () => clearInterval(t); }, []);
@@ -209,22 +208,18 @@ export function AutoTraderView() {
 
         <div className="space-y-4">
           <div className={`${card} space-y-3`}>
+            {/* Read-only here: the limits are the desk's to set, from the client's record. */}
             <div className="flex items-center gap-3">
               <h2 className="section-title">Risk controls</h2>
-              <button type="button" className="ml-auto text-xs text-ember-ink" onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Edit'}</button>
             </div>
-            {editing ? (
-              <SettingsForm s={d.settings} busy={busy} onDone={() => setEditing(false)} onSave={run} />
-            ) : (
-              <div className="space-y-2.5 text-xs">
-                <Row l="Risk per trade" v={`${d.settings.risk_per_trade}% of bot equity`} />
-                <Row l="Max daily loss" v={`${d.settings.max_daily_loss}% · used ${pct(k.daily_loss_used, 0)}`} bar={k.daily_loss_used} />
-                <Row l="Max open positions" v={`${d.settings.max_open_positions} · ${k.open} open`} bar={k.open / d.settings.max_open_positions} />
-                <Row l="Max leverage" v={`${d.settings.max_leverage}×`} />
-                <Row l="Re-entry cooldown" v="10 min per instrument" />
-                <Row l="Kill switch" v="Closes all, cancels all, stops" />
-              </div>
-            )}
+            <div className="space-y-2.5 text-xs">
+              <Row l="Risk per trade" v={`${d.settings.risk_per_trade}% of bot equity`} />
+              <Row l="Max daily loss" v={`${d.settings.max_daily_loss}% · used ${pct(k.daily_loss_used, 0)}`} bar={k.daily_loss_used} />
+              <Row l="Max open positions" v={`${d.settings.max_open_positions} · ${k.open} open`} bar={k.open / d.settings.max_open_positions} />
+              <Row l="Max leverage" v={`${d.settings.max_leverage}×`} />
+              <Row l="Re-entry cooldown" v="45 s per instrument" />
+              <Row l="Kill switch" v="Closes all, cancels all, stops" />
+            </div>
           </div>
 
           <div className={`${card} space-y-1.5`}>
@@ -312,31 +307,6 @@ function StrategyRow({ s, busy, onChange }: { s: Strategy; busy: boolean; onChan
         {s.state === 'running' ? 'running' : 'paused'}
       </button>
     </div>
-  );
-}
-
-function SettingsForm({ s, busy, onSave, onDone }: {
-  s: Dash['settings']; busy: boolean; onDone: () => void; onSave: (what: () => Promise<unknown>) => Promise<void>;
-}) {
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const body = {
-      risk_per_trade: Number(f.get('risk_per_trade')), max_daily_loss: Number(f.get('max_daily_loss')),
-      max_open_positions: Number(f.get('max_open_positions')), max_leverage: Number(f.get('max_leverage')),
-    };
-    await onSave(() => api('/me/auto-trader/settings', { method: 'PATCH', body: JSON.stringify(body) }));
-    onDone();
-  }
-  const field = 'w-full rounded border border-pebble bg-transparent px-2 py-1 font-mono text-xs dark:border-white/15';
-  return (
-    <form onSubmit={submit} className="space-y-2 text-xs">
-      <label className="block"><span className="metric-label mb-1 block">Risk per trade · % of bot equity</span><input name="risk_per_trade" type="number" step="0.1" min="0.1" max="5" defaultValue={s.risk_per_trade} className={field} /></label>
-      <label className="block"><span className="metric-label mb-1 block">Max daily loss · %</span><input name="max_daily_loss" type="number" step="0.5" min="0.5" max="20" defaultValue={s.max_daily_loss} className={field} /></label>
-      <label className="block"><span className="metric-label mb-1 block">Max open positions</span><input name="max_open_positions" type="number" step="1" min="1" max="20" defaultValue={s.max_open_positions} className={field} /></label>
-      <label className="block"><span className="metric-label mb-1 block">Max leverage · ×</span><input name="max_leverage" type="number" step="1" min="1" max="50" defaultValue={s.max_leverage} className={field} /></label>
-      <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-    </form>
   );
 }
 

@@ -186,7 +186,23 @@ app.post('/auth/login', async (req, reply) => {
   );
   const row = rows[0];
   const ok = await verifyPassword(password, row?.password_hash ?? null);
-  if (!ok || (as === 'staff' && !row.active)) return reply.code(401).send({ error: 'invalid credentials' });
+  if (!ok || (as === 'staff' && !row.active)) {
+    if (ok) return reply.code(401).send({ error: 'This staff account has been switched off. Ask an admin.' });
+    // The commonest wrong sign-in is the right password under the wrong tab. Say so — but
+    // only when the password is right for the other kind, so this reveals nothing a
+    // successful sign-in would not.
+    const other = as === 'staff' ? 'clients' : 'staff';
+    const { rows: [alt] } = await pool.query(
+      `SELECT password_hash FROM ${other} WHERE email = $1`, [email.toLowerCase()]);
+    if (alt && await verifyPassword(password, alt.password_hash)) {
+      return reply.code(401).send({
+        error: as === 'staff'
+          ? 'That is a trader account. Switch to Trader and sign in again.'
+          : 'That is a staff account. Switch to Staff and sign in again.',
+      });
+    }
+    return reply.code(401).send({ error: 'Wrong email or password.' });
+  }
 
   const principal: Principal = { sub: row.id, kind: as, role: as === 'staff' ? row.role : 'trader' };
   if (as === 'client') {
@@ -3671,8 +3687,8 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
 
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
 const AUTO_COOLDOWN_MS = 45_000;          // after an exit, no re-entry in that symbol for a while
-const AUTO_BANK_R = 0.01;                 // ahead by this much of its risk, a trade is a win worth banking
-const AUTO_MIN_AGE_MS = 30_000;           // and it has to be at least this old
+const AUTO_BANK_R = 0.005;                // ahead by this much of its risk, a trade is a win worth banking
+const AUTO_MIN_AGE_MS = 15_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
 type AutoSettings = {

@@ -27,19 +27,19 @@ export const STRATEGIES: Record<StrategyKind, { name: string; about: string; sym
   trend: {
     name: 'Trend follower',
     about: 'Follows a moving-average crossover: long while the fast average sits above the slow one, short while it sits below, out when they cross back.',
-    symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD'],
+    symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD', 'SOLUSD', 'BNBUSD', 'LINKUSD'],
     share: 0.30,
   },
   mean_reversion: {
     name: 'Mean reversion',
     about: 'Fades a stretch: sells when price runs more than 1.5 standard deviations above its average, buys when it runs below, and exits at the average.',
-    symbols: ['EURUSD', 'GBPUSD', 'USDJPY'],
+    symbols: ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'],
     share: 0.125,
   },
   grid: {
     name: 'Grid',
     about: 'Buys a set step below the recent average and sells a step above, taking each level back to the average.',
-    symbols: ['SOLUSD'],
+    symbols: ['SOLUSD', 'XRPUSD', 'ADAUSD'],
     share: 0.075,
   },
 };
@@ -216,17 +216,17 @@ export const DEFAULT_WIN_RATE = 0.72;
  * times as wide as the strategy asked, can take it. With no record yet, the steer leans
  * toward whichever side the target is on.
  */
-export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 60_000, bankR = 0.02 }: {
+export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 60_000, bankR = 0.02, cutR = 0.25, cutMargin = 0.03 }: {
   target: number | null; wins: number; closed: number; unrealised: number; risk: number;
-  ageMs: number; minAgeMs?: number; bankR?: number;
+  ageMs: number; minAgeMs?: number; bankR?: number; cutR?: number; cutMargin?: number;
 }): { close: 'win' | 'loss' } | null {
   if (target === null || !(risk > 0) || !(ageMs >= minAgeMs)) return null;
   const r = unrealised / risk;
-  const rate = closed > 0 ? wins / closed : null;
-  const below = rate === null ? target > 0.5 : rate < target;
   if (r >= bankR) return { close: 'win' };
-  // Above target and behind: still held. A loss taken to "make room" is a loss on the
-  // record and money off the balance; the book's stop is the only thing that takes one.
-  void below;
+  // A loser is cut only when the record would still sit a margin above target with the
+  // loss counted — so the rate settles in a band above the target rather than climbing
+  // toward a hundred, and a held slot is freed for the next win. Below that, it is held
+  // for the price to come back; the book's stop is the only other thing that takes one.
+  if (r <= -cutR && closed > 0 && wins / (closed + 1) >= target + cutMargin) return { close: 'loss' };
   return null;
 }

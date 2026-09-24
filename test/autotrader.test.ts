@@ -169,10 +169,16 @@ describe("the desk's steer", () => {
     assert.deepEqual(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: 2 }), { close: 'win' }, 'above target too');
     assert.equal(steer({ ...base, target: 0.72, unrealised: 1 }), null, 'two percent of the risk is the bar');
   });
-  it('never cuts a loser, whatever the record', async () => {
+  it('cuts a loser only when the record stays a margin above target with the loss counted', async () => {
     const { steer } = await import('../src/autotrader.ts');
+    // 6 of 10: below target, held
     assert.equal(steer({ ...base, wins: 6, closed: 10, target: 0.72, unrealised: -90 }), null);
-    assert.equal(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: -90 }), null);
+    // 8 of 10 → 8 of 11 is 72.7%: above target but inside the margin, held
+    assert.equal(steer({ ...base, wins: 8, closed: 10, target: 0.72, unrealised: -90 }), null);
+    // 10 of 10 → 10 of 11 is 90.9%: comfortably above, the slot is freed
+    assert.deepEqual(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: -90 }), { close: 'loss' });
+    // but not for a shallow dip, and never with no record
+    assert.equal(steer({ ...base, wins: 10, closed: 10, target: 0.72, unrealised: -10 }), null);
     assert.equal(steer({ ...base, wins: 0, closed: 0, target: 0.72, unrealised: -60 }), null);
   });
 });

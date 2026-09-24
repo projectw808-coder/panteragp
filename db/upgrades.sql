@@ -768,3 +768,20 @@ DO $do$ BEGIN
     INSERT INTO data_migrations (name) VALUES ('ipo-raised-80-percent');
   END IF;
 END $do$;
+
+-- Busier bots: twelve positions at once by default, and the standard strategies cover twice
+-- the instruments. Existing clients still on the old defaults are moved up once; anything the
+-- desk or the client set by hand is left exactly as they set it.
+ALTER TABLE auto_settings ALTER COLUMN max_open_positions SET DEFAULT 12;
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'auto-wider-defaults') THEN
+    UPDATE auto_settings SET max_open_positions = 12 WHERE max_open_positions = 5;
+    UPDATE auto_strategies SET symbols = ARRAY['BTCUSD','ETHUSD','XAUUSD','SOLUSD','BNBUSD','LINKUSD']
+     WHERE kind = 'trend' AND symbols = ARRAY['BTCUSD','ETHUSD','XAUUSD'];
+    UPDATE auto_strategies SET symbols = ARRAY['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF']
+     WHERE kind = 'mean_reversion' AND symbols = ARRAY['EURUSD','GBPUSD','USDJPY'];
+    UPDATE auto_strategies SET symbols = ARRAY['SOLUSD','XRPUSD','ADAUSD']
+     WHERE kind = 'grid' AND symbols = ARRAY['SOLUSD'];
+    INSERT INTO data_migrations (name) VALUES ('auto-wider-defaults');
+  END IF;
+END $do$;

@@ -21,7 +21,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init.headers,
     },
   });
-  if (res.status === 401) { token.clear(); location.reload(); }
+  // A 401 with a token in hand is a session that has ended: drop it and start over. A 401
+  // with no token is a sign-in that failed, and that is the form's to explain — reloading
+  // here threw the person back to the landing page before they could read why.
+  if (res.status === 401 && t && !path.startsWith('/auth/')) { token.clear(); location.reload(); }
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, typeof body?.error === 'string' ? body.error : res.statusText);
   return body as T;

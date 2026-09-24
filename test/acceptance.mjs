@@ -67,6 +67,12 @@ const unique = (prefix) => `${prefix}+${Date.now()}-${++seq}@example.com`;
 
 await step('bad password is rejected', async () =>
   assert.equal(await status('/auth/login', { method: 'POST', body: { email: 'admin@local.test', password: 'wrongpassword', as: 'staff' } }), 401));
+await step('a sign-in under the wrong tab is told which tab, and a wrong password is not', async () => {
+  const wrongTab = await get('/auth/login', { method: 'POST', body: { email: 'admin@local.test', password: 'devpassword', as: 'client' } });
+  assert.match(wrongTab.error, /staff account/i);
+  const wrongPassword = await get('/auth/login', { method: 'POST', body: { email: 'admin@local.test', password: 'wrongpassword', as: 'client' } });
+  assert.match(wrongPassword.error, /wrong email or password/i, 'a wrong password says nothing about which accounts exist');
+});
 await step('no token is 401', async () => assert.equal(await status('/clients'), 401));
 await step('admin identity round-trips', async () => {
   const me = await get('/me', { token: A });
@@ -2190,6 +2196,7 @@ await step('a pass places only what it can justify, and everything it places is 
 });
 await step("risk controls are the client's to set, within bounds", async () => {
   assert.equal(await status('/me/auto-trader/settings', { token: T, method: 'PATCH', body: { risk_per_trade: 50 } }), 400);
+  assert.equal((await get('/me/auto-trader', { token: T })).settings.max_open_positions, 12, 'twelve at once by default');
   const d = await get('/me/auto-trader/settings', { token: T, method: 'PATCH', body: { risk_per_trade: 0.5, max_open_positions: 2 } });
   assert.equal(d.settings.risk_per_trade, 0.5);
   assert.equal(d.settings.max_open_positions, 2);
