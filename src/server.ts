@@ -26,7 +26,7 @@ import {
   accruableDays, allocation, effectiveStatus, group as ipoGroup, settlement, type Status as IpoStatus,
 } from './ipo.ts';
 import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
-import { articlePage, indexPage, sitemap, type ArticleCard } from './blog-page.ts';
+import { articlePage, indexPage, sitemap, type ArticleCard, type Topic } from './blog-page.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -6476,10 +6476,18 @@ app.get('/articles/:slug', async (req: any, reply) => {
 // hits the database for every crawler.
 const html = (reply: any) => reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60');
 
+/** The tags across everything live, most used first, for the index's topic row. */
+async function liveTopics(): Promise<Topic[]> {
+  const { rows } = await pool.query<Topic>(
+    `SELECT t AS tag, count(*)::int AS n FROM articles, unnest(tags) AS t
+      WHERE unpublished_at IS NULL GROUP BY t ORDER BY n DESC, t LIMIT 10`);
+  return rows;
+}
+
 app.get('/blog', async (req: any, reply) => {
   const q = listQuery.parse(req.query);
-  const list = await liveArticles(q);
-  return html(reply).send(indexPage({ ...list, publicUrl: publicUrl() }));
+  const [list, topics] = await Promise.all([liveArticles(q), liveTopics()]);
+  return html(reply).send(indexPage({ ...list, tag: q.tag, topics, publicUrl: publicUrl() }));
 });
 app.get('/blog/:slug', async (req: any, reply) => {
   const slug = String(req.params.slug).toLowerCase();
@@ -6487,7 +6495,8 @@ app.get('/blog/:slug', async (req: any, reply) => {
     ? await pool.query('SELECT * FROM articles WHERE slug = $1 AND unpublished_at IS NULL', [slug])
     : { rows: [] as any[] };
   if (!row) {
-    return html(reply).code(404).send(indexPage({ ...await liveArticles({ page: 1 }), publicUrl: publicUrl() }));
+    const [list, topics] = await Promise.all([liveArticles({ page: 1 }), liveTopics()]);
+    return html(reply).code(404).send(indexPage({ ...list, topics, publicUrl: publicUrl() }));
   }
   const { rows: more } = await pool.query(
     `SELECT ${CARD} FROM articles WHERE unpublished_at IS NULL AND slug <> $1 ORDER BY published_at DESC LIMIT 3`, [slug]);

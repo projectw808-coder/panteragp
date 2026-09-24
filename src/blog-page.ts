@@ -124,9 +124,42 @@ h1{font-size:52px;margin:0 0 20px}
 .card h3{font-size:19px;margin:0;letter-spacing:-.022em;line-height:1.2;font-weight:500}
 .card p{margin:0;color:var(--ink-soft);font-size:14px;line-height:1.45;flex:1}
 .card .f{display:flex;justify-content:space-between;color:var(--ink-soft);font-size:12px}
-.index{padding:56px 0 24px}
-.index p.lead{color:var(--ink-soft);font-size:17px;max-width:60ch;margin:14px 0 0}
+.index{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:32px;padding:64px 0 28px;border-bottom:1px solid var(--ink)}
+.index p.lead{color:var(--ink-soft);font-size:17px;line-height:1.45;max-width:56ch;margin:14px 0 0}
+.masthead{display:flex;gap:28px;margin:0;text-transform:none;letter-spacing:.04em;font-size:12px}
+.masthead div{display:flex;flex-direction:column;gap:6px}
+.masthead dt{color:var(--ink-soft);letter-spacing:.16em;text-transform:uppercase;font-size:10px}
+.masthead dd{margin:0;color:var(--ink)}
+.topics{display:flex;flex-wrap:wrap;gap:8px;padding:18px 0 0}
+.topics a{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;border:1px solid rgba(25,5,1,.22);color:var(--ink);transition:border-color .18s var(--ease),background .18s var(--ease),color .18s var(--ease)}
+.topics a i{font-style:normal;color:var(--ink-soft)}
+.topics a:hover{border-color:var(--ink)}
+.topics a.on{background:var(--ink);border-color:var(--ink);color:var(--canvas)}
+.topics a.on i{color:var(--ember)}
+.num{color:var(--ember-ink);margin-right:10px}
+.feature{display:grid;grid-template-columns:7fr 5fr;gap:0;margin:40px 0 0;border:1px solid var(--ink);color:inherit}
+.feature-img{position:relative;min-height:460px;background:var(--stage);overflow:hidden;border-right:1px solid var(--ink)}
+.feature-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform 1.2s var(--ease)}
+.feature:hover .feature-img img{transform:scale(1.025)}
+.feature-img.empty::before{content:"";position:absolute;inset:0;background:radial-gradient(60% 70% at 50% 110%,rgba(255,120,23,.42),transparent 70%)}
+.feature-text{display:flex;flex-direction:column;justify-content:center;gap:18px;padding:40px 40px 40px 44px;background:var(--vellum)}
+.eyebrow-row{display:flex;gap:12px;align-items:center;color:var(--ink-soft)}
+.eyebrow-row .k{color:var(--ember-ink)}
+.eyebrow-row .sep{color:var(--mist)}
+.feature-text h2{font-size:38px;margin:0;line-height:1.08}
+.feature-text p{margin:0;color:var(--ink-soft);font-size:17px;line-height:1.5}
+.feature-meta{display:flex;flex-wrap:wrap;gap:18px;color:var(--ink-soft)}
+.feature-text .btn-line{align-self:flex-start;margin-top:6px}
+.feature:hover .btn-line{background:var(--ember);color:var(--graphite)}
+.latest{padding:56px 0 0}
+.section-head{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+.section-head .rule{flex:1;height:1px;background:var(--ink);opacity:.25}
+.soon{border:1px dashed rgba(25,5,1,.3);padding:34px 36px;color:var(--ink-soft);font-size:16px;line-height:1.5}
+.soon p{margin:8px 0 0;max-width:50ch}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.rise{animation:rise .6s var(--ease) both}
 .empty-state{border:1px solid var(--ink);padding:40px;text-align:center;color:var(--ink-soft);margin:40px 0 80px}
+.empty-state a{color:var(--ember-ink);text-decoration:underline;text-underline-offset:3px}
 .pager{display:flex;justify-content:space-between;padding:28px 0 80px}
 .cta{background:var(--stage);color:var(--vellum);padding:72px 32px;text-align:center;position:relative;overflow:hidden}
 .cta::before{content:"";position:absolute;inset:0;background:radial-gradient(50% 60% at 50% 120%,rgba(255,120,23,.35),transparent 70%)}
@@ -135,8 +168,8 @@ h1{font-size:52px;margin:0 0 20px}
 .cta p{color:var(--pebble);margin:0 0 28px}
 footer{background:var(--stage);color:var(--mist);padding:24px 32px;border-top:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px}
 footer a:hover{color:var(--ember)}
-@media(prefers-reduced-motion:reduce){*{transition:none!important}}
-@media(max-width:820px){nav{padding:14px 16px}nav .links{display:none}.wrap,header.art,.hero,.body,.disc{padding-left:16px;padding-right:16px}h1{font-size:34px}.cards{grid-template-columns:1fr}.hero .img{height:240px}.more h2,.index h1{font-size:26px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media(max-width:820px){nav{padding:14px 16px}nav .links{display:none}.wrap,header.art,.hero,.body,.disc{padding-left:16px;padding-right:16px}h1{font-size:34px}.cards{grid-template-columns:1fr}.hero .img{height:240px}.more h2,.index h1{font-size:26px}.index{grid-template-columns:1fr;padding-top:40px}.masthead{flex-wrap:wrap;gap:18px}.feature{grid-template-columns:1fr}.feature-img{min-height:240px;border-right:0;border-bottom:1px solid var(--ink)}.feature-text{padding:24px 20px}.feature-text h2{font-size:28px}}
 `;
 
 function layout(o: {
@@ -184,39 +217,93 @@ ${o.body}
 </html>`;
 }
 
-function card(a: ArticleCard) {
+function card(a: ArticleCard, num?: string, i = 0) {
   const kicker = a.tags[0] ?? 'Insights';
-  return `<a class="card" href="/blog/${esc(a.slug)}">
+  return `<a class="card rise" style="animation-delay:${Math.min(i, 8) * 60}ms" href="/blog/${esc(a.slug)}">
   <div class="thumb${a.cover_url ? '' : ' empty'}">${a.cover_url ? `<img src="${esc(a.cover_url)}" alt="" loading="lazy">` : ''}</div>
-  <span class="k mono">${esc(kicker)}</span>
+  <span class="k mono">${num ? `<span class="num">${num}</span>` : ''}${esc(kicker)}</span>
   <h3>${esc(a.title)}</h3>
   <p>${esc(a.excerpt ?? '')}</p>
   <div class="f mono"><span><time datetime="${esc(a.published_at)}">${day(a.published_at)}</time></span><span>${a.read_minutes} min</span></div>
 </a>`;
 }
 
-/** The Insights index: every live article, newest first, a page at a time. */
-export function indexPage(o: { articles: ArticleCard[]; page: number; pages: number; publicUrl: string }) {
+export type Topic = { tag: string; n: number };
+
+/** The newest piece, set large: the one thing a reader arriving today should see first. */
+function featured(a: ArticleCard) {
+  const kicker = a.tags[0] ?? 'Insights';
+  return `<a class="feature rise" href="/blog/${esc(a.slug)}">
+  <div class="feature-img${a.cover_url ? '' : ' empty'}">${a.cover_url ? `<img src="${esc(a.cover_url)}" alt="" fetchpriority="high">` : ''}</div>
+  <div class="feature-text">
+    <div class="eyebrow-row mono"><span class="num">01</span><span class="k">${esc(kicker)}</span><span class="sep">/</span><span>Latest</span></div>
+    <h2 class="display">${esc(a.title)}</h2>
+    ${a.excerpt ? `<p>${esc(a.excerpt)}</p>` : ''}
+    <div class="feature-meta mono"><span>${BYLINE}</span><span><time datetime="${esc(a.published_at)}">${day(a.published_at)}</time></span><span>${a.read_minutes} min read</span></div>
+    <span class="btn-line">Read the article</span>
+  </div>
+</a>`;
+}
+
+/**
+ * The Insights index: the newest article set large, the rest in a numbered grid, and the
+ * topics across everything live as a row of filters. Numbered because the whole product
+ * numbers things — the nav rail, the section heads — and an index that counts its
+ * entries reads as a table of contents rather than a feed.
+ */
+export function indexPage(o: { articles: ArticleCard[]; page: number; pages: number; publicUrl: string; tag?: string; topics?: Topic[] }) {
   const canonical = `${o.publicUrl}/blog${o.page > 1 ? `?page=${o.page}` : ''}`;
-  const list = o.articles.length
-    ? `<div class="cards">${o.articles.map(card).join('\n')}</div>`
-    : '<div class="empty-state">Nothing published yet. The first article lands here.</div>';
+  const topics = o.topics ?? [];
+  const filtered = !!o.tag;
+  const lead = !filtered && o.page === 1 ? o.articles[0] : undefined;
+  const rest = lead ? o.articles.slice(1) : o.articles;
+  const offset = (o.page - 1) * 12 + (lead ? 2 : 1);
+  const numbered = (a: ArticleCard, i: number) => card(a, String(offset + i).padStart(2, '0'), i);
+
+  const topicRow = topics.length ? `<nav class="topics mono" aria-label="Topics">
+  <a href="/blog"${filtered ? '' : ' class="on" aria-current="page"'}>All</a>
+  ${topics.map((t) => `<a href="/blog?tag=${encodeURIComponent(t.tag)}"${o.tag === t.tag ? ' class="on" aria-current="page"' : ''}>${esc(t.tag)}<i>${t.n}</i></a>`).join('\n  ')}
+</nav>` : '';
+
+  let body: string;
+  if (!o.articles.length) {
+    body = filtered
+      ? `<div class="empty-state">Nothing under <strong>${esc(o.tag!)}</strong> yet. <a href="/blog">Every article</a></div>`
+      : '<div class="empty-state">Nothing published yet. The first article lands here.</div>';
+  } else {
+    const grid = rest.length
+      ? `<section class="latest">
+  <div class="section-head"><span class="mono" style="color:var(--ember-ink)">${lead ? 'More from the desk' : filtered ? `Under ${esc(o.tag!)}` : 'Older'}</span><span class="mono rule"></span></div>
+  <div class="cards">${rest.map(numbered).join('\n')}</div>
+</section>`
+      : lead ? `<section class="latest"><div class="soon"><span class="mono" style="color:var(--ember-ink)">More on the way</span><p>The desk publishes most days. The next piece takes the slot below.</p></div></section>` : '';
+    body = `${lead ? featured(lead) : ''}${grid}`;
+  }
   const pager = o.pages > 1 ? `<div class="pager mono">
-  <span>${o.page > 1 ? `<a class="btn-line" href="/blog?page=${o.page - 1}">Newer</a>` : ''}</span>
+  <span>${o.page > 1 ? `<a class="btn-line" href="/blog?page=${o.page - 1}${filtered ? `&tag=${encodeURIComponent(o.tag!)}` : ''}">Newer</a>` : ''}</span>
   <span style="align-self:center;color:var(--ink-soft)">Page ${o.page} of ${o.pages}</span>
-  <span>${o.page < o.pages ? `<a class="btn-line" href="/blog?page=${o.page + 1}">Older</a>` : ''}</span>
+  <span>${o.page < o.pages ? `<a class="btn-line" href="/blog?page=${o.page + 1}${filtered ? `&tag=${encodeURIComponent(o.tag!)}` : ''}">Older</a>` : ''}</span>
 </div>` : '<div style="height:80px"></div>';
+  const total = topics.reduce((a, t) => Math.max(a, t.n), o.articles.length);
   return layout({
-    title: 'Insights — Pantera GP',
+    title: filtered ? `${o.tag} — Insights — Pantera GP` : 'Insights — Pantera GP',
     description: 'Market commentary and platform notes from the Pantera GP desk.',
     canonical, publicUrl: o.publicUrl, nav: 'insights',
     body: `<main class="wrap">
-  <div class="index">
-    <span class="mono" style="color:var(--ember-ink)">Insights</span>
-    <h1 class="display">What the desk is reading</h1>
-    <p class="lead">Market commentary and platform notes, written for the people who trade here. A new piece most days.</p>
-  </div>
-  ${list}
+  <header class="index">
+    <div>
+      <span class="mono" style="color:var(--ember-ink)">Insights</span>
+      <h1 class="display">What the desk is reading</h1>
+      <p class="lead">Market commentary and platform notes, written for the people who trade here. A new piece most days.</p>
+    </div>
+    <dl class="masthead mono">
+      <div><dt>Published</dt><dd>${total} ${total === 1 ? 'article' : 'articles'}</dd></div>
+      <div><dt>Written by</dt><dd>${BYLINE}</dd></div>
+      ${o.articles[0] ? `<div><dt>Latest</dt><dd><time datetime="${esc(o.articles[0].published_at)}">${day(o.articles[0].published_at)}</time></dd></div>` : ''}
+    </dl>
+  </header>
+  ${topicRow}
+  ${body}
   ${pager}
 </main>`,
   });
@@ -271,7 +358,7 @@ export function articlePage(o: { article: Article; more: ArticleCard[]; publicUr
 <p class="disc">${DISCLAIMER}</p>
 ${o.more.length ? `<section class="wrap more">
   <div class="head"><div><span class="mono" style="color:var(--ember-ink)">More from Insights</span><h2 class="display">Recent articles</h2></div><a class="btn-line" href="/blog">All articles</a></div>
-  <div class="cards">${o.more.map(card).join('\n')}</div>
+  <div class="cards">${o.more.map((m, i) => card(m, undefined, i)).join('\n')}</div>
 </section>` : '<div style="height:60px"></div>'}`,
   });
 }
