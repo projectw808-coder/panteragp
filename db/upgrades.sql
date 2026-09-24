@@ -785,3 +785,57 @@ DO $do$ BEGIN
     INSERT INTO data_migrations (name) VALUES ('auto-wider-defaults');
   END IF;
 END $do$;
+
+-- ------------------------------------------------------------------- articles
+-- Posts that arrive from bunzy, the content service that writes for search, and are kept
+-- here so the site owns what it publishes. Keyed on the slug: the service assigns it once
+-- and never changes it, so a published and an updated delivery are the same upsert, and a
+-- redelivery cannot make a second copy. An unpublish keeps the row and sets unpublished_at,
+-- so the piece can come back with its history if it is published again.
+CREATE TABLE IF NOT EXISTS articles (
+  slug             text PRIMARY KEY,
+  title            text NOT NULL,
+  excerpt          text,
+  html             text NOT NULL,             -- cleaned on arrival; rendered as stored
+  markdown         text,
+  cover_url        text,
+  tags             text[] NOT NULL DEFAULT '{}',
+  read_minutes     int NOT NULL DEFAULT 1,
+  author_name      text,                      -- kept, never shown: the byline is the desk's
+  canonical_url    text,
+  meta_title       text,
+  meta_description text,
+  og_image_url     text,
+  json_ld          jsonb,
+  key_takeaways    jsonb NOT NULL DEFAULT '[]',
+  faq              jsonb NOT NULL DEFAULT '[]',
+  raw              jsonb NOT NULL,            -- the delivery as received, for remapping later
+  published_at     timestamptz NOT NULL,
+  unpublished_at   timestamptz,
+  source_updated_at timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS articles_live_idx ON articles (published_at DESC) WHERE unpublished_at IS NULL;
+
+-- Every delivery the receiver saw, test ones included, so the desk can see what arrived and
+-- what became of it. The delivery id is unique: the same delivery arriving twice is a replay,
+-- and a replay is acknowledged and ignored rather than applied again.
+CREATE TABLE IF NOT EXISTS article_deliveries (
+  id          bigserial PRIMARY KEY,
+  delivery_id text UNIQUE,
+  event_type  text NOT NULL,
+  slug        text,
+  test        boolean NOT NULL DEFAULT false,
+  status      text NOT NULL DEFAULT 'received'
+              CHECK (status IN ('received','applied','ignored','failed')),
+  error       text,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  settled_at  timestamptz
+);
+
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'articles_touch') THEN
+    CREATE TRIGGER articles_touch BEFORE UPDATE ON articles FOR EACH ROW EXECUTE FUNCTION touch();
+  END IF;
+END $do$;

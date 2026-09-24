@@ -189,6 +189,11 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                 {label}
               </button>
             ))}
+            {/* A real link, not a scroll: the articles are served as their own pages. */}
+            <a href="/blog"
+              className="focus-ring font-mono text-[11px] font-medium tracking-[0.16em] text-pebble uppercase transition-colors hover:text-ember-ink">
+              Insights
+            </a>
           </div>
           <div className="ml-auto flex items-center gap-4">
             <button onClick={onSignIn}
@@ -485,16 +490,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             </div>
             {[
               ['Platform', [['Capabilities', 'platform'], ['The engine', 'engine'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
-              ['Trust', [['Security & audit', 'security'], ['Back to top', 'top']]],
+              ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
             ].map(([heading, links]) => (
               <div key={heading as string}>
                 <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
                 <ul className="mt-4 space-y-2">
                   {(links as [string, string][]).map(([label, id]) => (
                     <li key={id}>
-                      <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">
-                        {label}
-                      </button>
+                      {id.startsWith('/')
+                        ? <a href={id} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</a>
+                        : <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</button>}
                     </li>
                   ))}
                 </ul>

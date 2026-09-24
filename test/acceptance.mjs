@@ -2250,6 +2250,102 @@ await step('the kill switch closes everything, cancels everything, and stops', a
   assert.ok(d.log.some((l) => /Kill switch/.test(l.message)));
 });
 
+console.log('\nPhase 9 — articles from bunzy');
+// The receiver is signed with a secret the API reads from its environment; the run needs
+// the same one to sign what it sends. Without it the phase cannot prove anything, so it
+// says so and moves on rather than failing on a machine that has no receiver configured.
+const WEBHOOK = process.env.BUNZY_WEBHOOK_SECRET;
+if (!WEBHOOK) {
+  console.log('  --  skipped: set BUNZY_WEBHOOK_SECRET to the value the API is running with');
+} else {
+  const { createHmac, randomUUID } = await import('node:crypto');
+  const deliver = (body, { secret = WEBHOOK, signature, bearer } = {}) => {
+    const raw = JSON.stringify(body);
+    return fetch(`${B}/webhooks/bunzy`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-bunzy-signature': signature ?? 'sha256=' + createHmac('sha256', secret).update(raw).digest('hex'),
+        ...(bearer === undefined ? {} : { authorization: bearer }),
+      },
+      body: raw,
+    });
+  };
+  const slug = `acceptance-${Date.now()}`;
+  const article = (title, extra = {}) => ({
+    slug, title, excerpt: 'A short standfirst.',
+    html: `<h1>${title}</h1><p>Body text.</p><script>alert(1)</script><p onclick="x()">More <a href="javascript:x()">here</a>.</p>`,
+    tags: ['Markets'], readingMinutes: 3, author: { name: 'Jane Doe' },
+    publishedAt: '2026-09-24T06:00:00.000Z',
+    seo: { metaTitle: `${title} | Insights`, jsonLd: { '@context': 'https://schema.org', '@type': 'BlogPosting', headline: title } },
+    ...extra,
+  });
+  const envelope = (event_type, a, over = {}) =>
+    ({ event_type, timestamp: new Date().toISOString(), delivery_id: randomUUID(), test: false, data: { article: a }, ...over });
+  const settled = async (n = 20) => { for (let i = 0; i < n; i++) await wait(50); };
+
+  await step('a delivery is refused unread unless the signature over the raw body matches', async () => {
+    const body = envelope('article.published', article('Nope'));
+    assert.equal((await deliver(body, { signature: 'sha256=00' })).status, 401);
+    assert.equal((await deliver(body, { secret: 'not-the-secret' })).status, 401);
+    assert.equal((await deliver(body, { bearer: 'Bearer wrong' })).status, 401, 'a bearer that is sent must also be right');
+    assert.equal((await deliver({ ...body, event_type: 'article.liked' })).status, 400, 'an unknown event is named, not applied');
+    await settled(4);
+    assert.equal(await status(`/articles/${slug}`), 404, 'none of that stored anything');
+  });
+  await step('the Test button is acknowledged and never stored', async () => {
+    const r = await deliver(envelope('article.published', article('Sample', { slug: 'sample-post' }), { test: true }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).message, 'Test received');
+    await settled(4);
+    assert.equal(await status('/articles/sample-post'), 404);
+  });
+  const first = envelope('article.published', article('Acceptance article'), {});
+  await step('a published article is acknowledged, stored cleaned, and served with the desk byline', async () => {
+    const r = await deliver(first, { bearer: `Bearer ${WEBHOOK}` });
+    assert.equal(r.status, 200);
+    await settled();
+    const a = await get(`/articles/${slug}`);
+    assert.equal(a.title, 'Acceptance article');
+    assert.equal(a.html, '<p>Body text.</p><p>More <a>here</a>.</p>', 'the heading, the script and the handler are gone');
+    assert.equal(a.read_minutes, 3);
+    assert.ok(!('raw' in a), 'the raw delivery stays in the database');
+    const page = await fetch(`${B}/blog/${slug}`);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /<title>Acceptance article \| Insights<\/title>/);
+    assert.match(html, /Pantera GP Research/);
+    assert.ok(!html.includes('Jane Doe'), 'the byline is the desk, never the service author');
+    assert.match(html, /"@type":"BlogPosting"/, 'the ready-made JSON-LD is on the page');
+    assert.match(await fetch(`${B}/sitemap.xml`).then((r) => r.text()), new RegExp(`/blog/${slug}</loc>`));
+  });
+  await step('the same delivery twice is applied once, and an update is the same upsert', async () => {
+    assert.equal((await (await deliver(first)).json()).message, 'Already received');
+    await deliver(envelope('article.updated', article('Acceptance article, revised', { readingMinutes: 4 })));
+    await settled();
+    const list = await get(`/articles`);
+    assert.equal(list.articles.filter((a) => a.slug === slug).length, 1, 'one row per slug');
+    const a = await get(`/articles/${slug}`);
+    assert.equal(a.title, 'Acceptance article, revised');
+    assert.equal(a.read_minutes, 4);
+  });
+  await step('an unpublish takes the article down everywhere', async () => {
+    await deliver(envelope('article.unpublished', { slug }));
+    await settled();
+    assert.equal(await status(`/articles/${slug}`), 404);
+    assert.equal((await fetch(`${B}/blog/${slug}`)).status, 404);
+    assert.ok(!(await fetch(`${B}/sitemap.xml`).then((r) => r.text())).includes(`/blog/${slug}<`));
+  });
+  await step('the desk can see what arrived and what became of it; nobody else can', async () => {
+    const seen = await get('/admin/articles', { token: A });
+    assert.equal(seen.configured, true);
+    const mine = seen.deliveries.filter((d) => d.slug === slug);
+    assert.deepEqual(mine.map((d) => d.status).sort(), ['applied', 'applied', 'applied'], 'published, updated, unpublished');
+    assert.equal(await status('/admin/articles', { token: T }), 403);
+    assert.equal(await status('/admin/articles'), 401);
+  });
+}
+
 console.log('\nCross-cutting');
 await step('a token for a deleted subject is unauthorised, not a crash', async () => {
   const forged = await forge({ kind: 'client', role: 'trader' }, '00000000-0000-0000-0000-000000000000');
@@ -2278,4 +2374,4 @@ await step('the trader sees no CRM, the client record is its own', async () => {
   assert.equal(await status(`/clients/${client.id}`, { token: T }), 200);
 });
 
-console.log(`\n${passed} checks passed across all eight phases.\n`);
+console.log(`\n${passed} checks passed across all nine phases.\n`);

@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 139 acceptance checks against the running stack
+    npm run test:e2e # 145 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -623,6 +623,53 @@ and nowhere else, the fields by their exact names, the stream as a field rather 
 the unsubscribe headers on list mail and their absence on a one-to-one message — and about
 what the desk reads back when Postmark refuses, which is Postmark's reason and never the
 token.
+
+## Insights: articles from bunzy
+
+The public articles at `/blog` are written and published by [bunzy](https://bunzy.io), a
+content service that writes for search, and delivered to this API by webhook. The site keeps
+its own copy: `articles` is keyed on the slug bunzy assigns once and never changes, so a
+published and an updated delivery are the same upsert, a redelivery cannot make a second
+copy, and an unpublish sets `unpublished_at` rather than deleting anything. The delivery as
+received is kept in `raw`, so a field this side does not read yet can be mapped later
+without asking for it again.
+
+**The receiver** is `POST /api/webhooks/bunzy`. It has no login; it is guarded by the
+signature bunzy sends in `X-Bunzy-Signature`, an HMAC-SHA256 over the raw request body
+under the secret in `BUNZY_WEBHOOK_SECRET`. The JSON parser keeps the bytes as sent for
+exactly this — a re-serialised body would never match — and the comparison is constant
+time. A delivery that does not verify is answered 401 and never parsed; with the secret
+unset the receiver answers 503 to everything rather than becoming an open one. The bearer
+bunzy also sends is checked when present. Then:
+
+- `test: true` (the Test button) is acknowledged with 200 and never stored.
+- The delivery id is unique in `article_deliveries`, so the same delivery arriving twice is
+  acknowledged and ignored — the receiver is idempotent, not just the upsert.
+- bunzy allows ten seconds and never retries, so the delivery is acknowledged as soon as
+  its row exists and applied on the next tick. What became of it is written back to that
+  row (`applied`, `ignored`, `failed` with the error), and `GET /api/admin/articles` shows
+  the desk the last fifty.
+- The HTML is cleaned once on the way in, through an allow-list of the elements an article
+  is made of: scripts, styles, frames, forms, event handlers and `javascript:` targets do
+  not survive, a heading that repeats the title is dropped, and the page keeps one h1.
+  `markdown` is the fallback when a delivery carries only that.
+
+**The pages** are rendered on the server as plain HTML, not by the app, because the
+articles exist to be found and the app's first response is an empty div. `GET /blog` lists
+what is live, `GET /blog/<slug>` is the article with its meta tags, canonical URL, Open
+Graph image and bunzy's ready-made JSON-LD in a script tag, `GET /sitemap.xml` lists every
+live article and `GET /robots.txt` points at it. The byline is always *Pantera GP
+Research*; the author bunzy names is kept in the row and never shown. The same articles
+are at `GET /api/articles` and `GET /api/articles/<slug>` as JSON for anything that
+renders its own. Cover images are linked from bunzy's CDN rather than copied in.
+
+**Setting it up:** in bunzy choose *API Webhook*, give it
+`https://www.pntgp.xyz/api/webhooks/bunzy`, and put the signing secret it shows into
+Railway as `BUNZY_WEBHOOK_SECRET`. Press *Test*; the desk's `/api/admin/articles` shows
+the delivery as `ignored` with `test: true`, and bunzy's page shows a 200. Publish
+something and it is at `/blog/<slug>` within a second. Locally, `npm run test:e2e` signs
+its own deliveries with the `BUNZY_WEBHOOK_SECRET` in `.env` and skips the phase when it
+is unset.
 
 ## The auto trader
 

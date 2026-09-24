@@ -25,6 +25,8 @@ import { RULES, subscriptionFlags, toCSV, volumeFlags, withdrawalFlags, type Fla
 import {
   accruableDays, allocation, effectiveStatus, group as ipoGroup, settlement, type Status as IpoStatus,
 } from './ipo.ts';
+import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
+import { articlePage, indexPage, sitemap, type ArticleCard } from './blog-page.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -121,8 +123,12 @@ app.setErrorHandler((err, _req, reply) => {
 
 // Plenty of clients set content-type: application/json on a bodyless DELETE. Fastify
 // rejects that with a 400 by default; treat an empty body as no body.
-app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+// The bytes are also kept as sent, because a signed webhook is verified over exactly those
+// and a re-serialised body would never match. On the raw request, beside the /api marker.
+type RawBodied = { rawBody?: string };
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
   try {
+    (req.raw as RawBodied).rawBody = body as string;
     done(null, body ? JSON.parse(body as string) : undefined);
   } catch (err) {
     done(err as Error, undefined);
@@ -6294,6 +6300,195 @@ app.post('/clients/:id/email', { preHandler: auth('crm:write') }, async (req: an
   if (!out.ok) return reply.code(502).send({ error: out.error });
   return { ok: true, to: client.email };
 });
+
+// ------------------------------------------------------------------- articles
+//
+// Posts written and published by bunzy, a content service that writes for search, kept in
+// this database and served from this origin as the public Insights pages. The receiver is
+// the only way an article gets in: nobody on the desk writes one here, and nothing a client
+// sends touches them.
+//
+// Three rules the service sets and this side keeps. Every delivery is signed over its raw
+// bytes and is checked before it is read — an unsigned or mis-signed delivery is answered
+// 401 and never parsed. A delivery is acknowledged within the service's ten seconds and
+// applied afterwards, because the service does not retry: an article whose delivery times
+// out is simply lost, and a database write should never be what loses it. And a delivery
+// is applied once: the delivery id is unique in article_deliveries, so the same delivery
+// arriving twice is acknowledged and ignored.
+//
+// ponytail: cover images are linked from the service's CDN rather than copied into
+//   uploads. They render either way; copy them in if the service ever goes away.
+
+const bunzySecret = () => process.env.BUNZY_WEBHOOK_SECRET?.trim() || undefined;
+const publicUrl = () => (process.env.PUBLIC_URL?.trim() || `http://localhost:${process.env.PORT ?? 3000}`).replace(/\/+$/, '');
+const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
+
+const CARD = 'slug, title, excerpt, cover_url, tags, read_minutes, published_at';
+const cardOf = (r: any): ArticleCard => ({ ...r, published_at: iso(r.published_at)! });
+const articleOf = (r: any): Article => ({
+  ...r,
+  published_at: iso(r.published_at)!,
+  updated_at: iso(r.source_updated_at),
+  key_takeaways: Array.isArray(r.key_takeaways) ? r.key_takeaways : [],
+  faq: Array.isArray(r.faq) ? r.faq : [],
+});
+const PAGE = 12;
+
+/** Live articles, newest first, optionally under one tag. */
+async function liveArticles(opts: { tag?: string; page: number }) {
+  const where = ['unpublished_at IS NULL'];
+  const params: unknown[] = [];
+  if (opts.tag) { params.push(opts.tag); where.push(`$${params.length} = ANY (tags)`); }
+  const w = where.join(' AND ');
+  const { rows: [{ n }] } = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM articles WHERE ${w}`, params);
+  const pages = Math.max(1, Math.ceil(n / PAGE));
+  const page = Math.min(Math.max(1, opts.page), pages);
+  const { rows } = await pool.query(
+    `SELECT ${CARD} FROM articles WHERE ${w} ORDER BY published_at DESC, slug LIMIT ${PAGE} OFFSET ${(page - 1) * PAGE}`, params);
+  return { articles: rows.map(cardOf), page, pages, total: n };
+}
+
+/** The delivery, applied after it was acknowledged. Its row records what became of it. */
+async function applyDelivery(id: number, d: Delivery, raw: unknown) {
+  try {
+    const status = await tx('bunzy', async (c) => {
+      if (d.event === 'article.unpublished') {
+        const r = await c.query('UPDATE articles SET unpublished_at = now() WHERE slug = $1 AND unpublished_at IS NULL', [d.slug]);
+        return r.rowCount ? 'applied' : 'ignored';
+      }
+      const a = d.article!;
+      await c.query(
+        `INSERT INTO articles (slug, title, excerpt, html, markdown, cover_url, tags, read_minutes, author_name,
+                               canonical_url, meta_title, meta_description, og_image_url, json_ld, key_takeaways, faq,
+                               raw, published_at, source_updated_at, unpublished_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NULL)
+         ON CONFLICT (slug) DO UPDATE SET
+           title = EXCLUDED.title, excerpt = EXCLUDED.excerpt, html = EXCLUDED.html, markdown = EXCLUDED.markdown,
+           cover_url = EXCLUDED.cover_url, tags = EXCLUDED.tags, read_minutes = EXCLUDED.read_minutes,
+           author_name = EXCLUDED.author_name, canonical_url = EXCLUDED.canonical_url, meta_title = EXCLUDED.meta_title,
+           meta_description = EXCLUDED.meta_description, og_image_url = EXCLUDED.og_image_url, json_ld = EXCLUDED.json_ld,
+           key_takeaways = EXCLUDED.key_takeaways, faq = EXCLUDED.faq, raw = EXCLUDED.raw,
+           published_at = EXCLUDED.published_at, source_updated_at = EXCLUDED.source_updated_at, unpublished_at = NULL`,
+        [a.slug, a.title, a.excerpt, a.html, a.markdown, a.cover_url, a.tags, a.read_minutes, a.author_name,
+          a.canonical_url, a.meta_title, a.meta_description, a.og_image_url,
+          a.json_ld == null ? null : JSON.stringify(a.json_ld), JSON.stringify(a.key_takeaways), JSON.stringify(a.faq),
+          JSON.stringify(raw), a.published_at, a.updated_at]);
+      return 'applied';
+    });
+    await pool.query('UPDATE article_deliveries SET status = $2, settled_at = now() WHERE id = $1', [id, status]);
+    app.log.info({ event: d.event, slug: d.slug, status }, 'article delivery applied');
+  } catch (err) {
+    app.log.error({ err, event: d.event, slug: d.slug }, 'article delivery failed');
+    await pool.query('UPDATE article_deliveries SET status = $2, error = $3, settled_at = now() WHERE id = $1',
+      [id, 'failed', String((err as Error).message ?? err).slice(0, 500)]).catch(() => {});
+  }
+}
+
+/**
+ * bunzy's receiver. Unauthenticated in the app's sense — the service has no login — and
+ * guarded instead by the signature over the raw body, which is why the JSON parser keeps
+ * those bytes on the request. The bearer the service also sends is checked when present;
+ * the signature is what admits a delivery, because a bearer alone proves nothing about
+ * the body it came with.
+ */
+app.post('/webhooks/bunzy', async (req: any, reply) => {
+  const secret = bunzySecret();
+  if (!secret) return reply.code(503).send({ error: 'the receiver is not configured: set BUNZY_WEBHOOK_SECRET' });
+  const raw = (req.raw as RawBodied).rawBody;
+  if (typeof raw !== 'string') return reply.code(415).send({ error: 'send application/json' });
+  if (!signatureMatches(raw, req.headers['x-bunzy-signature'], secret)) {
+    return reply.code(401).send({ error: 'invalid signature' });
+  }
+  if (req.headers.authorization && !bearerMatches(req.headers.authorization, secret)) {
+    return reply.code(401).send({ error: 'invalid bearer' });
+  }
+  let d: Delivery;
+  try {
+    d = parseDelivery(req.body);
+  } catch (err) {
+    return reply.code(400).send({ error: (err as Error).message });
+  }
+  // The Test button's synthetic article: logged so the desk can see the wiring works,
+  // never stored as a post.
+  if (d.test) {
+    await pool.query(
+      `INSERT INTO article_deliveries (delivery_id, event_type, slug, test, status, settled_at)
+       VALUES ($1,$2,$3,true,'ignored',now()) ON CONFLICT (delivery_id) DO NOTHING`,
+      [d.delivery_id, d.event, d.slug]);
+    return { message: 'Test received' };
+  }
+  const { rows: [row] } = await pool.query<{ id: number }>(
+    `INSERT INTO article_deliveries (delivery_id, event_type, slug) VALUES ($1,$2,$3)
+     ON CONFLICT (delivery_id) DO NOTHING RETURNING id`,
+    [d.delivery_id, d.event, d.slug]);
+  if (!row) return { message: 'Already received' };
+  // Acknowledge, then apply: the write is quick, but the service's clock is the one that
+  // matters and a slow database must not cost an article.
+  reply.send({ message: 'Received' });
+  setImmediate(() => { void applyDelivery(row.id, d, req.body); });
+  return reply;
+});
+
+/** The desk's view of the receiver: whether it is configured, what arrived, what stuck. */
+app.get('/admin/articles', { preHandler: auth('admin') }, async () => {
+  const [{ rows: articles }, { rows: deliveries }, { rows: [count] }] = await Promise.all([
+    pool.query('SELECT slug, title, published_at, unpublished_at, updated_at FROM articles ORDER BY published_at DESC LIMIT 100'),
+    pool.query('SELECT id, delivery_id, event_type, slug, test, status, error, received_at, settled_at FROM article_deliveries ORDER BY id DESC LIMIT 50'),
+    pool.query<{ live: number }>('SELECT count(*)::int AS live FROM articles WHERE unpublished_at IS NULL'),
+  ]);
+  return {
+    configured: !!bunzySecret(),
+    endpoint: `${publicUrl()}/api/webhooks/bunzy`,
+    live: count!.live,
+    articles, deliveries,
+  };
+});
+
+const listQuery = z.object({ page: z.coerce.number().int().min(1).default(1), tag: z.string().max(60).optional() });
+
+// The same articles as JSON, for the mobile client or anything else that renders its own.
+app.get('/articles', async (req: any) => liveArticles(listQuery.parse(req.query)));
+app.get('/articles/:slug', async (req: any, reply) => {
+  const slug = String(req.params.slug).toLowerCase();
+  if (!SLUG.test(slug)) return reply.code(404).send({ error: 'not found' });
+  const { rows: [row] } = await pool.query('SELECT * FROM articles WHERE slug = $1 AND unpublished_at IS NULL', [slug]);
+  if (!row) return reply.code(404).send({ error: 'not found' });
+  const { raw: _raw, ...rest } = row;
+  return articleOf(rest);
+});
+
+// The pages themselves. Cached briefly at the edge and in the browser: an article changes
+// when the service says so, and a minute's staleness is nothing against a page load that
+// hits the database for every crawler.
+const html = (reply: any) => reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60');
+
+app.get('/blog', async (req: any, reply) => {
+  const q = listQuery.parse(req.query);
+  const list = await liveArticles(q);
+  return html(reply).send(indexPage({ ...list, publicUrl: publicUrl() }));
+});
+app.get('/blog/:slug', async (req: any, reply) => {
+  const slug = String(req.params.slug).toLowerCase();
+  const { rows: [row] } = SLUG.test(slug)
+    ? await pool.query('SELECT * FROM articles WHERE slug = $1 AND unpublished_at IS NULL', [slug])
+    : { rows: [] as any[] };
+  if (!row) {
+    return html(reply).code(404).send(indexPage({ ...await liveArticles({ page: 1 }), publicUrl: publicUrl() }));
+  }
+  const { rows: more } = await pool.query(
+    `SELECT ${CARD} FROM articles WHERE unpublished_at IS NULL AND slug <> $1 ORDER BY published_at DESC LIMIT 3`, [slug]);
+  return html(reply).send(articlePage({ article: articleOf(row), more: more.map(cardOf), publicUrl: publicUrl() }));
+});
+app.get('/sitemap.xml', async (_req, reply) => {
+  const { rows } = await pool.query('SELECT slug, published_at, source_updated_at FROM articles WHERE unpublished_at IS NULL ORDER BY published_at DESC');
+  return reply.type('application/xml; charset=utf-8').header('cache-control', 'public, max-age=600').send(sitemap({
+    publicUrl: publicUrl(),
+    articles: rows.map((r) => ({ slug: r.slug, published_at: iso(r.published_at)!, updated_at: iso(r.source_updated_at) })),
+  }));
+});
+app.get('/robots.txt', async (_req, reply) =>
+  reply.type('text/plain; charset=utf-8').header('cache-control', 'public, max-age=600')
+    .send(`User-agent: *\nAllow: /\nSitemap: ${publicUrl()}/sitemap.xml\n`));
 
 if (process.argv[1]?.endsWith('server.ts')) {
   // Refuse to start misconfigured, rather than serving 500s at the login screen.

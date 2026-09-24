@@ -49,7 +49,10 @@ export function App() {
   const [authed, setAuthed] = useState(!!token.get());
   const [dark, setDark] = useDarkMode();
   // What a visitor with no session sees: the public page first, the forms on request.
-  const [gate, setGate] = useState<'landing' | 'signin' | 'register'>('landing');
+  // The public Insights pages are served outside the app and link back as /#signin and
+  // /#register, so a visitor arriving from an article lands on the form they asked for.
+  const [gate, setGate] = useState<'landing' | 'signin' | 'register'>(() =>
+    location.hash === '#signin' ? 'signin' : location.hash === '#register' ? 'register' : 'landing');
 
   if (authed) {
     return <Shell dark={dark} setDark={setDark} onLogout={() => { token.clear(); setAuthed(false); setGate('landing'); }} />;
