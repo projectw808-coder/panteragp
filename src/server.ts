@@ -3831,7 +3831,11 @@ async function autoTickClient(clientId: string) {
   }
 
   // Exits the strategies decide themselves. The stop and the target are the book's job.
+  // Anything closed in this pass is remembered, because the closed list above was read
+  // before the pass began and the cooldown below would otherwise let the same symbol be
+  // re-entered a moment after it was banked.
   let holding = [...open];
+  const justClosed = new Set<string>();
   for (const t of open) {
     const s = strategies.find((x) => x.id === t.strategy_id);
     if (!s) continue;
@@ -3839,6 +3843,7 @@ async function autoTickClient(clientId: string) {
     if (sig.action === 'exit') {
       await autoClose(clientId, account.id, t, sig.reason);
       holding = holding.filter((h) => h.id !== t.id);
+      justClosed.add(`${t.strategy_id}:${t.symbol}`);
     }
   }
   // The desk's steer: when a target win rate is set, close ahead-of-risk trades as wins while
@@ -3857,6 +3862,7 @@ async function autoTickClient(clientId: string) {
       if (!s) continue;
       await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
       holding = holding.filter((h) => h.id !== t.id);
+      justClosed.add(`${t.strategy_id}:${t.symbol}`);
       count++; if (s.close === 'win') wins++;
     }
   }
@@ -3875,6 +3881,7 @@ async function autoTickClient(clientId: string) {
         return;
       }
       if (holding.some((t) => t.strategy_id === s.id && t.symbol === symbol)) continue;
+      if (justClosed.has(`${s.id}:${symbol}`)) continue;
       const lastExit = closed.find((c) => c.strategy_id === s.id && c.symbol === symbol);
       if (lastExit && Date.now() - new Date(lastExit.exit_at).getTime() < AUTO_COOLDOWN_MS) continue;
       if (!await knownSymbol(symbol)) continue;
