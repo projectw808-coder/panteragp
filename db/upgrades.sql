@@ -749,3 +749,22 @@ ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS target_win_rate numeric(5,4)
 -- The desk can start a client's record again: trades closed before this moment are kept in
 -- the book and on the balance, but the win rate and the equity curve count from here.
 ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS record_since timestamptz;
+
+-- One-off data changes, each run exactly once. The rest of this file is idempotent by
+-- construction; a change to existing rows is not, so it is recorded here by name and skipped
+-- on every deploy after the one that applied it.
+CREATE TABLE IF NOT EXISTS data_migrations (
+  name       text PRIMARY KEY,
+  applied_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- The desk asked for every offering on the shelf to show 80% of its target raised. Set once,
+-- through the same baseline the admin panel edits, so the desk can change it afterwards and
+-- a later deploy will not put it back.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-raised-80-percent') THEN
+    UPDATE ipos SET raised_baseline = round(target_amount * 0.8, 2)
+     WHERE status <> 'cancelled';
+    INSERT INTO data_migrations (name) VALUES ('ipo-raised-80-percent');
+  END IF;
+END $do$;
