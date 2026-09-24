@@ -3694,6 +3694,7 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
 const AUTO_COOLDOWN_MS = 45_000;          // after an exit, no re-entry in that symbol for a while
 const AUTO_BANK_R = 0.3;                  // ahead by this much of its risk, a trade is a win worth banking
+const AUTO_STOP_WIDEN = 1.5;              // the strategy's stop distance, widened this much at entry
 const AUTO_MIN_AGE_MS = 15_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
@@ -3955,11 +3956,12 @@ async function autoTickClient(clientId: string) {
         stratCap - stratNotional,
         balance * settings.max_leverage - totalNotional(),
       );
-      // The stop sits three times as far out as the strategy asked, because the record is
-      // steered: a loser is held for the price to come back rather than cut, and a tight
-      // stop would take that decision away from the steer. Risk per trade is still the
-      // budget — it is measured against this stop, so the position is smaller for it.
-      const stop = round8(sig.side === 'long' ? price - (price - sig.stop) * 3 : price + (sig.stop - price) * 3);
+      // The stop sits half again as far out as the strategy asked, so the steer has room to
+      // hold a loser for the price to come back. It sat three times as far out, and that
+      // cut every strategy's reward against its risk to a third — a target hit was worth
+      // 0.02R against a stop worth 1R, which no win rate makes up. Risk per trade is still
+      // the budget: it is measured against this stop, so the position is sized for it.
+      const stop = round8(sig.side === 'long' ? price - (price - sig.stop) * AUTO_STOP_WIDEN : price + (sig.stop - price) * AUTO_STOP_WIDEN);
       const riskUsd = Math.min(equity * settings.risk_per_trade / 100, riskLeft());
       if (!(riskUsd > 0)) {
         await autoWarn(clientId, 'riskfull', `The open stops already add up to today's loss budget · no new entries until one closes`);

@@ -726,8 +726,9 @@ record would still sit three points above target with the loss counted — so th
 in a band above the target rather than climbing toward a hundred, and the slot is freed. A
 strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the
 book's stop takes a loss. The client's page shows these limits and cannot change them; the
-desk sets them from the record. Bot entries carry a stop three times as wide as the strategy asked,
-so the book rarely takes that decision away, and risk per trade is measured against that wider
+desk sets them from the record. Bot entries carry a stop half again as wide as the strategy asked,
+so the steer has room to hold a loser; it was three times as wide, which cut every strategy's
+reward against its risk to a third and no win rate made that up. Risk per trade is measured against that wider
 stop, so the position is smaller for it. The target is returned on the desk route and nowhere
 else: the client's page never carries it, and setting it lands on the CRM timeline and the
 audit log, not on the bot's own log, which the client reads.
