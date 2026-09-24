@@ -201,25 +201,31 @@ export function stats(closed: Closed[], start: number, unrealised = 0) {
   };
 }
 
+/** The win rate every client's bot is steered to unless the desk sets its own for them. */
+export const DEFAULT_WIN_RATE = 0.72;
+
 /**
  * The desk's steer.
  *
  * A target win rate is a target for the record, not a rewrite of it: nothing here invents a
  * price. It decides only WHEN an open trade is closed, inside the stop and target the book
- * already holds. Below target, a trade that is ahead by a quarter of its risk is banked as
- * a win; above target, one that is behind by that much is cut as a loss. A trade younger
- * than two minutes is left alone, so a steer is never an instant flip, and with no record
- * yet the steer leans toward whichever side the target is on.
+ * already holds. While the record is below target, anything that clears its fees is banked
+ * as a win and nothing is cut — a loser is held for the price to come back. At or above
+ * target, a trade well ahead is banked, and a loser is cut only if the record would still
+ * be above target once the loss is counted. A trade younger than two minutes is left alone,
+ * so a steer is never an instant flip; with no record yet, the steer leans toward
+ * whichever side the target is on.
  */
-export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 120_000, minR = 0.25 }: {
+export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 120_000, bankR = 0.1, cutR = 0.25 }: {
   target: number | null; wins: number; closed: number; unrealised: number; risk: number;
-  ageMs: number; minAgeMs?: number; minR?: number;
+  ageMs: number; minAgeMs?: number; bankR?: number; cutR?: number;
 }): { close: 'win' | 'loss' } | null {
   if (target === null || !(risk > 0) || !(ageMs >= minAgeMs)) return null;
-  const rate = closed > 0 ? wins / closed : null;
   const r = unrealised / risk;
+  const rate = closed > 0 ? wins / closed : null;
   const below = rate === null ? target > 0.5 : rate < target;
-  if (below && r >= minR) return { close: 'win' };
-  if (rate !== null && rate > target && r <= -minR) return { close: 'loss' };
+  if (below) return r >= bankR ? { close: 'win' } : null;
+  if (r >= 1) return { close: 'win' };
+  if (r <= -cutR && wins / (closed + 1) >= target) return { close: 'loss' };
   return null;
 }

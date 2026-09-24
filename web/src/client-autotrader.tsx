@@ -18,7 +18,7 @@ type Dash = {
   kpis: { equity: number; allocated: number; realised: number; unrealised: number; win_rate: number | null; wins: number; losses: number; closed: number; open: number; today_net: number };
   positions: { id: string; symbol: string; side: string; qty: number; entry: number; mark: number; unrealised: number; strategy: string | null }[];
   log: { id: number; at: string; level: string; message: string }[];
-  desk: { target_win_rate: number | null };
+  desk: { target_win_rate: number; default: number; custom: boolean };
 };
 
 const money = (n: number, sign = false) => {
@@ -45,7 +45,8 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
   if (!d) return null;
   const k = d.kpis;
   const actual = k.win_rate === null ? null : Math.round(k.win_rate * 100);
-  const goal = d.desk.target_win_rate === null ? null : Math.round(d.desk.target_win_rate * 100);
+  const goal = Math.round(d.desk.target_win_rate * 100);
+  const dflt = Math.round(d.desk.default * 100);
 
   return (
     <div className={`${card} space-y-3`}>
@@ -78,12 +79,12 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
           <span className="metric-label">Target win rate</span>
           {target === null ? (
             <>
-              <span className="font-mono">{goal === null ? 'not set · runs unsteered' : `${goal}%`}</span>
-              {goal !== null && actual !== null && (
+              <span className="font-mono">{goal}%{d.desk.custom ? ' · set for this client' : ' · the default'}</span>
+              {actual !== null && (
                 <span className={`font-mono ${actual >= goal ? 'text-up' : 'text-ember-ink'}`}>· actual {actual}%</span>
               )}
-              <button type="button" className="ml-auto text-ember-ink" onClick={() => setTarget(goal === null ? '60' : String(goal))}>{goal === null ? 'Set' : 'Change'}</button>
-              {goal !== null && <button type="button" className="text-slate-ink" disabled={busy} onClick={() => patch({ target_win_rate: null })}>Clear</button>}
+              <button type="button" className="ml-auto text-ember-ink" onClick={() => setTarget(String(goal))}>Change</button>
+              {d.desk.custom && <button type="button" className="text-slate-ink" disabled={busy} onClick={() => patch({ target_win_rate: null })}>Back to the {dflt}% default</button>}
             </>
           ) : (
             <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); patch({ target_win_rate: Number(target) / 100 }).then(() => setTarget(null)); }}>
@@ -95,8 +96,8 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
             </form>
           )}
           <p className="basis-full text-[11px] leading-relaxed text-slate-ink">
-            The engine steers real exits toward the target: it banks a trade that is ahead by a quarter of its risk while the record is below,
-            and cuts one that is behind by that much while it is above. Never shown to the client.
+            Every client's bot is steered to {dflt}% unless a rate is set here for them. Below target, the engine banks any trade that clears its fees and holds losers for the
+            price to come back; above it, a loss is taken only if the record stays above target afterwards. Never shown to the client.
           </p>
         </div>
       )}

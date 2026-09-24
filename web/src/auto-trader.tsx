@@ -60,13 +60,6 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-d
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 const toneOf = (n: number) => (n >= 0.005 ? 'text-up' : n <= -0.005 ? 'text-down' : '');
 
-function sinceText(iso: string | null) {
-  if (!iso) return '';
-  const ms = Date.now() - new Date(iso).getTime();
-  const d = Math.floor(ms / 86_400_000); const h = Math.floor((ms % 86_400_000) / 3_600_000);
-  return `since ${day(iso)} · ${d}d ${String(h).padStart(2, '0')}h`;
-}
-
 export function AutoTraderView() {
   const dash = useApi<Dash>('/me/auto-trader');
   const [busy, setBusy] = useState(false);
@@ -93,9 +86,6 @@ export function AutoTraderView() {
         <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
           d.on ? 'chip-up text-up' : 'bg-bone text-slate-ink dark:bg-white/10'}`}>
           {d.on ? (halted ? 'halted' : 'running') : 'stopped'}
-        </span>
-        <span className="font-mono text-[11px] text-slate-ink">
-          {d.on && d.since ? `${sinceText(d.since)} · ` : ''}{d.strategies.length} strategies · {money(k.allocated)} allocated
         </span>
         <span className="ml-auto" />
         <button type="button" role="switch" aria-checked={d.on} aria-label="Auto trader" disabled={busy}

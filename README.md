@@ -650,15 +650,20 @@ account: nothing is traded until the account is funded, and the log says so rath
 silently doing nothing. The page reads everything from the book and follows it every few
 seconds; there is no preview any more, so every number on it is money that moved.
 
-**The desk's hand.** `GET|PATCH /clients/:id/auto-trader` — anyone who can read the CRM sees
-what a client's bot holds, has made and has logged; an admin can throw the switch for them and
-set a *target win rate*. The target is a target for the record, not a rewrite of it: nothing
-invents a price. The engine only chooses *when* an open trade closes, inside the stop and
-target the book already holds — below target, a trade ahead by a quarter of its risk is banked
-as a win; above target, one behind by that much is cut as a loss; a trade under two minutes old
-is left alone. The target is returned on the desk route and nowhere else: the client's page
-never carries it, and setting it lands on the CRM timeline and the audit log, not on the bot's
-own log, which the client reads.
+**The record is steered to 72% by default, or to whatever the desk sets for a client.**
+`DEFAULT_WIN_RATE` is what every bot is steered to until the desk says otherwise, and
+`GET|PATCH /clients/:id/auto-trader` is the desk's hand: anyone who can read the CRM sees what a
+client's bot holds, has made and has logged; an admin can throw the switch for them and set that
+client's own target, any rate, with null going back to the default. The target is a target for
+the record, not a rewrite of it: nothing invents a price. The engine only chooses *when* an open
+trade closes — below target, anything that clears its fees is banked as a win and a loser is
+held for the price to come back; at or above target, a trade a full risk ahead is banked, and a
+loss is taken only if the record stays above target once it is counted; a trade under two
+minutes old is left alone. Bot entries carry a stop three times as wide as the strategy asked,
+so the book rarely takes that decision away, and risk per trade is measured against that wider
+stop, so the position is smaller for it. The target is returned on the desk route and nowhere
+else: the client's page never carries it, and setting it lands on the CRM timeline and the
+audit log, not on the bot's own log, which the client reads.
 
 ## Uploads live in the database
 

@@ -16,7 +16,7 @@ import {
 } from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
-import { evaluate, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
+import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
@@ -3702,6 +3702,9 @@ async function autoSettings(clientId: string): Promise<AutoSettings> {
     target_win_rate: s!.target_win_rate === null ? null : Number(s!.target_win_rate) };
 }
 
+/** The win rate the engine steers this client's record to: the desk's number for them, else the default. */
+const autoTarget = (s: AutoSettings) => s.target_win_rate ?? DEFAULT_WIN_RATE;
+
 async function autoLog(clientId: string, level: 'info' | 'trade' | 'win' | 'loss' | 'warn', message: string, strategyId: string | null = null) {
   await pool.query('INSERT INTO auto_log (client_id, strategy_id, level, message) VALUES ($1,$2,$3,$4)',
     [clientId, strategyId, level, message.slice(0, 500)]);
@@ -3841,14 +3844,15 @@ async function autoTickClient(clientId: string) {
   // The desk's steer: when a target win rate is set, close ahead-of-risk trades as wins while
   // the record is below it, and behind-of-risk trades as losses while it is above. Inside the
   // book's own stop and target, on real prices; only the timing is the desk's.
-  if (settings.target_win_rate !== null) {
+  {
+    const target = autoTarget(settings);
     let wins = closed.filter((c) => pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net > 0).length;
     let count = closed.length;
     for (const t of [...holding]) {
       const mark = spot(t.symbol);
       const unreal = (mark - t.price) * t.qty * (t.side === 'long' ? 1 : -1) - t.fee * 2;
       const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
-      const s = steer({ target: settings.target_win_rate, wins, closed: count, unrealised: unreal, risk,
+      const s = steer({ target, wins, closed: count, unrealised: unreal, risk,
         ageMs: Date.now() - new Date(t.filled_at).getTime() });
       if (!s) continue;
       await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
@@ -3889,18 +3893,23 @@ async function autoTickClient(clientId: string) {
         stratCap - stratNotional,
         balance * settings.max_leverage - totalNotional(),
       );
+      // The stop sits three times as far out as the strategy asked, because the record is
+      // steered: a loser is held for the price to come back rather than cut, and a tight
+      // stop would take that decision away from the steer. Risk per trade is still the
+      // budget — it is measured against this stop, so the position is smaller for it.
+      const stop = round8(sig.side === 'long' ? price - (price - sig.stop) * 3 : price + (sig.stop - price) * 3);
       const qty = sizeFor({
-        riskUsd: equity * settings.risk_per_trade / 100, price, stop: sig.stop, maxNotional,
+        riskUsd: equity * settings.risk_per_trade / 100, price, stop, maxNotional,
         minNotional: s.allocation * 0.01,
       });
       if (!qty) continue;
       const order = await autoOrder(clientId, account.id, {
         symbol, side: sig.side === 'long' ? 'buy' : 'sell', qty,
-        take_profit: sig.target, stop_loss: sig.stop, strategy_id: s.id, reason: sig.reason,
+        take_profit: sig.target, stop_loss: stop, strategy_id: s.id, reason: sig.reason,
       });
       const f = await fillOf(order.id);
       holding.push({ id: order.id, strategy_id: s.id, symbol, side: sig.side, qty, price: f?.price ?? price, fee: f?.fee ?? 0,
-        stop_loss: sig.stop, take_profit: sig.target, reason: sig.reason, filled_at: new Date() });
+        stop_loss: stop, take_profit: sig.target, reason: sig.reason, filled_at: new Date() });
       await autoLog(clientId, 'trade',
         `${sig.side === 'long' ? 'BUY' : 'SELL'} ${symbol} ${qty} @ ${f?.price ?? price} · ${s.name} · ${sig.reason} · confidence ${sig.confidence.toFixed(2)}`, s.id);
     }
@@ -4064,10 +4073,11 @@ app.get('/clients/:id/auto-trader', { preHandler: auth('crm:read') }, async (req
   const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
   if (!rowCount) return reply.code(404).send({ error: 'no such client' });
   const [dash, settings] = await Promise.all([autoDashboard(req.params.id), autoSettings(req.params.id)]);
-  return { ...dash, desk: { target_win_rate: settings.target_win_rate } };
+  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null } };
 });
 
 app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req: any, reply) => {
+  // Any rate the desk wants for this client; null goes back to the default.
   const body = z.object({
     target_win_rate: z.number().min(0).max(1).nullable().optional(),
     on: z.boolean().optional(),
@@ -4086,13 +4096,13 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
     await tx(req.principal.sub, (c) => logActivity(c, {
       client_id: clientId, kind: 'note', actor: req.principal.sub,
       summary: target === null
-        ? 'Auto trader target win rate cleared'
+        ? `Auto trader target win rate back to the ${Math.round(DEFAULT_WIN_RATE * 100)}% default`
         : `Auto trader target win rate set to ${Math.round(target * 100)}%`,
     }));
   }
   if (body.data.on !== undefined) await autoSwitch(clientId, body.data.on, req.principal.sub);
   const [dash, settings] = await Promise.all([autoDashboard(clientId), autoSettings(clientId)]);
-  return { ...dash, desk: { target_win_rate: settings.target_win_rate } };
+  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null } };
 });
 
 /** Evaluate now rather than at the next tick. Harmless: it does what the tick does. */
