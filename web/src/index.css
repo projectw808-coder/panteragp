@@ -358,15 +358,18 @@
    a border round it — the tracking is what makes a label look struck rather than typed. */
 .landing .btn-line,
 .landing .btn-fill {
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  /* Bold, 13px, tracked wide: the same weight as the menu, so a button reads as an action
+     and not as a caption that happens to have a border. */
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
+  line-height: 1;
 }
 .landing .btn-line {
-  border: 1px solid var(--color-ember);
+  border: 2px solid var(--color-ember);
   color: var(--color-ember);
-  padding: 10px 20px;
-  font-weight: 500;
+  padding: 12px 22px;
   transition: background-color 0.2s, color 0.2s;
 }
 /* Black on ember, not white: white on ember measures 2.64:1 and this is the page's main
@@ -377,8 +380,7 @@
   border: 1px solid var(--color-ember);
   background: var(--color-ember);
   color: var(--color-graphite);
-  padding: 10px 20px;
-  font-weight: 500;
+  padding: 13px 23px;
   transition: filter 0.2s;
 }
 .landing .btn-fill:hover { filter: brightness(0.94); }
