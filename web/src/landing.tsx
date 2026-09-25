@@ -182,7 +182,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           {/* Set like the marks inside the product rather than like small grey body text.
               Contrast was never the problem — mist reads 7.82:1 on this ground — it was
               12px at almost no tracking, which looks faint whatever colour it is. */}
-          <div className="ml-10 hidden items-center gap-9 lg:flex">
+          <div className="ml-10 hidden items-center gap-9 xl:flex">
             {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
               <button key={id} onClick={() => go(id)} className="nav-link focus-ring">
                 {label}

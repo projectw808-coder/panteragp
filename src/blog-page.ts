@@ -44,15 +44,15 @@ nav.bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16p
 nav .brand{display:flex;align-items:center;gap:8px;font-size:18px}
 nav .brand i{font:500 12px var(--mono);color:var(--ember);font-style:normal}
 nav .links{display:flex;gap:36px;margin-left:40px}
-nav .links a,nav .right a.mono{position:relative;padding:6px 0;font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--vellum);transition:color .18s var(--ease)}
+nav .links a,nav .right a.mono{position:relative;white-space:nowrap;padding:6px 0;font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--vellum);transition:color .18s var(--ease)}
 nav .links a::after,nav .right a.mono::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ember);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
 nav .links a.on{color:var(--ember)}
 nav .links a.on::after,nav .links a:hover::after,nav .right a.mono:hover::after{transform:scaleX(1)}
 nav .links a:hover,nav .right a.mono:hover{color:var(--ember)}
 nav .right{margin-left:auto;display:flex;align-items:center;gap:16px}
-.btn-fill{display:inline-block;background:var(--ember);border:2px solid var(--ember);color:var(--graphite);padding:11px 21px;font:700 13px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;transition:filter .14s var(--ease)}
+.btn-fill{display:inline-block;white-space:nowrap;background:var(--ember);border:2px solid var(--ember);color:var(--graphite);padding:11px 21px;font:700 13px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;transition:filter .14s var(--ease)}
 .btn-fill:hover{filter:brightness(.94)}
-.btn-line{display:inline-block;border:2px solid var(--ember);color:var(--ember);padding:11px 21px;font:700 13px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;transition:background .14s var(--ease),color .14s var(--ease)}
+.btn-line{display:inline-block;white-space:nowrap;border:2px solid var(--ember);color:var(--ember);padding:11px 21px;font:700 13px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;transition:background .14s var(--ease),color .14s var(--ease)}
 .btn-line:hover{background:var(--ember);color:var(--graphite)}
 .wrap{max-width:1200px;margin:0 auto;padding:0 32px}
 .crumb{display:flex;gap:12px;align-items:center;padding:28px 0 0;color:var(--ink-soft)}
