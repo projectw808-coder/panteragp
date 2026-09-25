@@ -32,7 +32,7 @@ type Closed = {
 type Log = { id: number; at: string; level: 'info' | 'trade' | 'win' | 'loss' | 'warn'; message: string };
 type Dash = {
   on: boolean; since: string | null; halted_until: string | null;
-  settings: { risk_per_trade: number; max_daily_loss: number; max_open_positions: number; max_leverage: number };
+  settings: { risk_per_trade: number; max_daily_loss: number | null; daily_profit_target: number | null; max_open_positions: number; max_leverage: number };
   account: { balance: number; currency: string };
   strategies: Strategy[];
   kpis: {
@@ -104,12 +104,6 @@ export function AutoTraderView() {
       </div>
 
       {error && <p role="alert" className={alertBox}>{error}</p>}
-      {halted && (
-        <p className={alertBox}>
-          The daily loss budget was spent, so the bot will not open anything new until tomorrow.
-          Open positions are kept, with their stops and targets, and winners are still banked.
-        </p>
-      )}
       {d.on && !(d.account.balance > 0) && (
         <p className={alertBox}>The account has no balance, so the bot has nothing to trade with. Fund it and the strategies will start.</p>
       )}
@@ -214,7 +208,12 @@ export function AutoTraderView() {
             </div>
             <div className="space-y-2.5 text-xs">
               <Row l="Risk per trade" v={`${d.settings.risk_per_trade}% of bot equity`} />
-              <Row l="Max daily loss" v={`${d.settings.max_daily_loss}% · used ${pct(k.daily_loss_used, 0)}`} bar={k.daily_loss_used} />
+              {d.settings.max_daily_loss !== null && (
+                <Row l="Max daily loss" v={`${d.settings.max_daily_loss}% · used ${pct(k.daily_loss_used, 0)}`} bar={k.daily_loss_used} />
+              )}
+              {d.settings.daily_profit_target !== null && (
+                <Row l="Daily profit target" v={`${d.settings.daily_profit_target}% of bot equity`} />
+              )}
               <Row l="Max open positions" v={`${d.settings.max_open_positions} · ${k.open} open`} bar={k.open / d.settings.max_open_positions} />
               <Row l="Max leverage" v={`${d.settings.max_leverage}×`} />
               <Row l="Re-entry cooldown" v="45 s per instrument" />

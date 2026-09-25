@@ -2222,6 +2222,16 @@ await step("the desk can read a client's bot and set a target win rate the clien
   assert.ok(reset.desk.record_since, 'the record knows when it started');
   assert.equal(reset.kpis.closed, 0, 'nothing closed since');
   assert.equal(reset.halted_until, null, 'a daily halt is lifted with the record');
+  // The day's limits are the desk's: off by default, set per client, and not the client's to touch.
+  assert.equal(reset.desk.max_daily_loss, null, 'no loss budget unless the desk sets one');
+  assert.equal(reset.desk.daily_profit_target, null, 'no profit target unless the desk sets one');
+  const limited = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { settings: { max_daily_loss: 2, daily_profit_target: 4 } } });
+  assert.equal(limited.desk.max_daily_loss, 2);
+  assert.equal(limited.desk.daily_profit_target, 4);
+  assert.equal((await get('/me/auto-trader', { token: T })).settings.daily_profit_target, 4, 'the client sees the limit the desk set');
+  assert.equal(await status('/me/auto-trader/settings', { token: T, method: 'PATCH', body: { max_daily_loss: 10 } }), 400, 'the client cannot set a day limit');
+  const unlimited = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { settings: { max_daily_loss: null } } });
+  assert.equal(unlimited.desk.max_daily_loss, null, 'null turns a limit off');
   assert.equal((await get('/trades', { token: T })).length, fillsBefore, 'not one fill went anywhere');
   // The desk can widen what a strategy covers and how much the bot may carry.
   const wide = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: {

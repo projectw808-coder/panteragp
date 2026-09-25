@@ -3699,8 +3699,10 @@ const AUTO_MIN_AGE_MS = 15_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
 
 type AutoSettings = {
-  client_id: string; risk_per_trade: number; max_daily_loss: number; max_open_positions: number;
+  client_id: string; risk_per_trade: number; max_open_positions: number;
   max_leverage: number; started_at: Date | null; halted_until: string | null;
+  max_daily_loss: number | null;      // the desk's; null is no budget
+  daily_profit_target: number | null; // the desk's; null is no target
   target_win_rate: number | null;   // the desk's; never sent to the client
   record_since: Date | null;        // the desk's too: the record counts from here
 };
@@ -3723,7 +3725,9 @@ async function autoSettings(clientId: string): Promise<AutoSettings> {
   const { rows: [s] } = await pool.query<AutoSettings>(
     `INSERT INTO auto_settings (client_id) VALUES ($1)
      ON CONFLICT (client_id) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [clientId]);
-  return { ...s!, risk_per_trade: Number(s!.risk_per_trade), max_daily_loss: Number(s!.max_daily_loss),
+  return { ...s!, risk_per_trade: Number(s!.risk_per_trade),
+    max_daily_loss: s!.max_daily_loss === null ? null : Number(s!.max_daily_loss),
+    daily_profit_target: s!.daily_profit_target === null ? null : Number(s!.daily_profit_target),
     max_leverage: Number(s!.max_leverage),
     target_win_rate: s!.target_win_rate === null ? null : Number(s!.target_win_rate) };
 }
@@ -3860,18 +3864,25 @@ async function autoTickClient(clientId: string) {
   const todayNet = closed.filter((c) => new Date(c.exit_at) >= today)
     .reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
 
-  // The daily budget: when it is spent, nothing new opens today. What is open stays open,
-  // with the stop and the target the book already holds: this used to close every position
+  // The day's limits, both the desk's and both off unless set: a loss budget and a profit
+  // target. Reaching either means nothing new opens today. What is open stays open, with
+  // the stop and the target the book already holds: the budget used to close every position
   // at once, which turned one bad hour into a dozen realised losses at the worst moment of
   // the day, and a budget that liquidates is a budget that manufactures the loss it was
   // meant to cap. Exits below still run, so a winner is still banked and a stop still bites.
   let halted = settings.halted_until !== null && new Date(settings.halted_until) >= today;
-  const budget = equity > 0 ? equity * settings.max_daily_loss / 100 : 0;
-  if (!halted && budget > 0 && todayNet <= -budget) {
+  const budget = settings.max_daily_loss !== null && equity > 0 ? equity * settings.max_daily_loss / 100 : 0;
+  const goal = settings.daily_profit_target !== null && equity > 0 ? equity * settings.daily_profit_target / 100 : 0;
+  const haltToday = async (why: string) => {
     halted = true;
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     await pool.query('UPDATE auto_settings SET halted_until = $2 WHERE client_id = $1', [clientId, tomorrow.toISOString().slice(0, 10)]);
-    await autoLog(clientId, 'warn', `Daily loss limit reached (${money2(todayNet)} against a ${settings.max_daily_loss}% budget) · no new entries until tomorrow · open positions keep their stops and targets`);
+    await autoLog(clientId, 'warn', `${why} · no new entries until tomorrow · open positions keep their stops and targets`);
+  };
+  if (!halted && budget > 0 && todayNet <= -budget) {
+    await haltToday(`Daily loss limit reached (${money2(todayNet)} against a ${settings.max_daily_loss}% budget)`);
+  } else if (!halted && goal > 0 && todayNet >= goal) {
+    await haltToday(`Daily profit target reached (+${money2(todayNet)} against a ${settings.daily_profit_target}% target)`);
   }
 
   // Exits the strategies decide themselves. The stop and the target are the book's job.
@@ -4046,7 +4057,7 @@ async function autoDashboard(clientId: string) {
     since,
     halted_until: settings.halted_until,
     settings: {
-      risk_per_trade: settings.risk_per_trade, max_daily_loss: settings.max_daily_loss,
+      risk_per_trade: settings.risk_per_trade, max_daily_loss: settings.max_daily_loss, daily_profit_target: settings.daily_profit_target,
       max_open_positions: settings.max_open_positions, max_leverage: settings.max_leverage,
     },
     account: { balance: Number(account.balance), currency: account.currency },
@@ -4061,7 +4072,7 @@ async function autoDashboard(clientId: string) {
       wins: st.wins, losses: st.losses, closed: st.closed, win_rate: st.win_rate,
       profit_factor: st.profit_factor, avg_win_r: st.avg_win_r, avg_loss_r: st.avg_loss_r,
       max_drawdown: st.max_drawdown, drawdown_at: st.drawdown_at, open: open.length,
-      daily_loss_used: (() => { const b = st.equity > 0 ? st.equity * settings.max_daily_loss / 100 : 0; const used = -Math.min(0, todays.reduce((a, { p }) => a + p.net, 0) + unrealised); return b > 0 ? round8(Math.min(1, used / b)) : 0; })(),
+      daily_loss_used: (() => { const b = settings.max_daily_loss !== null && st.equity > 0 ? st.equity * settings.max_daily_loss / 100 : 0; const used = -Math.min(0, todays.reduce((a, { p }) => a + p.net, 0) + unrealised); return b > 0 ? round8(Math.min(1, used / b)) : 0; })(),
     },
     curve: [{ at: since ?? new Date(), equity: round8(allocated) }, ...st.curve],
     positions,
@@ -4137,11 +4148,19 @@ async function autoSetup(clientId: string) {
  * their money. Only an admin can set the target win rate or throw the switch for them, and
  * the target is returned here and nowhere else: the client's own page never carries it.
  */
+/** The desk's side of a client's bot: the target, the record's start, and the day's limits. */
+const deskOf = (settings: AutoSettings) => ({
+  target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null,
+  record_since: settings.record_since,
+  // The day's limits are the desk's alone: off unless set here for this client.
+  max_daily_loss: settings.max_daily_loss, daily_profit_target: settings.daily_profit_target,
+});
+
 app.get('/clients/:id/auto-trader', { preHandler: auth('crm:read') }, async (req: any, reply) => {
   const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
   if (!rowCount) return reply.code(404).send({ error: 'no such client' });
   const [dash, settings] = await Promise.all([autoDashboard(req.params.id), autoSettings(req.params.id)]);
-  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null, record_since: settings.record_since } };
+  return { ...dash, desk: deskOf(settings) };
 });
 
 app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req: any, reply) => {
@@ -4152,7 +4171,7 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
     reset_record: z.literal(true).optional(),
     // The client's own controls, reachable from the desk too: how much the bot may carry,
     // and what each strategy covers.
-    settings: autoSettingsBody.optional(),
+    settings: deskSettingsBody.optional(),
     strategies: z.array(z.object({
       id: z.string().uuid(),
       symbols: z.array(z.string().max(20)).min(1).max(12).optional(),
@@ -4197,7 +4216,7 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
       await tx(req.principal.sub, (c) => c.query(
         `UPDATE auto_settings SET ${entries.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE client_id = $1`,
         [clientId, ...entries.map(([, v]) => v)]));
-      await autoLog(clientId, 'info', `Risk controls changed · ${entries.map(([k, v]) => `${k.replaceAll('_', ' ')} ${v}`).join(' · ')}`);
+      await autoLog(clientId, 'info', `Risk controls changed by the desk · ${entries.map(([k, v]) => `${k.replaceAll('_', ' ')} ${v === null ? 'off' : v}`).join(' · ')}`);
     }
   }
   for (const s of body.data.strategies ?? []) {
@@ -4213,7 +4232,7 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
   }
   if (body.data.on !== undefined) await autoSwitch(clientId, body.data.on, req.principal.sub);
   const [dash, settings] = await Promise.all([autoDashboard(clientId), autoSettings(clientId)]);
-  return { ...dash, desk: { target_win_rate: autoTarget(settings), default: DEFAULT_WIN_RATE, custom: settings.target_win_rate !== null, record_since: settings.record_since } };
+  return { ...dash, desk: deskOf(settings) };
 });
 
 /** Evaluate now rather than at the next tick. Harmless: it does what the tick does. */
@@ -4223,11 +4242,18 @@ app.post('/me/auto-trader/tick', { preHandler: trader }, async (req: any) => {
   return autoDashboard(req.principal.sub);
 });
 
-const autoSettingsBody = z.object({
+// What the client may set: how much the bot carries. The day's limits are not here — a loss
+// budget and a profit target are the desk's to set for a client, and off until it does.
+const autoSettingsFields = {
   risk_per_trade: z.number().min(0.1).max(5).optional(),
-  max_daily_loss: z.number().min(0.5).max(20).optional(),
   max_open_positions: z.number().int().min(1).max(20).optional(),
   max_leverage: z.number().min(1).max(50).optional(),
+};
+const autoSettingsBody = z.object(autoSettingsFields).refine((o) => Object.keys(o).length > 0, 'nothing to change');
+const deskSettingsBody = z.object({
+  ...autoSettingsFields,
+  max_daily_loss: z.number().min(0.5).max(20).nullable().optional(),
+  daily_profit_target: z.number().min(0.1).max(100).nullable().optional(),
 }).refine((o) => Object.keys(o).length > 0, 'nothing to change');
 
 app.patch('/me/auto-trader/settings', { preHandler: trader }, async (req: any, reply) => {

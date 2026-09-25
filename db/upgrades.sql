@@ -839,3 +839,17 @@ DO $do$ BEGIN
     CREATE TRIGGER articles_touch BEFORE UPDATE ON articles FOR EACH ROW EXECUTE FUNCTION touch();
   END IF;
 END $do$;
+
+-- No limits unless the desk sets them. The daily loss budget stops being a default, and a
+-- daily profit target joins it: both are the desk's, per client, and null means off. Every
+-- existing budget is cleared, and with it any halt a budget had imposed.
+ALTER TABLE auto_settings ALTER COLUMN max_daily_loss DROP NOT NULL;
+ALTER TABLE auto_settings ALTER COLUMN max_daily_loss DROP DEFAULT;
+ALTER TABLE auto_settings ADD COLUMN IF NOT EXISTS daily_profit_target numeric(8,4)
+  CHECK (daily_profit_target IS NULL OR (daily_profit_target > 0 AND daily_profit_target <= 100));
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'no-limits-by-default') THEN
+    UPDATE auto_settings SET max_daily_loss = NULL, halted_until = NULL;
+    INSERT INTO data_migrations (name) VALUES ('no-limits-by-default');
+  END IF;
+END $do$;

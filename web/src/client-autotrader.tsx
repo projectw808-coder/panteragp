@@ -18,8 +18,45 @@ type Dash = {
   kpis: { equity: number; allocated: number; realised: number; unrealised: number; win_rate: number | null; wins: number; losses: number; closed: number; open: number; today_net: number };
   positions: { id: string; symbol: string; side: string; qty: number; entry: number; mark: number; unrealised: number; strategy: string | null }[];
   log: { id: number; at: string; level: string; message: string }[];
-  desk: { target_win_rate: number; default: number; custom: boolean; record_since: string | null };
+  desk: {
+    target_win_rate: number; default: number; custom: boolean; record_since: string | null;
+    /** The day's limits, percent of bot equity; null is off. The desk's alone. */
+    max_daily_loss: number | null; daily_profit_target: number | null;
+  };
 };
+
+/**
+ * One of the day's limits: off, or a percentage. Off is a state of its own rather than a
+ * zero, because zero would read as "lose nothing", which is not a budget anyone can trade
+ * inside.
+ */
+function Limit({ label, hint, value, min, max, busy, onSave }: {
+  label: string; hint: string; value: number | null; min: number; max: number; busy: boolean;
+  onSave: (v: number | null) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="metric-label w-36">{label}</span>
+      {draft === null ? (
+        <>
+          <span className="font-mono">{value === null ? 'Off' : `${value}% of bot equity`}</span>
+          <button type="button" className="ml-auto text-ember-ink" onClick={() => setDraft(value === null ? '' : String(value))}>{value === null ? 'Set' : 'Change'}</button>
+          {value !== null && <button type="button" className="text-slate-ink" disabled={busy} onClick={() => onSave(null)}>Turn off</button>}
+        </>
+      ) : (
+        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); onSave(Number(draft)).then(() => setDraft(null)); }}>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} type="number" min={min} max={max} step="0.5" required aria-label={`${label}, percent of bot equity`}
+            className="w-20 rounded border border-pebble bg-transparent px-2 py-1 font-mono dark:border-white/15" />
+          <span className="text-slate-ink">%</span>
+          <button className="rounded-full bg-ember px-3 py-1 font-mono text-[11px] text-graphite" disabled={busy}>Save</button>
+          <button type="button" className="text-slate-ink" onClick={() => setDraft(null)}>Cancel</button>
+        </form>
+      )}
+      <p className="basis-full text-[11px] leading-relaxed text-slate-ink">{hint}</p>
+    </div>
+  );
+}
 
 const money = (n: number, sign = false) => {
   const v = Math.abs(n) < 0.005 ? 0 : n;
@@ -106,6 +143,20 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
             Every client's bot is steered to {dflt}% unless a rate is set here for them. Below target, the engine banks any trade that clears its fees and holds losers for the
             price to come back; above it, a loss is taken only if the record stays above target afterwards. Never shown to the client.
           </p>
+        </div>
+      )}
+
+      {/* The day's limits. Off unless the desk sets them for this client: reaching one stops
+          new entries until tomorrow and leaves what is open with its stops and targets. */}
+      {admin && (
+        <div className="space-y-3 border-t border-pebble pt-3 dark:border-white/10">
+          <span className="metric-label block">Day limits</span>
+          <Limit label="Daily loss limit" value={d.desk.max_daily_loss} min={0.5} max={20} busy={busy}
+            hint="Realised losses today reaching this share of bot equity stop new entries until tomorrow. Open positions keep their stops and targets."
+            onSave={(v) => patch({ settings: { max_daily_loss: v } })} />
+          <Limit label="Daily profit target" value={d.desk.daily_profit_target} min={0.1} max={100} busy={busy}
+            hint="Realised profit today reaching this share of bot equity stops new entries until tomorrow, so a good day is kept."
+            onSave={(v) => patch({ settings: { daily_profit_target: v } })} />
         </div>
       )}
 

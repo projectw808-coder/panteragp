@@ -694,14 +694,17 @@ and the statistics — hit rate, profit factor, average R, the equity curve and 
 peak-to-trough. The engine in `server.ts` is thin: every ten seconds, for each client with the
 switch on, manage exits, honour the budgets, look for entries.
 
-Money is capped four ways. Risk per trade is a percentage of the bot's equity. Notional is
-capped by the strategy's allocation times the leverage ceiling, and by the account. The risk
-every open stop adds up to may not exceed what the day's loss budget has left after today's
-realised losses, so a dozen one-percent positions cannot stack twelve percent of risk against
-a three-percent budget. And that budget, when spent, halts new entries until tomorrow — it
-does not liquidate: open positions keep their stops and targets and winners are still banked,
-because a budget that closed everything at once was manufacturing the loss it existed to cap.
-The kill switch closes everything on demand and switches the bot off. Turning the switch off
+Money is capped by the client's controls and, when the desk sets them, by the day's limits.
+Risk per trade is a percentage of the bot's equity. Notional is capped by the strategy's
+allocation times the leverage ceiling, and by the account. The day's limits are the desk's
+alone and off until set for a client: a daily loss budget and a daily profit target, each a
+percentage of the bot's equity. With a budget set, the risk every open stop adds up to may not
+exceed what it has left after today's realised losses, so a dozen one-percent positions cannot
+stack twelve percent of risk against a three-percent budget. Reaching either limit halts new
+entries until tomorrow — it does not liquidate: open positions keep their stops and targets
+and winners are still banked, because a budget that closed everything at once was
+manufacturing the loss it existed to cap. The kill switch closes everything on demand and
+switches the bot off. Turning the switch off
 alone stops new entries but leaves open positions with their stops and targets, because
 pulling those would leave a position with no exit at all.
 
