@@ -38,7 +38,9 @@ export const STRATEGIES: Record<StrategyKind, { name: string; about: string; sym
     // Crypto and gold, not the majors: a stretch on a quiet pair is worth cents against the
     // spread, and the strategy sat out those trades once it learned to.
     symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD', 'BNBUSD', 'LINKUSD', 'XRPUSD'],
-    share: 0.10,
+    // A token share: fading a twenty-bar stretch on this feed has won half its trades at
+    // 0.3R against 0.5R, which is no edge. Kept for a client who wants it.
+    share: 0.05,
   },
   grid: {
     name: 'Grid',
@@ -46,7 +48,7 @@ export const STRATEGIES: Record<StrategyKind, { name: string; about: string; sym
     // The lead strategy: the feed reverts to its mean by construction, and a level bought
     // below the average and sold back at it is the trade that fits, nine times in ten.
     symbols: ['SOLUSD', 'XRPUSD', 'ADAUSD', 'BTCUSD', 'ETHUSD', 'LINKUSD'],
-    share: 0.35,
+    share: 0.40,
   },
 };
 
