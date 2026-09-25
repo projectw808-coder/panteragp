@@ -725,8 +725,10 @@ client's own target, any rate, with null going back to the default, and set the 
 controls and each strategy's instruments and allocation from the same route. Two things keep
 the steer from costing money, which it did for a morning: a loser is never held past half its
 risk, and the default allocation goes to the strategies that fit the feed — the feed reverts to
-its mean by construction, so Grid and Mean reversion carry it and Trend follower keeps a token
-share. The desk can also
+its mean by construction, so Grid leads with most of the allocation and six instruments,
+Mean reversion follows with a smaller share, and Trend follower keeps a token share. The
+half-risk floor does not apply to a grid level: on this feed waiting through the dip is the
+grid's whole edge, and it wins nine times in ten held to its own stop. The desk can also
 start a client's record again: every fill and every balance movement stays, the win rate and the curve count
 from that moment, and a daily halt spent on the old record is lifted with it. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open

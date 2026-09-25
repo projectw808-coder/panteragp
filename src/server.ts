@@ -3982,7 +3982,11 @@ async function autoTickClient(clientId: string) {
       const unreal = netIfClosed(t, mark);
       const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
       const ageMs = Date.now() - new Date(t.filled_at).getTime();
-      const s = steer({ target, wins, closed: count, unrealised: unreal, risk, ageMs, minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R, floorR: AUTO_CUT_R });
+      // A grid level is held to its own stop: on a feed that reverts to its mean, waiting
+      // through the dip is the whole edge, and cutting at half the risk turned a strategy
+      // that won nine times in ten into one that won six. The floor is for the others.
+      const grid = strategies.find((x) => x.id === t.strategy_id)?.kind === 'grid';
+      const s = steer({ target, wins, closed: count, unrealised: unreal, risk, ageMs, minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R, floorR: grid ? Infinity : AUTO_CUT_R });
       if (!s) continue;
       await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
       holding = holding.filter((h) => h.id !== t.id);
