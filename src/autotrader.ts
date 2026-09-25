@@ -28,19 +28,21 @@ export const STRATEGIES: Record<StrategyKind, { name: string; about: string; sym
     name: 'Trend follower',
     about: 'Follows a moving-average crossover: long while the fast average sits above the slow one, short while it sits below, out when they cross back.',
     symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD', 'SOLUSD', 'BNBUSD', 'LINKUSD'],
-    share: 0.30,
+    // The smallest share: the feed reverts to its mean by construction, and a crossover
+    // strategy on it pays a full stop for every small win. Kept for a client who wants it.
+    share: 0.05,
   },
   mean_reversion: {
     name: 'Mean reversion',
     about: 'Fades a stretch: sells when price runs more than 1.5 standard deviations above its average, buys when it runs below, and exits at the average.',
     symbols: ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'],
-    share: 0.125,
+    share: 0.20,
   },
   grid: {
     name: 'Grid',
     about: 'Buys a set step below the recent average and sells a step above, taking each level back to the average.',
     symbols: ['SOLUSD', 'XRPUSD', 'ADAUSD'],
-    share: 0.075,
+    share: 0.25,
   },
 };
 
@@ -202,31 +204,29 @@ export function stats(closed: Closed[], start: number, unrealised = 0) {
 }
 
 /** The win rate every client's bot is steered to unless the desk sets its own for them. */
-export const DEFAULT_WIN_RATE = 0.72;
+export const DEFAULT_WIN_RATE = 0.85;
 
 /**
  * The desk's steer.
  *
  * A target win rate is a target for the record, not a rewrite of it: nothing here invents a
  * price. It decides only WHEN an open trade is closed, inside the stop and target the book
- * already holds. A trade that has cleared its fees by a sliver of its risk is banked as a
- * win once it is a minute old — while the record is below target, always; above target,
- * still, because a small win banked is a win the record keeps. The steer never cuts a
- * loser: one is held for the price to come back, and only the book's own stop, three
- * times as wide as the strategy asked, can take it. With no record yet, the steer leans
- * toward whichever side the target is on.
+ * already holds. A trade ahead by `bankR` of its risk is banked as a win once it is old
+ * enough — whatever the record says, because a win banked is a win the record keeps. A
+ * loser is held for the price to come back, but never past `floorR` of its risk: the steer
+ * used to hold one to the full stop, and a record that pays 1R for every 0.3R it collects
+ * is a losing record at any win rate. Between the two, a loser is cut early at `cutR` only
+ * when the record would still sit a margin above target with the loss counted, so the rate
+ * settles in a band above the target rather than climbing toward a hundred.
  */
-export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 60_000, bankR = 0.02, cutR = 0.25, cutMargin = 0.03 }: {
+export function steer({ target, wins, closed, unrealised, risk, ageMs, minAgeMs = 60_000, bankR = 0.02, cutR = 0.25, cutMargin = 0.03, floorR = 0.5 }: {
   target: number | null; wins: number; closed: number; unrealised: number; risk: number;
-  ageMs: number; minAgeMs?: number; bankR?: number; cutR?: number; cutMargin?: number;
+  ageMs: number; minAgeMs?: number; bankR?: number; cutR?: number; cutMargin?: number; floorR?: number;
 }): { close: 'win' | 'loss' } | null {
   if (target === null || !(risk > 0) || !(ageMs >= minAgeMs)) return null;
   const r = unrealised / risk;
   if (r >= bankR) return { close: 'win' };
-  // A loser is cut only when the record would still sit a margin above target with the
-  // loss counted — so the rate settles in a band above the target rather than climbing
-  // toward a hundred, and a held slot is freed for the next win. Below that, it is held
-  // for the price to come back; the book's stop is the only other thing that takes one.
+  if (r <= -floorR) return { close: 'loss' };
   if (r <= -cutR && closed > 0 && wins / (closed + 1) >= target + cutMargin) return { close: 'loss' };
   return null;
 }

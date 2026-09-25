@@ -3694,7 +3694,7 @@ app.post('/portfolios/:id/feature', { preHandler: trader }, async (req: any, rep
 const AUTO_TICK_MS = 10_000;              // how often every running bot is evaluated
 const AUTO_COOLDOWN_MS = 45_000;          // after an exit, no re-entry in that symbol for a while
 const AUTO_BANK_R = 0.3;                  // ahead by this much of its risk, a reversal is a reason to leave
-const AUTO_CUT_R = 0.5;                   // behind by this much of its risk, a trade is cut (when not steered)
+const AUTO_CUT_R = 0.5;                   // behind by this much of its risk, a trade is cut, whatever the record
 const AUTO_STOP_WIDEN = 1;                // the strategy's stop distance, as asked for
 const AUTO_MIN_AGE_MS = 15_000;           // and it has to be at least this old
 const AUTO_HISTORY = 60;                  // one-minute candles a strategy reads
@@ -3734,14 +3734,8 @@ async function autoSettings(clientId: string): Promise<AutoSettings> {
 }
 
 /** The win rate the engine steers this client's record to: the desk's number for them, else the default. */
-/**
- * The desk's win-rate steer for this client, or null when it is off — which it is unless the
- * desk turns it on. It used to default to 72% for everyone, and that default is what lost the
- * money: to keep a rate up, the steer banks winners at a third of their risk and holds losers
- * to the full stop, and no strategy survives paying 1R for every 0.3R it collects. Off, the
- * engine manages risk instead: losers are cut at half their risk, winners run to their target.
- */
-const autoTarget = (s: AutoSettings) => s.target_win_rate;
+/** The rate this client's record is steered toward: the desk's, or 72% until it says. */
+const autoTarget = (s: AutoSettings) => s.target_win_rate ?? DEFAULT_WIN_RATE;
 
 async function autoLog(clientId: string, level: 'info' | 'trade' | 'win' | 'loss' | 'warn', message: string, strategyId: string | null = null) {
   await pool.query('INSERT INTO auto_log (client_id, strategy_id, level, message) VALUES ($1,$2,$3,$4)',
@@ -3915,12 +3909,11 @@ async function autoTickClient(clientId: string) {
     holding = holding.filter((h) => h.id !== t.id);
     justClosed.add(`${t.strategy_id}:${t.symbol}`);
   }
-  // Risk management, or the desk's steer. With no target set, a trade behind by half its risk
-  // is cut: the loss is taken at 0.5R rather than at the full stop, and the winner beside it
-  // is left to reach its target, which is the shape of a record that adds up. When the desk
-  // has set a target win rate for this client, the steer runs instead: ahead-of-risk trades
-  // are closed as wins while the record is below it, behind-of-risk trades as losses while it
-  // is above. Either way inside the book's own stop and target, on real prices.
+  // The desk's steer: ahead-of-risk trades are closed as wins, losers are held for the price
+  // to come back but never past half their risk, and cut early while the record sits above
+  // target. Inside the book's own stop and target, on real prices; only the timing is the
+  // desk's. The floor is what this morning taught: held to the full stop, the trend
+  // follower paid 1R seven times for wins of 0.3R, and no rate makes that add up.
   {
     const target = autoTarget(settings);
     let wins = closed.filter((c) => pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net > 0).length;
@@ -3930,9 +3923,7 @@ async function autoTickClient(clientId: string) {
       const unreal = netIfClosed(t, mark);
       const risk = t.stop_loss === null ? 0 : Math.abs(t.price - t.stop_loss) * t.qty;
       const ageMs = Date.now() - new Date(t.filled_at).getTime();
-      const s = target === null
-        ? (risk > 0 && ageMs >= AUTO_MIN_AGE_MS && unreal <= -AUTO_CUT_R * risk ? { close: 'loss' as const } : null)
-        : steer({ target, wins, closed: count, unrealised: unreal, risk, ageMs, minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R });
+      const s = steer({ target, wins, closed: count, unrealised: unreal, risk, ageMs, minAgeMs: AUTO_MIN_AGE_MS, bankR: AUTO_BANK_R, floorR: AUTO_CUT_R });
       if (!s) continue;
       await autoClose(clientId, account.id, t, s.close === 'win' ? 'Take profit' : 'Stop loss');
       holding = holding.filter((h) => h.id !== t.id);
@@ -4205,7 +4196,7 @@ app.patch('/clients/:id/auto-trader', { preHandler: auth('admin') }, async (req:
     await tx(req.principal.sub, (c) => logActivity(c, {
       client_id: clientId, kind: 'note', actor: req.principal.sub,
       summary: target === null
-        ? 'Auto trader win-rate steer switched off by the desk'
+        ? `Auto trader target win rate back to the ${Math.round(DEFAULT_WIN_RATE * 100)}% default`
         : `Auto trader target win rate set to ${Math.round(target * 100)}%`,
     }));
   }

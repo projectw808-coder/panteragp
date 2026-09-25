@@ -82,8 +82,7 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
   if (!d) return null;
   const k = d.kpis;
   const actual = k.win_rate === null ? null : Math.round(k.win_rate * 100);
-  const steered = d.desk.target_win_rate !== null;
-  const goal = Math.round((d.desk.target_win_rate ?? d.desk.default) * 100);
+  const goal = Math.round(d.desk.target_win_rate * 100);
   const dflt = Math.round(d.desk.default * 100);
 
   return (
@@ -121,15 +120,15 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
           record actually is, so the gap is visible rather than assumed closed. */}
       {admin && (
         <div className="flex flex-wrap items-center gap-2 border-t border-pebble pt-3 text-xs dark:border-white/10">
-          <span className="metric-label">Win-rate steer</span>
+          <span className="metric-label">Target win rate</span>
           {target === null ? (
             <>
-              <span className="font-mono">{steered ? `steering to ${goal}%` : 'Off'}</span>
+              <span className="font-mono">{goal}%{d.desk.custom ? ' · set for this client' : ' · the default'}</span>
               {actual !== null && (
-                <span className={`font-mono ${steered && actual < goal ? 'text-ember-ink' : 'text-slate-ink'}`}>· actual {actual}%</span>
+                <span className={`font-mono ${actual >= goal ? 'text-up' : 'text-ember-ink'}`}>· actual {actual}%</span>
               )}
-              <button type="button" className="ml-auto text-ember-ink" onClick={() => setTarget(String(goal))}>{steered ? 'Change' : 'Turn on'}</button>
-              {steered && <button type="button" className="text-slate-ink" disabled={busy} onClick={() => patch({ target_win_rate: null })}>Turn off</button>}
+              <button type="button" className="ml-auto text-ember-ink" onClick={() => setTarget(String(goal))}>Change</button>
+              {d.desk.custom && <button type="button" className="text-slate-ink" disabled={busy} onClick={() => patch({ target_win_rate: null })}>Back to the {dflt}% default</button>}
             </>
           ) : (
             <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); patch({ target_win_rate: Number(target) / 100 }).then(() => setTarget(null)); }}>
@@ -141,8 +140,8 @@ export function ClientAutoTrader({ clientId, admin }: { clientId: string; admin:
             </form>
           )}
           <p className="basis-full text-[11px] leading-relaxed text-slate-ink">
-            Off, the engine manages risk: a trade behind by half its risk is cut there and a winner runs to its target. Steering to a rate ({dflt}% suggested)
-            banks winners early and holds losers for the price to come back, which lifts the win rate and costs money on balance. Never shown to the client.
+            Every client's bot is steered to {dflt}% unless a rate is set here for them: a trade ahead by a third of its risk is banked, a loser is held for the price
+            to come back but never past half its risk, and cut early while the record sits above target. Real trades on real prices; only the timing is the desk's. Never shown to the client.
           </p>
         </div>
       )}

@@ -713,23 +713,22 @@ account: nothing is traded until the account is funded, and the log says so rath
 silently doing nothing. The page reads everything from the book and follows it every few
 seconds; there is no preview any more, so every number on it is money that moved.
 
-**The win-rate steer is off unless the desk turns it on for a client.** It steered every
-bot to 72% by default, and that default is what lost the money: to keep a rate up, the steer
-banks winners at a third of their risk and holds losers to the full stop, and no strategy
-survives paying 1R for every 0.3R it collects — the Test account's trend follower paid it
-seven times in an hour. Off, the engine manages risk instead: a trade behind by half its
-risk is cut there, and a winner runs to its target. `GET|PATCH /clients/:id/auto-trader` is
-the desk's hand: anyone who can read the CRM sees what a client's bot holds, has made and
-has logged; an admin can throw the switch for them, set a target win rate for that client
-(`DEFAULT_WIN_RATE`, 72%, is what the desk's control suggests; null turns the steer off), and
-set the client's risk controls and each strategy's instruments and allocation from the same
-route. The desk can also
+**The record is steered to 85% by default, or to whatever the desk sets for a client.**
+`DEFAULT_WIN_RATE` is what every bot is steered to until the desk says otherwise, and
+`GET|PATCH /clients/:id/auto-trader` is the desk's hand: anyone who can read the CRM sees what a
+client's bot holds, has made and has logged; an admin can throw the switch for them, set that
+client's own target, any rate, with null going back to the default, and set the client's risk
+controls and each strategy's instruments and allocation from the same route. Two things keep
+the steer from costing money, which it did for a morning: a loser is never held past half its
+risk, and the default allocation goes to the strategies that fit the feed — the feed reverts to
+its mean by construction, so Grid and Mean reversion carry it and Trend follower keeps a token
+share. The desk can also
 start a client's record again: every fill and every balance movement stays, the win rate and the curve count
 from that moment, and a daily halt spent on the old record is lifted with it. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open
 trade closes: a trade fifteen seconds old that is ahead by three tenths of its risk after
 fees is banked as a win — not a few cents, which made every win worth nothing against the
-losses; a loser is held for the price to come back, and cut only when the
+losses; a loser is held for the price to come back but cut at half its risk, never the full stop; a loser is held for the price to come back, and cut only when the
 record would still sit three points above target with the loss counted — so the rate settles
 in a band above the target rather than climbing toward a hundred, and the slot is freed. A
 strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the

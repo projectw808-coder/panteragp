@@ -2208,15 +2208,14 @@ await step("risk controls are the client's to set, within bounds", async () => {
 await step("the desk can read a client's bot and set a target win rate the client never sees", async () => {
   const d = await get(`/clients/${client.id}/auto-trader`, { token: A });
   assert.equal(d.on, true);
-  assert.equal(d.desk.target_win_rate, null, 'the steer is off until the desk turns it on');
-  assert.equal(d.desk.default, 0.72, 'and 0.72 is what the control suggests');
+  assert.equal(d.desk.target_win_rate, 0.85, 'the default applies before the desk says anything');
   assert.equal(d.desk.custom, false);
   const set = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: 0.6 } });
   assert.equal(set.desk.target_win_rate, 0.6, 'the desk may set any rate for this client');
   assert.equal(set.desk.custom, true);
   assert.equal(await status(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: 1.5 } }), 400);
   const back = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { target_win_rate: null } });
-  assert.equal(back.desk.target_win_rate, null, 'null turns the steer off again');
+  assert.equal(back.desk.target_win_rate, 0.85, 'null goes back to the default');
   // The record can be started again; the book is untouched.
   const fillsBefore = (await get('/trades', { token: T })).length;
   const reset = await get(`/clients/${client.id}/auto-trader`, { token: A, method: 'PATCH', body: { reset_record: true } });
