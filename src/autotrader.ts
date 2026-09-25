@@ -35,7 +35,9 @@ export const STRATEGIES: Record<StrategyKind, { name: string; about: string; sym
   mean_reversion: {
     name: 'Mean reversion',
     about: 'Fades a stretch: sells when price runs more than 1.5 standard deviations above its average, buys when it runs below, and exits at the average.',
-    symbols: ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'],
+    // Crypto and gold, not the majors: a stretch on a quiet pair is worth cents against the
+    // spread, and the strategy sat out those trades once it learned to.
+    symbols: ['BTCUSD', 'ETHUSD', 'XAUUSD', 'BNBUSD', 'LINKUSD', 'XRPUSD'],
     share: 0.20,
   },
   grid: {
@@ -118,8 +120,14 @@ export function evaluate(kind: StrategyKind, cs: Candle[], open: Direction | nul
     if (open === 'short' && z <= 0) return { action: 'exit', reason: 'Mean reached' };
     if (open) return { action: 'hold', reason: 'reverting' };
     const confidence = Math.min(1, (Math.abs(z) - 1.5) / 1.5 + 0.5);
-    if (z > 1.5) return { action: 'enter', side: 'short', reason: `Stretched ${z.toFixed(1)} sd above average`, confidence, stop: round8(price + dist * 1.5), target: round8(ma) };
-    if (z < -1.5) return { action: 'enter', side: 'long', reason: `Stretched ${Math.abs(z).toFixed(1)} sd below average`, confidence, stop: round8(price - dist * 1.5), target: round8(ma) };
+    // The trade is the distance back to the average, so the stop is set from that distance
+    // and not from the ATR floor: on a quiet pair the floor was sixty times the stretch,
+    // the target was worth 0.01R, and half the "wins" closed a few cents under water once
+    // the spread was paid. A stretch too small to clear the spread is not a trade at all.
+    const stretch = Math.abs(price - ma);
+    if (stretch < price * 0.001) return { action: 'hold', reason: 'stretch too small to pay the spread' };
+    if (z > 1.5) return { action: 'enter', side: 'short', reason: `Stretched ${z.toFixed(1)} sd above average`, confidence, stop: round8(price + stretch * 1.5), target: round8(ma) };
+    if (z < -1.5) return { action: 'enter', side: 'long', reason: `Stretched ${Math.abs(z).toFixed(1)} sd below average`, confidence, stop: round8(price - stretch * 1.5), target: round8(ma) };
     return { action: 'hold', reason: 'within range' };
   }
 

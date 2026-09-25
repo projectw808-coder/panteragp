@@ -2261,6 +2261,24 @@ await step('the kill switch closes everything, cancels everything, and stops', a
   assert.ok(d.log.some((l) => /Kill switch/.test(l.message)));
 });
 
+await step('a client funded in another currency is traded with, after one exchange the timeline records', async () => {
+  const euroEmail = unique('euro');
+  const euro = await get('/clients', { token: A, method: 'POST', body: { name: 'Euro Erin', email: euroEmail, country: 'DE', password: 'devpassword' } });
+  const E = (await login(euroEmail, 'devpassword', 'client')).token;
+  await get(`/clients/${euro.id}/credit`, { token: A, method: 'POST', body: { currency: 'EUR', amount: 9200, note: 'in euros' } });
+  await get('/me/auto-trader', { token: E, method: 'POST', body: { on: true } });
+  await get('/me/auto-trader/tick', { token: E, method: 'POST' });
+  const d = await get('/me/auto-trader', { token: E });
+  assert.ok(d.account.balance > 9000, `the euros are USD now, not a "no balance" warning (${d.account.balance})`);
+  assert.ok(d.strategies.reduce((a, s) => a + s.allocation, 0) > 0, 'and the strategies were given their share');
+  assert.ok(d.log.some((l) => /Brought 9200 EUR into USD/.test(l.message)), 'the bot says what it did');
+  const conv = await get('/conversions', { token: E });
+  assert.equal(conv.length, 1);
+  assert.equal(conv[0].from_code, 'EUR');
+  assert.equal(conv[0].to_code, 'USD');
+  assert.ok(!d.log.some((l) => /no cash to trade with/.test(l.message)));
+});
+
 console.log('\nPhase 9 — articles from bunzy');
 // The receiver is signed with a secret the API reads from its environment; the run needs
 // the same one to sign what it sends. Without it the phase cannot prove anything, so it

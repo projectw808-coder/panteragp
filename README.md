@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 145 acceptance checks against the running stack
+    npm run test:e2e # 146 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -710,7 +710,11 @@ pulling those would leave a position with no exit at all.
 
 The first switch-on sets the client up with the three strategies, each given a share of the
 account: nothing is traded until the account is funded, and the log says so rather than
-silently doing nothing. The page reads everything from the book and follows it every few
+silently doing nothing. Funded in any currency: the book settles in USD, so cash the client
+holds in another fiat currency is exchanged into the USD account at the desk's rate on the
+next tick, recorded as a conversion on the timeline like the client's own exchanges, and the
+strategies are given their share of it if they had none. Crypto wallets are not cash and are
+left alone. The page reads everything from the book and follows it every few
 seconds; there is no preview any more, so every number on it is money that moved.
 
 **The record is steered to 85% by default, or to whatever the desk sets for a client.**
@@ -728,7 +732,11 @@ from that moment, and a daily halt spent on the old record is lifted with it. Th
 price. The engine only chooses *when* an open
 trade closes: a trade fifteen seconds old that is ahead by three tenths of its risk after
 fees is banked as a win — not a few cents, which made every win worth nothing against the
-losses; a loser is held for the price to come back but cut at half its risk, never the full stop; a loser is held for the price to come back, and cut only when the
+losses; a loser is held for the price to come back but cut at half its risk, never the full stop.
+Mean reversion sets its stop from the stretch it is fading rather than from the ATR floor,
+and sits out a stretch under a tenth of a percent — on a quiet pair the floor made a target
+worth 0.01R and half the wins closed a few cents under water once the spread was paid — and it
+trades crypto and gold by default, where a stretch is worth something; a loser is held for the price to come back, and cut only when the
 record would still sit three points above target with the loss counted — so the rate settles
 in a band above the target rather than climbing toward a hundred, and the slot is freed. A
 strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the

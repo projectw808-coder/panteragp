@@ -3835,16 +3835,75 @@ async function autoWarn(clientId: string, key: string, message: string) {
   await autoLog(clientId, 'warn', message);
 }
 
+/**
+ * Money the client holds in another currency, brought into the account the bot trades from.
+ *
+ * The book prices everything in USD and settles every fill on the USD account, so a client
+ * credited in euros had a bot that logged "no balance" every hour beside a balance it could
+ * see. Now every fiat holding outside USD is exchanged at the desk's rate, recorded exactly
+ * as the client's own exchanges are — a conversion row, a line on the timeline — and the
+ * bot trades what the client has. Crypto wallets are left alone: they are not cash.
+ */
+async function autoSweep(clientId: string): Promise<{ from: string; amount: number; received: number; rate: number }[]> {
+  const { rows: held } = await pool.query<{ currency: string; balance: number }>(
+    `SELECT currency, balance FROM trading_accounts
+      WHERE client_id = $1 AND mode = 'demo' AND currency <> 'USD' AND balance > 0`, [clientId]);
+  const all = await currencies();
+  const usd = all.get('USD');
+  const out: { from: string; amount: number; received: number; rate: number }[] = [];
+  for (const h of held) {
+    const src = all.get(h.currency);
+    if (!src || !usd || src.kind !== 'fiat') continue;
+    const amount = Number(h.balance);
+    const priced = convert({ amount, fromUsd: await rateToUsd(src.code), toUsd: 1, decimals: usd.decimals });
+    if (!priced) continue;
+    const done = await tx('engine', async (c) => {
+      const source = await lockHolding(c, clientId, src.code, 'fiat', false);
+      const target = await lockHolding(c, clientId, 'USD', 'fiat', true);
+      if (!source || !target || Number(source.balance) < amount) return false;
+      await moveBalance(c, source, -amount);
+      await moveBalance(c, target, priced.received);
+      const { rows: [record] } = await c.query(
+        `INSERT INTO conversions (client_id, from_code, from_amount, to_code, to_amount, rate)
+         VALUES ($1,$2,$3,'USD',$4,$5) RETURNING *`,
+        [clientId, src.code, amount, priced.received, priced.rate]);
+      await logActivity(c, {
+        client_id: clientId, kind: 'convert', actor: 'engine',
+        summary: `Auto trader exchanged ${amount} ${src.code} for ${priced.received} USD to trade with`,
+        ref_table: 'conversions', ref_id: String(record.id),
+        data: { from: src.code, to: 'USD', amount, received: priced.received, rate: priced.rate },
+      });
+      return true;
+    });
+    if (done) out.push({ from: src.code, amount, received: priced.received, rate: priced.rate });
+  }
+  return out;
+}
+
 /** One pass for one client: manage exits, honour the budgets, look for entries. */
 async function autoTickClient(clientId: string) {
   // A switch left on from before the bot was real has no strategies behind it. Set it up
   // rather than ticking over an empty list forever.
   if (!(await autoStrategies(clientId)).length) await autoSetup(clientId);
   const settings = await autoSettings(clientId);
+  // Whatever the client holds in another currency is the bot's to trade with too.
+  for (const s of await autoSweep(clientId)) {
+    await autoLog(clientId, 'info', `Brought ${s.amount} ${s.from} into USD at ${s.rate.toFixed(4)} · ${money2(s.received)} to trade with`);
+  }
   const [strategies, account, open, closed] = await Promise.all([
     autoStrategies(clientId), demoAccount(clientId),
     autoOpenTrades(clientId), autoClosedTrades(clientId, settings.record_since),
   ]);
+  // Strategies set up against an empty account have nothing to deploy. Once money is there,
+  // give them their share of it, as the first switch-on would have.
+  if (strategies.length && strategies.every((s) => !(s.allocation > 0)) && Number(account.balance) > 0) {
+    for (const s of strategies) {
+      const share = STRATEGIES[s.kind]?.share ?? 0;
+      s.allocation = round8(Math.max(0, Number(account.balance) * share));
+      await pool.query('UPDATE auto_strategies SET allocation = $2 WHERE id = $1', [s.id, s.allocation]);
+    }
+    await autoLog(clientId, 'info', `Allocated ${money2(Number(account.balance) * 0.5).slice(1)} of the account across the strategies`);
+  }
   const allocated = strategies.reduce((a, s) => a + s.allocation, 0);
   const realised = closed.reduce((a, c) => a + pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net, 0);
   // What a trade would actually net if closed now: at the price the client gets, which
@@ -3935,7 +3994,7 @@ async function autoTickClient(clientId: string) {
 
   // Entries.
   const balance = Number(account.balance);
-  if (!(balance > 0)) { await autoWarn(clientId, 'nofunds', 'The account has no balance to trade with · fund it to let the bot work'); return; }
+  if (!(balance > 0)) { await autoWarn(clientId, 'nofunds', 'The account has no cash to trade with · a credit or deposit in any currency lets the bot work'); return; }
   const totalNotional = () => holding.reduce((a, t) => a + t.qty * t.price, 0);
   // What every open stop adds up to. A new position may only risk what the day's budget has
   // left after today's realised losses and after every stop already out there — so twelve

@@ -70,7 +70,11 @@ describe('mean reversion', () => {
     const up = [...flat(29, 100), 103];
     const s = evaluate('mean_reversion', bars(up), null);
     assert.equal(s.action, 'enter');
-    if (s.action === 'enter') { assert.equal(s.side, 'short'); assert.ok(s.target < 103, 'target is the average'); }
+    if (s.action === 'enter') {
+      assert.equal(s.side, 'short');
+      assert.ok(s.target < 103, 'target is the average');
+      assert.ok(103 - s.target > 0 && (s.stop - 103) / (103 - s.target) > 1.4 && (s.stop - 103) / (103 - s.target) < 1.6, 'the stop is set from the stretch, not the ATR floor');
+    }
     const down = [...flat(29, 100), 97];
     const d = evaluate('mean_reversion', bars(down), null);
     if (d.action === 'enter') assert.equal(d.side, 'long'); else assert.fail('should enter');
@@ -82,6 +86,12 @@ describe('mean reversion', () => {
     assert.equal(evaluate('mean_reversion', bars(back), 'long').action, 'exit');
     const still = [...flat(29, 100), 99.5];
     assert.equal(evaluate('mean_reversion', bars(still), 'long').action, 'hold');
+    // A stretch of a few hundredths of a percent is real by the deviation and dust by the
+    // spread: not a trade.
+    const dust = [...flat(29, 100), 100.05];
+    const d = evaluate('mean_reversion', bars(dust), null);
+    assert.equal(d.action, 'hold');
+    if (d.action === 'hold') assert.match(d.reason, /spread/);
   });
 });
 
