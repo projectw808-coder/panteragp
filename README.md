@@ -713,12 +713,17 @@ account: nothing is traded until the account is funded, and the log says so rath
 silently doing nothing. The page reads everything from the book and follows it every few
 seconds; there is no preview any more, so every number on it is money that moved.
 
-**The record is steered to 72% by default, or to whatever the desk sets for a client.**
-`DEFAULT_WIN_RATE` is what every bot is steered to until the desk says otherwise, and
-`GET|PATCH /clients/:id/auto-trader` is the desk's hand: anyone who can read the CRM sees what a
-client's bot holds, has made and has logged; an admin can throw the switch for them, set that
-client's own target, any rate, with null going back to the default, and set the client's risk
-controls and each strategy's instruments and allocation from the same route. The desk can also
+**The win-rate steer is off unless the desk turns it on for a client.** It steered every
+bot to 72% by default, and that default is what lost the money: to keep a rate up, the steer
+banks winners at a third of their risk and holds losers to the full stop, and no strategy
+survives paying 1R for every 0.3R it collects — the Test account's trend follower paid it
+seven times in an hour. Off, the engine manages risk instead: a trade behind by half its
+risk is cut there, and a winner runs to its target. `GET|PATCH /clients/:id/auto-trader` is
+the desk's hand: anyone who can read the CRM sees what a client's bot holds, has made and
+has logged; an admin can throw the switch for them, set a target win rate for that client
+(`DEFAULT_WIN_RATE`, 72%, is what the desk's control suggests; null turns the steer off), and
+set the client's risk controls and each strategy's instruments and allocation from the same
+route. The desk can also
 start a client's record again: every fill and every balance movement stays, the win rate and the curve count
 from that moment, and a daily halt spent on the old record is lifted with it. The target is a target for the record, not a rewrite of it: nothing invents a
 price. The engine only chooses *when* an open
@@ -729,9 +734,9 @@ record would still sit three points above target with the loss counted — so th
 in a band above the target rather than climbing toward a hundred, and the slot is freed. A
 strategy's own reversal signal is honoured only when leaving is a win. Otherwise only the
 book's stop takes a loss. The client's page shows these limits and cannot change them; the
-desk sets them from the record. Bot entries carry a stop half again as wide as the strategy asked,
-so the steer has room to hold a loser; it was three times as wide, which cut every strategy's
-reward against its risk to a third and no win rate made that up. Risk per trade is measured against that wider
+desk sets them from the record. Bot entries carry the stop the strategy asked for; it was
+three times as wide for the steer's sake, which cut every strategy's reward against its risk
+to a third and no win rate made that up. Risk per trade is measured against that
 stop, so the position is smaller for it. The target is returned on the desk route and nowhere
 else: the client's page never carries it, and setting it lands on the CRM timeline and the
 audit log, not on the bot's own log, which the client reads.
