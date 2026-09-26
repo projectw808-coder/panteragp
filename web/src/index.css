@@ -1052,3 +1052,68 @@ input:-webkit-autofill:active {
 }
 .shot svg { color: color-mix(in srgb, var(--color-ember) 55%, transparent); }
 .shot img { object-fit: cover; }
+
+/* ------------------------------------------------------------------------
+   Simulation terminal — ported verbatim from panteraai.co.uk's own
+   "Simulation Live" widget (joy-auto-trade: src/routes/index.tsx's
+   Dashboard component, src/styles.css's tokens). Not restyled onto this
+   page's own ember/vellum/mist system: it carries its own exact colours,
+   under this scope, so it renders pixel-for-pixel the same regardless of
+   what .landing looks like elsewhere. */
+.sim-terminal {
+  --st-background: oklch(0.13 0.028 32);
+  --st-foreground: oklch(0.96 0.01 55);
+  --st-card: oklch(0.16 0.03 34);
+  --st-primary: oklch(0.75 0.21 50);
+  --st-primary-foreground: oklch(0.13 0.04 34);
+  --st-muted-foreground: oklch(0.7 0.03 44);
+  --st-border: oklch(0.3 0.05 36 / 0.6);
+  --st-success: oklch(0.78 0.17 158);
+  --st-danger: oklch(0.67 0.21 24);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: var(--st-card);
+  color: var(--st-foreground);
+  border: 1px solid color-mix(in oklch, var(--st-primary) 25%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--st-primary) 18%, transparent),
+    0 24px 80px color-mix(in oklch, var(--st-primary) 14%, transparent);
+}
+.sim-terminal .st-eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .625rem;
+  line-height: 1rem;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  color: var(--st-muted-foreground);
+}
+.sim-terminal .st-chart-grid {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--st-primary) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--st-primary) 18%, transparent) 1px, transparent 1px);
+  background-size: 56px 48px;
+  opacity: .55;
+}
+.sim-terminal .st-signal {
+  display: inline-flex;
+  border: 1px solid color-mix(in oklch, var(--st-success) 35%, transparent);
+  background: color-mix(in oklch, var(--st-success) 8%, transparent);
+  padding: .25rem .5rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .55rem;
+  color: var(--st-success);
+}
+.sim-terminal .st-signal-sell {
+  border-color: color-mix(in oklch, var(--st-danger) 35%, transparent);
+  background: color-mix(in oklch, var(--st-danger) 8%, transparent);
+  color: var(--st-danger);
+}
+.sim-terminal .st-signal-watch {
+  border-color: color-mix(in oklch, var(--st-primary) 35%, transparent);
+  background: color-mix(in oklch, var(--st-primary) 8%, transparent);
+  color: var(--st-primary);
+}
+@keyframes st-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.sim-terminal .st-fade-in { animation: st-fade-in .35s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .sim-terminal .st-fade-in { animation: none; }
+}
