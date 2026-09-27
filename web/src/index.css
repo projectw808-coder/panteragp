@@ -424,16 +424,20 @@
 .anim-grow { transform-origin: bottom; animation: grow 0.8s var(--ease-enter) both; }
 /* The hero's decorative bars: taller and brighter under the cursor, settling back on
    mouse-out. transform rather than a height change, so it never fights the entrance
-   animation's own height/transform values. */
+   animation's own height/transform values. Quick snap up, slower settle on the way back
+   down — two different durations on the same property, via the :hover rule overriding
+   just transition-duration while it's active. */
 .hero-bar {
-  transition: transform 0.35s var(--ease-enter), filter 0.35s var(--ease-enter);
+  transition: transform 0.5s var(--ease-enter), filter 0.5s var(--ease-enter);
 }
-/* !important: the entrance animation (animation-fill-mode: both) keeps applying its own
-   final scaleY(1) as a CSS Animation effect indefinitely, which otherwise always wins
-   over a plain :hover declaration on the same property, animation finished or not. */
+/* !important on transform: the entrance animation (animation-fill-mode: both) keeps
+   applying its own final scaleY(1) as a CSS Animation effect indefinitely, which
+   otherwise always wins over a plain :hover declaration on the same property, animation
+   finished or not. */
 .hero-bar:hover {
-  transform: scaleY(1.18) !important;
-  filter: brightness(1.4) saturate(1.15);
+  transition-duration: 0.15s;
+  transform: scaleY(1.5) !important;
+  filter: brightness(1.7) saturate(1.4) drop-shadow(0 0 22px rgba(255, 140, 40, 0.85));
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-bar { transition: filter 0.35s var(--ease-enter); }
