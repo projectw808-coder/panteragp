@@ -6546,7 +6546,7 @@ app.get('/admin/articles', { preHandler: auth('admin') }, async () => {
   ]);
   return {
     configured: !!bunzySecret(),
-    endpoint: `${publicUrl()}/api/webhooks/bunzy`,
+    endpoint: `${publicUrl()}/webhooks/bunzy`,
     live: count!.live,
     articles, deliveries,
   };
