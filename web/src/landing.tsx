@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 /**
  * The public front of the site.
@@ -115,33 +115,31 @@ const Eyebrow = ({ children }: { children: React.ReactNode }) => (
 );
 
 /**
- * Ported verbatim from panteraai.co.uk's "Simulation Live" widget — same state machine,
- * same layout, same motion, same copy (joy-auto-trade: src/routes/index.tsx's Dashboard,
- * 2026-09-27). Only the class names changed, from that project's `bg-primary`/`eyebrow`/
+ * Ported from panteraai.co.uk's "Simulation Live" widget — same state machine, layout,
+ * motion and copy (joy-auto-trade: src/routes/index.tsx's Dashboard, 2026-09-27), then
+ * trimmed to just the chart on this page's request: no crypto-pair trade feed, a calmer
+ * walk, and the daily change capped rather than left to wander past a number that would
+ * read as a real return. Classes changed from that project's `bg-primary`/`eyebrow`/
  * `signal` Tailwind theme to this one's `.sim-terminal` scope in index.css, because the two
  * projects don't share a Tailwind config — the colours those classes resolve to are the
- * same oklch values either way. This is still a simulation, not live market data: see the
- * note in its own risk-guard line.
+ * same oklch values either way.
  */
-type SimTrade = { id: number; type: 'BUY' | 'SELL' | 'WATCH'; pair: string; amount: string; price: string; state: string; time: string };
 const SIM_START_VALUE = 184392.64;
-const SIM_PAIRS: [string, number, string][] = [['BTC / GBP', 66820, 'BTC'], ['ETH / GBP', 3502, 'ETH'], ['SOL / GBP', 142, 'SOL'], ['EUR / GBP', 1.0842, 'EUR']];
+const SIM_DAILY_PCT_CAP = 57;
 
 function simSeedPoints() {
   const pts: number[] = [];
   let v = SIM_START_VALUE * 0.985;
-  for (let i = 0; i < 60; i++) { v += (Math.random() - 0.42) * 260; pts.push(v); }
+  for (let i = 0; i < 60; i++) { v += (Math.random() - 0.42) * 90; pts.push(v); }
   pts[pts.length - 1] = SIM_START_VALUE;
   return pts;
 }
 
 function SimTerminal() {
-  const [points, setPoints] = useState<number[]>(() => Array.from({ length: 60 }, (_, i) => SIM_START_VALUE * 0.985 + i * 46));
-  const [trades, setTrades] = useState<SimTrade[]>([]);
+  const [points, setPoints] = useState<number[]>(() => Array.from({ length: 60 }, (_, i) => SIM_START_VALUE * 0.985 + i * 16));
   const [running, setRunning] = useState(true);
   const [clock, setClock] = useState('--:--:--');
   const [stats, setStats] = useState({ wins: 0, total: 0 });
-  const [flash, setFlash] = useState(false);
 
   useEffect(() => { setPoints(simSeedPoints()); }, []);
 
@@ -153,27 +151,21 @@ function SimTerminal() {
       setClock(new Date().toISOString().slice(11, 19));
       setPoints((p) => {
         const last = p[p.length - 1]!;
-        const next = last + (Math.random() - 0.44) * 320;
+        const next = last + (Math.random() - 0.46) * 90;
         return [...p.slice(1), next];
       });
       if (tick % 3 === 0) {
-        const [pair, base, sym] = SIM_PAIRS[Math.floor(Math.random() * SIM_PAIRS.length)]!;
-        const roll = Math.random();
-        const type: SimTrade['type'] = roll < 0.45 ? 'BUY' : roll < 0.85 ? 'SELL' : 'WATCH';
-        const px = base * (1 + (Math.random() - 0.5) * 0.01);
-        const fmt = base < 10 ? px.toFixed(4) : px.toLocaleString('en-US', { maximumFractionDigits: 0 });
-        const qty = type === 'WATCH' ? `Trigger ≤ £${fmt}` : `${(Math.random() * (base > 1000 ? 2 : 400)).toFixed(base > 1000 ? 3 : 1)} ${sym}`;
-        setTrades((t) => [{ id: Date.now(), type, pair, amount: qty, price: type === 'WATCH' ? '' : `£${fmt}`, state: type === 'WATCH' ? 'Armed' : 'Filled', time: new Date().toISOString().slice(11, 19) }, ...t].slice(0, 3));
-        if (type !== 'WATCH') setStats((s) => ({ wins: s.wins + (Math.random() < 0.68 ? 1 : 0), total: s.total + 1 }));
-        setFlash(true); setTimeout(() => setFlash(false), 400);
+        setStats((s) => ({ wins: s.wins + (Math.random() < 0.68 ? 1 : 0), total: s.total + 1 }));
       }
     }, 1000);
     return () => clearInterval(id);
   }, [running]);
 
   const value = points[points.length - 1]!;
-  const change = value - SIM_START_VALUE + 2841.2;
-  const pct = (change / SIM_START_VALUE) * 100;
+  const rawChange = value - SIM_START_VALUE + 2841.2;
+  const rawPct = (rawChange / SIM_START_VALUE) * 100;
+  const pct = Math.max(-SIM_DAILY_PCT_CAP, Math.min(rawPct, SIM_DAILY_PCT_CAP));
+  const change = (pct / 100) * SIM_START_VALUE;
   const min = Math.min(...points), max = Math.max(...points);
   const coords: [number, number][] = points.map((v, i): [number, number] => [(i / (points.length - 1)) * 760, 220 - ((v - min) / (max - min || 1)) * 190]);
   const line = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
@@ -181,10 +173,10 @@ function SimTerminal() {
   const winRate = stats.total ? ((stats.wins / stats.total) * 100).toFixed(1) : '68.4';
   const up = change >= 0;
 
-  const reset = () => { setPoints(simSeedPoints()); setTrades([]); setStats({ wins: 0, total: 0 }); setRunning(true); };
+  const reset = () => { setPoints(simSeedPoints()); setStats({ wins: 0, total: 0 }); setRunning(true); };
 
   return (
-    <div className="sim-terminal relative mx-auto w-full max-w-6xl overflow-hidden">
+    <div className="sim-terminal relative mx-auto w-full max-w-4xl overflow-hidden">
       <div className="flex h-12 items-center justify-between border-b border-[color:var(--st-border)] px-4 sm:px-6">
         <div className="flex items-center gap-2 text-xs text-[color:var(--st-muted-foreground)]">
           <span className={`size-2 rounded-full ${running ? 'bg-[color:var(--st-success)] animate-pulse' : 'bg-[color:var(--st-muted-foreground)]'}`} />
@@ -198,70 +190,47 @@ function SimTerminal() {
           <span className="hidden font-mono text-[10px] text-[color:var(--st-muted-foreground)] sm:inline">UTC {clock}</span>
         </div>
       </div>
-      <div className="grid lg:grid-cols-[1fr_300px]">
-        <div className="border-b border-[color:var(--st-border)] p-5 sm:p-8 lg:border-r lg:border-b-0">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="st-eyebrow">Portfolio value · simulated</p>
-              <p className="mt-2 font-mono text-3xl text-[color:var(--st-foreground)] tabular-nums sm:text-4xl">£{value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-            <div className="text-right">
-              <p className="st-eyebrow">Today</p>
-              <p className={`mt-2 font-mono text-sm tabular-nums ${up ? 'text-[color:var(--st-success)]' : 'text-[color:var(--st-danger)]'}`}>
-                {up ? '+' : '-'}£{Math.abs(change).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}&nbsp; / &nbsp;{up ? '+' : ''}{pct.toFixed(2)}%
-              </p>
-            </div>
+      <div className="p-5 sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="st-eyebrow">Portfolio value · simulated</p>
+            <p className="mt-2 font-mono text-3xl text-[color:var(--st-foreground)] tabular-nums sm:text-4xl">£{value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
-          <div className="relative mt-8 h-48 overflow-hidden border-y border-[color:var(--st-border)]/70 sm:h-64">
-            <div className="st-chart-grid absolute inset-0" />
-            <svg viewBox="0 0 760 240" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="sim-terminal-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="var(--st-primary)" stopOpacity=".24" />
-                  <stop offset="1" stopColor="var(--st-primary)" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={`${line} L760 240 L0 240Z`} fill="url(#sim-terminal-fill)" style={{ transition: 'd 0.9s linear' }} />
-              <path d={line} fill="none" stroke="var(--st-primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.9s linear' }} />
-            </svg>
-            <span className="absolute right-3 bg-[color:var(--st-primary)] px-2 py-1 font-mono text-[10px] text-[color:var(--st-primary-foreground)] transition-all duration-700" style={{ top: `calc(${(lastY / 240) * 100}% - 12px)` }}>
-              £{Math.round(value).toLocaleString('en-US')}
-            </span>
-          </div>
-          <div className="mt-5 grid grid-cols-3 divide-x divide-[color:var(--st-border)] border border-[color:var(--st-border)]">
-            {[['ACTIVE', '3 strategies'], ['WIN RATE', `${winRate}%`], ['TRADES', `${stats.total} executed`]].map(([label, v]) => (
-              <div key={label} className="px-3 py-4 sm:px-5">
-                <p className="st-eyebrow">{label}</p>
-                <p className="mt-2 font-mono text-xs text-[color:var(--st-foreground)] tabular-nums sm:text-sm">{v}</p>
-              </div>
-            ))}
+          <div className="text-right">
+            <p className="st-eyebrow">Today</p>
+            <p className={`mt-2 font-mono text-sm tabular-nums ${up ? 'text-[color:var(--st-success)]' : 'text-[color:var(--st-danger)]'}`}>
+              {up ? '+' : '-'}£{Math.abs(change).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}&nbsp; / &nbsp;{up ? '+' : ''}{pct.toFixed(2)}%
+            </p>
           </div>
         </div>
-        <div>
-          <div className="border-b border-[color:var(--st-border)] p-5">
-            <div className="flex items-center justify-between">
-              <p className="st-eyebrow">Live activity</p>
-              <Activity className={`size-4 text-[color:var(--st-primary)] transition-transform ${flash ? 'scale-125' : ''}`} />
+        <div className="relative mt-8 h-48 overflow-hidden border-y border-[color:var(--st-border)]/70 sm:h-64">
+          <div className="st-chart-grid absolute inset-0" />
+          <svg viewBox="0 0 760 240" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="sim-terminal-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="var(--st-primary)" stopOpacity=".24" />
+                <stop offset="1" stopColor="var(--st-primary)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={`${line} L760 240 L0 240Z`} fill="url(#sim-terminal-fill)" style={{ transition: 'd 0.9s linear' }} />
+            <path d={line} fill="none" stroke="var(--st-primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.9s linear' }} />
+          </svg>
+          <span className="absolute right-3 bg-[color:var(--st-primary)] px-2 py-1 font-mono text-[10px] text-[color:var(--st-primary-foreground)] transition-all duration-700" style={{ top: `calc(${(lastY / 240) * 100}% - 12px)` }}>
+            £{Math.round(value).toLocaleString('en-US')}
+          </span>
+        </div>
+        <div className="mt-5 grid grid-cols-3 divide-x divide-[color:var(--st-border)] border border-[color:var(--st-border)]">
+          {[['ACTIVE', '3 strategies'], ['WIN RATE', `${winRate}%`], ['TRADES', `${stats.total} executed`]].map(([label, v]) => (
+            <div key={label} className="px-3 py-4 sm:px-5">
+              <p className="st-eyebrow">{label}</p>
+              <p className="mt-2 font-mono text-xs text-[color:var(--st-foreground)] tabular-nums sm:text-sm">{v}</p>
             </div>
-          </div>
-          <div className="divide-y divide-[color:var(--st-border)] min-h-[345px]">
-            {trades.length === 0 && <p className="p-5 font-mono text-[11px] text-[color:var(--st-muted-foreground)]">Scanning markets for signals…</p>}
-            {trades.map((t) => (
-              <div key={t.id} className="st-fade-in p-5">
-                <div className="flex items-center justify-between">
-                  <span className={t.type === 'SELL' ? 'st-signal st-signal-sell' : t.type === 'WATCH' ? 'st-signal st-signal-watch' : 'st-signal'}>{t.type}</span>
-                  <span className="font-mono text-[10px] text-[color:var(--st-success)]">● {t.state} · {t.time}</span>
-                </div>
-                <p className="mt-4 font-mono text-sm text-[color:var(--st-foreground)]">{t.pair}</p>
-                <div className="mt-2 flex justify-between font-mono text-[11px] text-[color:var(--st-muted-foreground)]"><span>{t.amount}</span><span>{t.price}</span></div>
-              </div>
-            ))}
-          </div>
-          <div className="m-5 border border-[color:var(--st-primary)]/30 bg-[color:var(--st-primary)]/5 p-4">
-            <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[color:var(--st-primary)]" />
-              <p className="text-xs leading-5 text-[color:var(--st-muted-foreground)]">Risk guard active. Simulated data for illustration only — not real trades.</p>
-            </div>
+          ))}
+        </div>
+        <div className="mt-5 border border-[color:var(--st-primary)]/30 bg-[color:var(--st-primary)]/5 p-4">
+          <div className="flex gap-3">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[color:var(--st-primary)]" />
+            <p className="text-xs leading-5 text-[color:var(--st-muted-foreground)]">Risk guard active. Simulated data for illustration only — not real trades.</p>
           </div>
         </div>
       </div>
@@ -420,6 +389,18 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </Reveal>
       </section>
 
+      {/* ------------------------------------------------------- charting preview
+          The panteraai.co.uk "Simulation Live" chart, trimmed to just the graph. */}
+      <section className="mx-auto max-w-[1100px] px-8 py-20">
+        <Eyebrow>Charting</Eyebrow>
+        <h2 className="display mt-6 max-w-2xl text-[28px] sm:text-[34px]">
+          The shape of the real thing.
+        </h2>
+        <div className="mt-8">
+          <SimTerminal />
+        </div>
+      </section>
+
       {/* -------------------------------------------------- numbered capabilities */}
       <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pb-28">
         <Reveal>
@@ -532,18 +513,6 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               </Reveal>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------- charting preview
-          The exact "Simulation Live" widget from panteraai.co.uk — see SimTerminal above. */}
-      <section className="mx-auto max-w-[1100px] px-8 py-20">
-        <Eyebrow>Charting</Eyebrow>
-        <h2 className="display mt-6 max-w-2xl text-[28px] sm:text-[34px]">
-          The shape of the real thing.
-        </h2>
-        <div className="mt-8">
-          <SimTerminal />
         </div>
       </section>
 
