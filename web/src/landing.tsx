@@ -322,7 +322,10 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
         </nav>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
+        {/* pointer-events-none so this box's empty space (it's centred text in a wide
+            flex-1 column, not a filled panel) doesn't sit on top of the bars below and
+            swallow their hover — the buttons opt back in below, same as the bars do. */}
+        <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
             <Eyebrow>Automated execution // client system</Eyebrow>
           </div>
@@ -337,26 +340,25 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             instrument continuously and fires your limits, stops and trailing exits the moment
             they trigger — server-side, with the client record and audit trail attached.
           </p>
-          <div className="anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
+          <div className="pointer-events-auto anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
             <button onClick={onRegister} className="btn-line font-mono">Open an account</button>
             <button onClick={onSignIn} className="btn-fill font-mono">Sign in to the desk</button>
           </div>
         </div>
 
         {/* The signature: a warm glow rising from the foot of the hero, with bars growing
-            out of it. Decorative texture, not a section background. */}
+            out of it. Decorative texture, not a section background. The bars themselves
+            take pointer events (their parent's pointer-events-none doesn't stop a child
+            opting back in) so they can light up and rise under the cursor — everything
+            else in here stays inert. */}
         <div ref={glow} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-80 will-change-transform">
           <div className="absolute inset-0 bg-[radial-gradient(70%_130%_at_50%_100%,rgba(255,120,23,0.45),transparent_72%)]" />
-          <div className="absolute inset-x-0 bottom-0 flex h-full items-end gap-2 px-4">
+          <div className="pointer-events-auto absolute inset-x-0 bottom-0 flex h-full items-end gap-2 px-4">
             {[26, 54, 38, 72, 48, 88, 60, 96, 66, 82, 44, 64, 34, 58, 30, 70, 40].map((h, i) => (
-              <div key={i} className="anim-grow flex-1 bg-[linear-gradient(to_top,rgba(255,120,23,0.6),transparent)]"
+              <div key={i} className="anim-grow hero-bar flex-1 bg-[linear-gradient(to_top,rgba(255,120,23,0.6),transparent)]"
                 style={{ height: `${h}%`, animationDelay: `${560 + i * 45}ms` }} />
             ))}
           </div>
-        </div>
-
-        <div className="relative z-10 border-t border-white/10">
-          <Marquee items={MARKETS} onDark />
         </div>
       </section>
 
