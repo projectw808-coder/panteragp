@@ -392,14 +392,18 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       </section>
 
       {/* ------------------------------------------------------- charting preview
-          The panteraai.co.uk "Simulation Live" chart, trimmed to just the graph. */}
-      <section className="mx-auto max-w-[1100px] px-8 py-20">
-        <Eyebrow>Charting</Eyebrow>
-        <h2 className="display mt-6 max-w-2xl text-[28px] sm:text-[34px]">
-          The shape of the real thing.
-        </h2>
-        <div className="mt-8">
-          <SimTerminal />
+          The panteraai.co.uk "Simulation Live" chart, trimmed to just the graph. Dark
+          "stage" ground like the other dark sections, so the terminal card doesn't sit on
+          the light canvas it was designed to contrast against. */}
+      <section className="stage border-y border-white/10">
+        <div className="mx-auto max-w-[1100px] px-8 py-20">
+          <Eyebrow>Charting</Eyebrow>
+          <h2 className="display mt-6 max-w-2xl text-[28px] text-vellum sm:text-[34px]">
+            The shape of the real thing.
+          </h2>
+          <div className="mt-8">
+            <SimTerminal />
+          </div>
         </div>
       </section>
 
