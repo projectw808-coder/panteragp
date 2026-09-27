@@ -176,7 +176,7 @@ function SimTerminal() {
   const reset = () => { setPoints(simSeedPoints()); setStats({ wins: 0, total: 0 }); setRunning(true); };
 
   return (
-    <div className="sim-terminal relative mx-auto w-full max-w-4xl overflow-hidden">
+    <div className="sim-terminal relative mx-auto w-full max-w-none overflow-hidden">
       <div className="flex h-12 items-center justify-between border-b border-[color:var(--st-border)] px-4 sm:px-6">
         <div className="flex items-center gap-2 text-xs text-[color:var(--st-muted-foreground)]">
           <span className={`size-2 rounded-full ${running ? 'bg-[color:var(--st-success)] animate-pulse' : 'bg-[color:var(--st-muted-foreground)]'}`} />
