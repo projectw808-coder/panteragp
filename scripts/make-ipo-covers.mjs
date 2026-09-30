@@ -92,6 +92,42 @@ const motifs = {
         seg(x, y, 202 * S, 56 * S, 202 * S, 42 * S)),
       w: 2.4, a: 0.5 },
   ],
+  SWCH: [ // a hall of cabinets seen from above, two rows of three
+    { d: (x, y) => Math.min(
+        boxOutline(x, y, 70 * S, 50 * S, 114 * S, 84 * S),
+        boxOutline(x, y, 138 * S, 50 * S, 182 * S, 84 * S),
+        boxOutline(x, y, 206 * S, 50 * S, 250 * S, 84 * S)),
+      w: 3.0, a: 1.0 },
+    { d: (x, y) => Math.min(
+        boxOutline(x, y, 70 * S, 98 * S, 114 * S, 132 * S),
+        boxOutline(x, y, 138 * S, 98 * S, 182 * S, 132 * S),
+        boxOutline(x, y, 206 * S, 98 * S, 250 * S, 132 * S)),
+      w: 3.0, a: 0.55 },
+    { d: (x, y) => seg(x, y, 56 * S, 91 * S, 264 * S, 91 * S), w: 2.0, a: 0.3 },
+  ],
+  LMBD: [ // the letter itself, drawn as two strokes
+    { d: (x, y) => seg(x, y, 122 * S, 40 * S, 206 * S, 146 * S), w: 3.4, a: 1.0 },
+    { d: (x, y) => seg(x, y, 161 * S, 89 * S, 114 * S, 146 * S), w: 3.0, a: 0.8 },
+    { d: (x, y) => ring(x, y, 160 * S, 92 * S, 62 * S), w: 2.0, a: 0.22 },
+  ],
+  CRSO: [ // a bolt of energy beside the rack it feeds
+    { d: (x, y) => Math.min(
+        seg(x, y, 150 * S, 34 * S, 116 * S, 96 * S),
+        seg(x, y, 116 * S, 96 * S, 146 * S, 96 * S),
+        seg(x, y, 146 * S, 96 * S, 118 * S, 146 * S)),
+      w: 3.2, a: 1.0 },
+    { d: (x, y) => boxOutline(x, y, 186 * S, 50 * S, 244 * S, 130 * S), w: 3.0, a: 0.6 },
+    { d: (x, y) => Math.min(seg(x, y, 200 * S, 70 * S, 230 * S, 70 * S), seg(x, y, 200 * S, 90 * S, 230 * S, 90 * S), seg(x, y, 200 * S, 110 * S, 230 * S, 110 * S)), w: 2.2, a: 0.45 },
+  ],
+  CHST: [ // a vault door, ring and spokes inside its frame
+    { d: (x, y) => boxOutline(x, y, 104 * S, 50 * S, 216 * S, 130 * S), w: 3.0, a: 1.0 },
+    { d: (x, y) => ring(x, y, 160 * S, 90 * S, 22 * S), w: 3.0, a: 0.85 },
+    { d: (x, y) => ring(x, y, 160 * S, 90 * S, 8 * S), w: 2.4, a: 0.6 },
+    { d: (x, y) => Math.min(
+        seg(x, y, 160 * S, 60 * S, 160 * S, 68 * S), seg(x, y, 160 * S, 112 * S, 160 * S, 120 * S),
+        seg(x, y, 130 * S, 90 * S, 138 * S, 90 * S), seg(x, y, 182 * S, 90 * S, 190 * S, 90 * S)),
+      w: 2.4, a: 0.5 },
+  ],
   CBRS: [ // one wafer, scored into its grid
     { d: (x, y) => ring(x, y, 160 * S, 90 * S, 50 * S), w: 3.2, a: 1.0 },
     { d: (x, y) => Math.min(
@@ -110,6 +146,7 @@ const motifs = {
 const TINTS = {
   ANTH: [217, 119, 87], NSCL: [61, 125, 224], OAI: [15, 157, 118], DBX: [224, 74, 47],
   SPCX: [124, 135, 148], CRNE: [46, 158, 91], SKHY: [216, 69, 47], CBRS: [124, 92, 214],
+  SWCH: [230, 160, 50], LMBD: [40, 160, 190], CRSO: [200, 60, 90], CHST: [74, 79, 200],
 };
 
 // ---------------------------------------------------------------- png plumbing

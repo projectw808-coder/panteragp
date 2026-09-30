@@ -331,10 +331,10 @@ free text, because a valuation is reported as a range or an approximation (`$165
 reporting did not.
 
 **The cover art ships with the code.** `assets/ipo-covers/<asset>.png`, installed by `db:init`
-on deploy so every environment has it without anybody uploading eight files by hand. It is
+on deploy so every environment has it without anybody uploading the files by hand. It is
 drawn, not photographed and not anybody's logo: `scripts/make-ipo-covers.mjs` computes each
-one from the same motif its card falls back to, so they are reproducible rather than eight
-unexplained binaries in the tree. Real company logos are deliberately not used — they are
+one from the same motif its card falls back to, so they are reproducible rather than a
+folder of unexplained binaries in the tree. Real company logos are deliberately not used — they are
 trademarks, and an offering here is not equity in the company it names, so putting its mark
 on one would assert a relationship this product spends a paragraph disclaiming.
 

@@ -48,6 +48,10 @@ const TINTS: Record<string, string> = {
   CRNE: '#2e9e5b',   // wind and solar
   SKHY: '#d8452f',   // memory red
   CBRS: '#7c5cd6',   // wafer violet
+  SWCH: '#e6a032',   // desert amber, for Las Vegas
+  LMBD: '#28a0be',   // teal
+  CRSO: '#c83c5a',   // the red of a flare
+  CHST: '#4a4fc8',   // indigo, kept apart from the wafer violet
 };
 
 /** The colour an offering is identified by, or the house ember when it has none. */
@@ -102,6 +106,35 @@ const MARKS: Record<string, React.ReactNode> = {
     <rect x="96" y="80" width="128" height="20" opacity=".7" />
     <rect x="96" y="56" width="128" height="20" opacity=".45" />
     <path d="M118 56v-14M160 56v-14M202 56v-14" opacity=".5" />
+  </>),
+
+  // Switch — a hall of cabinets seen from above, two rows of three.
+  SWCH: (<>
+    <rect x="70" y="50" width="44" height="34" /><rect x="138" y="50" width="44" height="34" /><rect x="206" y="50" width="44" height="34" />
+    <rect x="70" y="98" width="44" height="34" opacity=".55" /><rect x="138" y="98" width="44" height="34" opacity=".55" /><rect x="206" y="98" width="44" height="34" opacity=".55" />
+    <path d="M56 91h208" opacity=".3" />
+  </>),
+
+  // Lambda — the letter itself, two strokes.
+  LMBD: (<>
+    <path d="M122 40l84 106" />
+    <path d="M161 89l-47 57" opacity=".8" />
+    <circle cx="160" cy="92" r="62" opacity=".22" />
+  </>),
+
+  // Crusoe — a bolt of energy beside the rack it feeds.
+  CRSO: (<>
+    <path d="M150 34 116 96h30l-28 50" />
+    <rect x="186" y="50" width="58" height="80" opacity=".6" />
+    <path d="M200 70h30M200 90h30M200 110h30" opacity=".45" />
+  </>),
+
+  // Cohesity — a vault door: ring and spokes inside a frame.
+  CHST: (<>
+    <rect x="104" y="50" width="112" height="80" />
+    <circle cx="160" cy="90" r="22" opacity=".85" />
+    <circle cx="160" cy="90" r="8" opacity=".6" />
+    <path d="M160 60v8M160 112v8M130 90h8M182 90h8" opacity=".5" />
   </>),
 
   // Cerebras — one wafer, scored into the grid it is cut from.

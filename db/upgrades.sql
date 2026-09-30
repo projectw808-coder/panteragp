@@ -853,3 +853,35 @@ DO $do$ BEGIN
     INSERT INTO data_migrations (name) VALUES ('no-limits-by-default');
   END IF;
 END $do$;
+
+-- Four more from the AI pipeline, added at the end of September 2026 from the same public
+-- reporting as the first eight. Seeded the same way, with the 80% raised baseline the desk
+-- asked for on the day it asked, since the one-off that set it has already run.
+INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
+                  target_amount, min_subscription, roi_rate, term_days,
+                  opens_at, closes_at, matures_at, status, sort_order, raised_baseline)
+VALUES
+  ('switch-2026', 'Switch', 'SWCH', 'USD',
+   'Las Vegas data-centre operator planning the sector''s biggest listing: up to $10bn raised at around $80bn, with Goldman Sachs and JPMorgan leading. Could reach the market as soon as Q4 2026.',
+   'No public S-1 yet. The campuses lease capacity to hyperscalers and AI tenants on long contracts, which is what the valuation is being set on.',
+   '$80bn', 15000000, 500, 0.0690, 180,
+   '2026-10-20T09:00:00Z', '2026-11-20T16:00:00Z', '2027-05-19T16:00:00Z', 'upcoming', 9, 12000000),
+
+  ('lambda-2026', 'Lambda', 'LMBD', 'USD',
+   'AI cloud renting GPU capacity to model builders. Reported in late August to be raising up to $3bn pre-IPO at $12bn or more, with a listing targeted for the second half of 2026.',
+   'A Series E earlier in the year was reported at $5.9bn and secondary marks ran to about $9bn by June. The pre-IPO talks were still open in September.',
+   '$12bn+', 6000000, 250, 0.0880, 120,
+   '2026-11-09T09:00:00Z', '2026-12-04T16:00:00Z', '2027-04-03T16:00:00Z', 'upcoming', 10, 4800000),
+
+  ('crusoe-2026', 'Crusoe', 'CRSO', 'USD',
+   'AI data-centre builder that pairs its compute with its own energy supply. Closed a $3bn Series F at a $30bn valuation on 3 September 2026 and is reported to be in talks with banks about an IPO.',
+   'Valued at $10bn in October 2025; secondary pricing had reached about $24bn by June, before the round. No filing yet.',
+   '$30bn', 9000000, 500, 0.0790, 150,
+   '2026-12-01T09:00:00Z', '2027-01-08T16:00:00Z', '2027-06-07T16:00:00Z', 'upcoming', 11, 7200000),
+
+  ('cohesity-2026', 'Cohesity', 'CHST', 'USD',
+   'Nvidia-backed AI data-security company formed by the 2024 combination with Veritas, targeting a 2026 listing at a valuation its CEO says will rival Rubrik''s $17bn. A fall listing is reported as most likely.',
+   'The combination was valued at about $7bn with around $1.5bn of annual recurring revenue; secondary marks ran near $4.7bn in June.',
+   '$7-17bn', 5000000, 250, 0.0720, 120,
+   '2026-10-27T09:00:00Z', '2026-11-24T16:00:00Z', '2027-03-24T16:00:00Z', 'upcoming', 12, 4000000)
+ON CONFLICT (slug) DO NOTHING;
