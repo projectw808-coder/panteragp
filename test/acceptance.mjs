@@ -2372,7 +2372,7 @@ if (!WEBHOOK) {
     assert.match(r.headers.get('content-type') ?? '', /html/);
     const html = await r.text();
     assert.match(html, new RegExp(`<h1 class="display">${title}</h1>`));
-    assert.match(html, /In plain words/);
+    if (path !== '/risk') assert.match(html, /In plain words/);
   }
   const map = await fetch(`${B}/sitemap.xml`).then((r) => r.text());
   for (const p of ['/terms', '/privacy', '/risk']) assert.ok(map.includes(`${p}</loc>`), `${p} in the sitemap`);

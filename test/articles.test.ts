@@ -184,8 +184,9 @@ describe('the legal pages', () => {
     for (const kind of ['terms', 'privacy', 'risk'] as const) {
       const html = legalPage(kind, { publicUrl: 'https://x' });
       assert.match(html, /<nav class="legal-nav"/);
-      assert.match(html, /In plain words/);
-      assert.match(html, /legal@pantera-gp\.com|Read this before you trade/);
+      if (kind === 'risk') assert.ok(!/In plain words/.test(html), 'the risk warning has no summary: it is short enough to be its own');
+      else assert.match(html, /In plain words/);
+      assert.match(html, kind === 'risk' ? /Leverage/ : /legal@pantera-gp\.com/);
       assert.ok(!/simulat/i.test(html), 'the word the desk struck stays struck');
       const open = placeholdersIn(kind);
       if (open) assert.match(html, new RegExp(`Draft · ${open} point`));

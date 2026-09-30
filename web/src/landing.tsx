@@ -627,6 +627,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             {[
               ['Platform', [['Capabilities', 'platform'], ['The engine', 'engine'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
               ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
+              ['Legal', [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk']]],
             ].map(([heading, links]) => (
               <div key={heading as string}>
                 <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>

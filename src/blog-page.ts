@@ -274,7 +274,7 @@ ${ld}
 <body>
 <nav class="bar" aria-label="Site">
   <a class="brand display" href="/">Pantera GP <i>///</i></a>
-  <div class="links mono"><a href="/">Platform</a><a${o.nav === 'insights' ? ' class="on" aria-current="page"' : ''} href="/blog">Insights</a><a${o.nav === 'legal' ? ' class="on" aria-current="page"' : ''} href="/terms">Legal</a></div>
+  <div class="links mono"><a href="/">Platform</a><a${o.nav === 'insights' ? ' class="on" aria-current="page"' : ''} href="/blog">Insights</a></div>
   <div class="right"><a class="mono" href="/#signin">Sign in</a><a class="btn-fill" href="/#register">Open an account</a></div>
 </nav>
 ${o.body}

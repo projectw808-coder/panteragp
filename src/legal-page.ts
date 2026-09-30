@@ -127,9 +127,6 @@ const PRIVACY: Page = {
         ['Showing a connected wallet', 'Wallet address and balances, read in your browser', 'Consent, given when you connect; the address is stored only if you link it', 'Not stored unless linked; then while the account is open'],
         ['Public articles and the website', 'No personal data. The session token and your theme choice are kept in your browser\'s local storage because the Platform cannot work without them; no analytics or advertising storage is used', 'Strictly necessary', 'Until you sign out or clear your browser'],
       ]) },
-    { id: 'sharing', title: 'Who we share it with', body: p(
-      'We use these providers to run the Platform, each under a data processing agreement: [Railway] hosts the application and the database in [REGION]; [Postmark] sends our email and receives your email address and the content of each message; [bunzy] supplies the public articles and receives no client data.',
-      'We share data with authorities when the law requires it. We do not sell personal data and do not share it with advertisers.') },
     { id: 'transfers', title: 'Where it is held and transfers', body: p(
       'The database is hosted in [REGION]. Where a provider processes data outside [the UK / the EEA], the transfer is covered by [Standard Contractual Clauses / the UK International Data Transfer Addendum / an adequacy decision]. Copies are available on request.') },
     { id: 'security', title: 'How we protect it', body: p(
@@ -140,8 +137,6 @@ const PRIVACY: Page = {
       'You can complain to us at the same address; we acknowledge within 30 days and tell you the outcome. You can also complain to [the Information Commissioner\'s Office at ico.org.uk / your local data protection authority].') },
     { id: 'children', title: 'Children', body: p(
       'The Platform is for people aged [18] and over. We close accounts found to belong to anyone younger and delete their data.') },
-    { id: 'us', title: '[California and other US states]', body: p(
-      '[If US clients are accepted: the categories collected are those in the table above; we do not sell or share personal data for advertising; you have the rights to know, delete and correct, and not to be discriminated against for using them; requests go to legal@pantera-gp.com.]') },
     { id: 'changes', title: 'Changes to this policy', body: p(
       'We update this policy when what we do changes, and post the date of the current version at the top of this page. Material changes are announced by email.') },
   ],
@@ -150,14 +145,7 @@ const PRIVACY: Page = {
 const RISK: Page = {
   kind: 'risk', path: '/risk', title: 'Risk Warning', version: VERSION, updated: LAST_UPDATED,
   description: 'The risks of trading on pntgp.xyz in plain words: leverage, the platform\'s own prices, the automated trader, and offerings that are not equity.',
-  summary: [
-    'Most people who trade leveraged products lose money.',
-    'A loss can exceed the amount you put at risk on a single position.',
-    'Prices are set by us and may differ from prices elsewhere; every fill is at our execution price.',
-    'The automated trader can lose, and its record is not a forecast.',
-    'An offering is not a share and gives you no interest in the company it is named after.',
-  ],
-  summaryNote: 'Read this before you trade, before you subscribe to an offering, and before you switch on the automated trader.',
+  summary: [],
   sections: [
     { id: 'leverage', title: 'Leverage', body: p(
       'A leveraged position moves in value by a multiple of the price move. A small move against you can cost more than the amount you set aside for the trade, and a stop is not a guarantee: it is executed at our price when it triggers, which can be worse than the level you set.') },
@@ -206,7 +194,7 @@ export function legalPage(kind: LegalKind, o: { publicUrl: string }): string {
     <div class="other mono"><span class="k">Also</span>${others.map((x) => `<a href="${x.path}">${esc(x.title)}</a>`).join('')}<a href="javascript:print()">Print this page</a></div>
   </nav>
   <article class="legal-body">
-    <aside class="summary"><span class="k mono">In plain words</span><ul>${page.summary.map((s) => `<li>${t(s)}</li>`).join('')}</ul>${page.summaryNote ? `<p>${t(page.summaryNote)}</p>` : ''}</aside>
+    ${page.summary.length ? `<aside class="summary"><span class="k mono">In plain words</span><ul>${page.summary.map((s) => `<li>${t(s)}</li>`).join('')}</ul>${page.summaryNote ? `<p>${t(page.summaryNote)}</p>` : ''}</aside>` : ''}
     ${page.warn ? `<div class="warn"><span class="k mono">Risk warning</span>${t(page.warn)} <a href="/risk" style="color:var(--ember);text-decoration:underline;text-underline-offset:3px">Read it in full.</a></div>` : ''}
     ${page.sections.map((s, i) => `<section><h2 id="${s.id}"><i>${num(i)}</i>${t(s.title)}</h2>${s.body}</section>`).join('\n')}
     <div class="legal-foot mono"><span>${esc(page.title)} · version ${esc(page.version)}</span><div class="x">${others.map((x) => `<a href="${x.path}">${esc(x.title)}</a>`).join('')}</div></div>
