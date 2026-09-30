@@ -2365,7 +2365,19 @@ if (!WEBHOOK) {
     assert.equal((await fetch(`${B}/blog/${slug}`)).status, 404);
     assert.ok(!(await fetch(`${B}/sitemap.xml`).then((r) => r.text())).includes(`/blog/${slug}<`));
   });
-  await step('the desk can see what arrived and what became of it; nobody else can', async () => {
+  await step('the legal pages are served as HTML at their own paths and listed in the sitemap', async () => {
+  for (const [path, title] of [['/terms', 'Terms of Service'], ['/privacy', 'Privacy Policy'], ['/risk', 'Risk Warning']]) {
+    const r = await fetch(`${B}${path}`);
+    assert.equal(r.status, 200, path);
+    assert.match(r.headers.get('content-type') ?? '', /html/);
+    const html = await r.text();
+    assert.match(html, new RegExp(`<h1 class="display">${title}</h1>`));
+    assert.match(html, /In plain words/);
+  }
+  const map = await fetch(`${B}/sitemap.xml`).then((r) => r.text());
+  for (const p of ['/terms', '/privacy', '/risk']) assert.ok(map.includes(`${p}</loc>`), `${p} in the sitemap`);
+});
+await step('the desk can see what arrived and what became of it; nobody else can', async () => {
     const seen = await get('/admin/articles', { token: A });
     assert.equal(seen.configured, true);
     const mine = seen.deliveries.filter((d) => d.slug === slug);

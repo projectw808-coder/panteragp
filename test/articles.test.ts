@@ -177,3 +177,20 @@ describe('the pages', () => {
     assert.match(xml, /<loc>https:\/\/x\/blog\/a<\/loc><lastmod>2026-08-13<\/lastmod>/);
   });
 });
+
+describe('the legal pages', () => {
+  it('render each page with its contents, its summary and a count of what is left to confirm', async () => {
+    const { legalPage, placeholdersIn } = await import('../src/legal-page.ts');
+    for (const kind of ['terms', 'privacy', 'risk'] as const) {
+      const html = legalPage(kind, { publicUrl: 'https://x' });
+      assert.match(html, /<nav class="legal-nav"/);
+      assert.match(html, /In plain words/);
+      assert.match(html, /legal@pantera-gp\.com|Read this before you trade/);
+      assert.ok(!/simulat/i.test(html), 'the word the desk struck stays struck');
+      const open = placeholdersIn(kind);
+      if (open) assert.match(html, new RegExp(`Draft · ${open} point`));
+    }
+    assert.match(legalPage('terms', { publicUrl: 'https://x' }), /<link rel="canonical" href="https:\/\/x\/terms">/);
+    assert.match(legalPage('terms', { publicUrl: 'https://x' }), /Playfair Display/, 'the platform look, not the Insights one');
+  });
+});

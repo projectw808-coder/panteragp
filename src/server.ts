@@ -27,6 +27,7 @@ import {
 } from './ipo.ts';
 import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
 import { articlePage, indexPage, sitemap, type ArticleCard, type Topic } from './blog-page.ts';
+import { legalPage, LEGAL_PATHS, type LegalKind } from './legal-page.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -6596,6 +6597,13 @@ app.get('/blog/:slug', async (req: any, reply) => {
     `SELECT ${CARD} FROM articles WHERE unpublished_at IS NULL AND slug <> $1 ORDER BY published_at DESC LIMIT 3`, [slug]);
   return html(reply).send(articlePage({ article: articleOf(row), more: more.map(cardOf), publicUrl: publicUrl() }));
 });
+// The legal pages: the terms, the privacy policy and the risk warning, rendered on the
+// same shell as the articles so a reader from a sign-up link or a search gets the whole
+// text without the app. The words live in legal-page.ts.
+for (const kind of Object.keys(LEGAL_PATHS) as LegalKind[]) {
+  app.get(LEGAL_PATHS[kind], async (_req, reply) => html(reply).send(legalPage(kind, { publicUrl: publicUrl() })));
+}
+
 app.get('/sitemap.xml', async (_req, reply) => {
   const { rows } = await pool.query('SELECT slug, published_at, source_updated_at FROM articles WHERE unpublished_at IS NULL ORDER BY published_at DESC');
   return reply.type('application/xml; charset=utf-8').header('cache-control', 'public, max-age=600').send(sitemap({

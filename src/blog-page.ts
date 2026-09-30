@@ -171,14 +171,82 @@ h1{font-size:52px;margin:0 0 20px}
 .cta p{color:var(--pebble);margin:0 0 28px}
 footer{background:var(--stage);color:var(--mist);padding:24px 32px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px}
 footer a:hover{color:var(--ember)}
+/* ---- the legal pages: a contents rail beside a reading column, with the desk's open
+   placeholders marked so nobody mistakes a draft for the finished thing ---- */
+.legal{display:grid;grid-template-columns:260px minmax(0,720px);gap:64px;justify-content:center;padding:56px 0 80px}
+.legal-head{grid-column:1/-1;max-width:1044px;width:100%;justify-self:center;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.legal-head h1{font-size:44px;margin:10px 0 14px}
+.legal-head .meta{display:flex;flex-wrap:wrap;gap:22px;color:var(--ink-soft)}
+.legal-head .meta b{color:var(--vellum);font-weight:500}
+.legal-nav{position:sticky;top:88px;align-self:start;display:flex;flex-direction:column;gap:2px;font-size:12px}
+.legal-nav .k{color:var(--ember);margin-bottom:8px}
+.legal-nav a{display:flex;gap:12px;padding:7px 10px;color:var(--ink-soft);border-left:1px solid var(--line);transition:color .18s var(--ease),border-color .18s var(--ease),background .18s var(--ease)}
+.legal-nav a i{font:500 11px var(--mono);letter-spacing:.16em;color:var(--ember);font-style:normal;min-width:22px}
+.legal-nav a:hover{color:var(--vellum);border-color:var(--ember);background:var(--panel)}
+.legal-nav .other{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.legal-nav .other a{border-left:0;padding-left:0}
+.legal-body{font-size:17px;line-height:1.6;letter-spacing:-.01em}
+.legal-body h2{display:flex;gap:14px;align-items:baseline;font-size:24px;margin:44px 0 14px;letter-spacing:-.022em;line-height:1.15;font-weight:500;scroll-margin-top:96px}
+.legal-body h2 i{font:500 11px var(--mono);letter-spacing:.16em;color:var(--ember);font-style:normal}
+.legal-body p{margin:0 0 18px}
+.legal-body ul{padding-left:22px;margin:0 0 18px}.legal-body li{margin:0 0 8px}
+.legal-body table{width:100%;border-collapse:collapse;margin:0 0 24px;font-size:14px;line-height:1.45}
+.legal-body th,.legal-body td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+.legal-body th{font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
+.legal-body .tablewrap{overflow-x:auto}
+.summary{border:1px solid var(--line);background:var(--panel);padding:22px 24px;margin:0 0 8px}
+.summary .k{color:var(--ember);display:block;margin-bottom:10px}
+.summary ul{margin:0;padding-left:0;list-style:none}
+.summary li{position:relative;padding-left:26px;margin:0 0 8px;font-size:16px;line-height:1.45}
+.summary li::before{content:"";position:absolute;left:0;top:10px;width:12px;height:2px;background:var(--ember)}
+.summary p{margin:10px 0 0;font-size:13px;color:var(--ink-soft)}
+.warn{border:1px solid rgba(255,120,23,.55);background:rgba(255,120,23,.08);padding:20px 22px;margin:0 0 24px;font-size:16px;line-height:1.5}
+.warn .k{color:var(--ember);display:block;margin-bottom:8px}
+mark.tbc{background:rgba(255,120,23,.16);color:#ffb26b;padding:1px 6px;border-radius:3px;font-family:var(--mono);font-size:.82em;letter-spacing:.02em;white-space:nowrap}
+.draft-note{grid-column:1/-1;max-width:1044px;width:100%;justify-self:center;border:1px dashed rgba(255,120,23,.6);padding:12px 16px;color:#ffb26b;font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase}
+.legal-foot{border-top:1px solid var(--line);margin-top:48px;padding-top:20px;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;color:var(--ink-soft);font-size:13px}
+.legal-foot .x{display:flex;gap:18px}
+.legal-foot a:hover{color:var(--ember)}
+@media(max-width:960px){.legal{grid-template-columns:1fr;gap:32px}.legal-nav{position:static;flex-direction:row;flex-wrap:wrap;gap:8px}.legal-nav .k{flex-basis:100%}.legal-nav a{border:1px solid var(--line);padding:6px 10px}.legal-nav .other{margin:0;padding:0;border:0;flex-basis:100%}.legal-head h1{font-size:32px}}
+@media print{nav.bar,footer,.legal-nav,.draft-note,.cta,body::after{display:none!important}body{background:#fff;color:#000}.legal{display:block}.legal-body{font-size:11pt}mark.tbc{background:#eee;color:#000}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media(max-width:820px){nav.bar{padding:14px 16px}nav .links{display:none}.wrap,header.art,.hero,.body,.disc{padding-left:16px;padding-right:16px}h1{font-size:34px}.cards{grid-template-columns:1fr}.hero .img{height:240px}.more h2,.index h1{font-size:26px}.index{grid-template-columns:1fr;padding-top:40px}.masthead{flex-wrap:wrap;gap:18px}.feature{grid-template-columns:1fr}.feature-img{min-height:240px;border-right:0;border-bottom:1px solid var(--line)}.feature-text{padding:24px 20px}.feature-text h2{font-size:28px}}
 `;
 
-function layout(o: {
+/** The page shell every public page shares: bar, bloom, footer. Exported for the legal pages. */
+export function layout(o: {
   title: string; description: string; canonical: string; publicUrl: string;
-  ogImage?: string | null; ogType?: 'article' | 'website'; jsonLd?: unknown; body: string; nav: 'insights';
+  ogImage?: string | null; ogType?: 'article' | 'website'; jsonLd?: unknown; body: string; nav: 'insights' | 'legal';
+  /** Leave out the sign-up strip: a legal page should not end on a pitch. */
+  noCta?: boolean;
+  /**
+   * The platform's own terminal look rather than the Insights bloom: onyx ground, obsidian
+   * panels, hairlines, Playfair for the titles, mono labels. For pages that belong to the
+   * product rather than to its editorial — the legal pages.
+   */
+  theme?: 'terminal';
 }) {
+  const terminal = o.theme === 'terminal' ? `<style>
+:root{--canvas:#09090b;--stage:#09090b;--panel:#18181b;--panel-hover:#1f1f23;--line:rgba(255,255,255,.10);--ink:#ffffff;--ink-soft:#a1a1aa;--mist:#71717a}
+body{background:var(--canvas)}body::after{display:none}
+nav.bar{background:rgba(9,9,11,.88)}
+h1,.legal-body h2{font-family:'Playfair Display',Georgia,serif;font-weight:400;letter-spacing:-.01em}
+.legal-head h1{font-size:40px;margin:8px 0 12px}
+.legal-body h2{font-size:24px}
+.legal-body h2::before{content:"";width:2px;height:16px;background:var(--ember);align-self:center}
+.summary,.legal-nav a:hover{background:var(--panel)}
+.summary{border-radius:12px;border:1px solid rgba(255,255,255,.08);box-shadow:rgba(255,255,255,.1) 0 0 0 1px inset;border-color:transparent}
+.warn{border-radius:12px}
+.legal-nav a{border-left:0;border-radius:8px;padding:8px 10px}
+.legal-nav a:hover{color:#fff}
+.draft-note{border-radius:8px}
+mark.tbc{border-radius:4px}
+.legal-body th,.legal-body td{border-color:rgba(255,255,255,.08)}
+.legal-body table{background:var(--panel);border-radius:12px;overflow:hidden}
+.legal-body th{background:rgba(255,255,255,.04)}
+.legal-body p,.legal-body li{color:#e5e7eb}
+.legal-head .meta,.legal-foot,.crumb{color:var(--ink-soft)}
+</style>` : '';
   const ld = o.jsonLd ? `<script type="application/ld+json">${JSON.stringify(o.jsonLd).replace(/</g, '\\u003c')}</script>` : '';
   return `<!doctype html>
 <html lang="en">
@@ -198,24 +266,25 @@ function layout(o: {
 ${o.ogImage ? `<meta property="og:image" content="${esc(o.ogImage)}">\n<meta name="twitter:card" content="summary_large_image">` : '<meta name="twitter:card" content="summary">'}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700${o.theme === 'terminal' ? '&family=Playfair+Display:wght@400;500' : ''}&display=swap" rel="stylesheet">
 <style>${CSS}</style>
+${terminal}
 ${ld}
 </head>
 <body>
 <nav class="bar" aria-label="Site">
   <a class="brand display" href="/">Pantera GP <i>///</i></a>
-  <div class="links mono"><a href="/">Platform</a><a class="on" href="/blog" aria-current="page">Insights</a></div>
+  <div class="links mono"><a href="/">Platform</a><a${o.nav === 'insights' ? ' class="on" aria-current="page"' : ''} href="/blog">Insights</a><a${o.nav === 'legal' ? ' class="on" aria-current="page"' : ''} href="/terms">Legal</a></div>
   <div class="right"><a class="mono" href="/#signin">Sign in</a><a class="btn-fill" href="/#register">Open an account</a></div>
 </nav>
 ${o.body}
-<section class="cta">
+${o.noCta ? '' : `<section class="cta">
   <span class="mono" style="color:var(--ember)">Get this every week</span>
   <h2 class="display">The desk's view, in your inbox</h2>
   <p>Clients receive the weekly update automatically. Everyone else can open an account in a few minutes.</p>
   <a class="btn-fill" href="/#register">Open an account</a>
-</section>
-<footer class="mono"><span>Pantera GP ///</span><span><a href="/blog">Insights</a> · <a href="/">Platform</a> · © ${new Date().getUTCFullYear()} Pantera GP</span></footer>
+</section>`}
+<footer class="mono"><span>Pantera GP ///</span><span><a href="/blog">Insights</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/risk">Risk warning</a> · © ${new Date().getUTCFullYear()} Pantera GP</span></footer>
 </body>
 </html>`;
 }
@@ -371,6 +440,9 @@ export function sitemap(o: { publicUrl: string; articles: Pick<Article, 'slug' |
   const urls = [
     `<url><loc>${esc(o.publicUrl)}/</loc></url>`,
     `<url><loc>${esc(o.publicUrl)}/blog</loc><changefreq>daily</changefreq></url>`,
+    `<url><loc>${esc(o.publicUrl)}/terms</loc></url>`,
+    `<url><loc>${esc(o.publicUrl)}/privacy</loc></url>`,
+    `<url><loc>${esc(o.publicUrl)}/risk</loc></url>`,
     ...o.articles.map((a) => `<url><loc>${esc(o.publicUrl)}/blog/${esc(a.slug)}</loc><lastmod>${esc((a.updated_at ?? a.published_at).slice(0, 10))}</lastmod></url>`),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;

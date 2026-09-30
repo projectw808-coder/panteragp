@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 146 acceptance checks against the running stack
+    npm run test:e2e # 147 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -670,6 +670,17 @@ the delivery as `ignored` with `test: true`, and bunzy's page shows a 200. Publi
 something and it is at `/blog/<slug>` within a second. Locally, `npm run test:e2e` signs
 its own deliveries with the `BUNZY_WEBHOOK_SECRET` in `.env` and skips the phase when it
 is unset.
+
+## Legal pages
+
+`/terms`, `/privacy` and `/risk` are rendered on the server like the Insights pages, on the
+platform's own terminal look, so a reader from a sign-up link or a search gets the whole text
+without the app. The words live in `src/legal-page.ts` and change through the same review as
+the product. Anything the desk has still to settle is written in square brackets and rendered
+as a marked "to confirm" chip, and a page that carries any of them says at the top that it is
+a draft and counts them; the banner goes on its own once none remain. Each page opens with a
+plain-words summary and a numbered contents rail, prints as a plain document, and is listed
+in the sitemap. The footer of every public page links all three.
 
 ## The auto trader
 
