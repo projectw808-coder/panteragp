@@ -28,7 +28,7 @@ const OFFICES: Office[] = [
 ];
 
 const CHANNELS: { label: string; title: string; value: string; href?: string; note: string }[] = [
-  { label: 'Clients', title: 'Support', value: 'From your account', href: '/#signin', note: 'Open a ticket from the Support page once signed in. The desk answers in the account, where the record is.' },
+  { label: 'Support', title: 'support@pantera-gp.com', value: 'support@pantera-gp.com', href: 'mailto:support@pantera-gp.com', note: 'Questions about your account, a deposit or a position. Clients can also open a ticket from the Support page once signed in.' },
   { label: 'Legal and privacy', title: 'legal@pantera-gp.com', value: 'legal@pantera-gp.com', href: 'mailto:legal@pantera-gp.com', note: 'Notices under the terms, privacy requests and complaints. Acknowledged within 30 days.' },
   { label: 'New accounts', title: 'Open an account', value: 'A few minutes', href: '/#register', note: 'Name, email and a password. You land in the terminal signed in, with nothing to configure first.' },
 ];
@@ -39,7 +39,6 @@ export function placeholdersInContact(): number {
 }
 
 export function contactPage(o: { publicUrl: string }): string {
-  const open = placeholdersInContact();
   return layout({
     title: 'Contact — Pantera GP',
     description: 'Where Pantera GP is, and how to reach the desk: offices, support from your account, and the address for legal and privacy matters.',
@@ -51,7 +50,6 @@ export function contactPage(o: { publicUrl: string }): string {
     <h1 class="display">Talk to the desk</h1>
     <p class="lead">Three offices, one desk. Clients reach it from their account; everyone else by the channels below.</p>
   </header>
-  ${open ? `<div class="draft-note">Draft · ${open} points to confirm before publishing, marked like <mark class="tbc">this</mark></div>` : ''}
   <section class="offices" aria-label="Offices">
     ${OFFICES.map((of, i) => `<article class="office">
       <div class="office-mark">${of.mark}</div>
