@@ -229,7 +229,7 @@ mark.tbc{background:rgba(255,120,23,.16);color:#ffb26b;padding:1px 6px;border-ra
 .office-meta dt{color:var(--mist);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
 .office-meta dd{margin:0;color:var(--ink)}
 .channels{padding-top:56px}
-.channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.channel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
 .channel{display:flex;flex-direction:column;gap:10px;padding:22px 24px;border-radius:12px;border:1px solid var(--line);color:inherit;transition:border-color .18s var(--ease),background .18s var(--ease)}
 .channel:hover{border-color:rgba(255,120,23,.55);background:var(--panel)}
 .channel .k{color:var(--ember)}

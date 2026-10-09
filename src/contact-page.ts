@@ -29,7 +29,6 @@ const OFFICES: Office[] = [
 
 const CHANNELS: { label: string; title: string; value: string; href?: string; note: string }[] = [
   { label: 'Support', title: 'support@pantera-gp.com', value: 'support@pantera-gp.com', href: 'mailto:support@pantera-gp.com', note: 'Questions about your account, a deposit or a position. Clients can also open a ticket from the Support page once signed in.' },
-  { label: 'Legal and privacy', title: 'legal@pantera-gp.com', value: 'legal@pantera-gp.com', href: 'mailto:legal@pantera-gp.com', note: 'Notices under the terms, privacy requests and complaints. Acknowledged within 30 days.' },
   { label: 'New accounts', title: 'Open an account', value: 'A few minutes', href: '/#register', note: 'Name, email and a password. You land in the terminal signed in, with nothing to configure first.' },
 ];
 
