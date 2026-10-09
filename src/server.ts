@@ -28,6 +28,7 @@ import {
 import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
 import { articlePage, indexPage, sitemap, type ArticleCard, type Topic } from './blog-page.ts';
 import { legalPage, LEGAL_PATHS, type LegalKind } from './legal-page.ts';
+import { contactPage } from './contact-page.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -6603,6 +6604,7 @@ app.get('/blog/:slug', async (req: any, reply) => {
 for (const kind of Object.keys(LEGAL_PATHS) as LegalKind[]) {
   app.get(LEGAL_PATHS[kind], async (_req, reply) => html(reply).send(legalPage(kind, { publicUrl: publicUrl() })));
 }
+app.get('/contact', async (_req, reply) => html(reply).send(contactPage({ publicUrl: publicUrl() })));
 
 app.get('/sitemap.xml', async (_req, reply) => {
   const { rows } = await pool.query('SELECT slug, published_at, source_updated_at FROM articles WHERE unpublished_at IS NULL ORDER BY published_at DESC');

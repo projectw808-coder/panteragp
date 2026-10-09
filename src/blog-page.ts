@@ -208,6 +208,35 @@ mark.tbc{background:rgba(255,120,23,.16);color:#ffb26b;padding:1px 6px;border-ra
 .legal-foot .x{display:flex;gap:18px}
 .legal-foot a:hover{color:var(--ember)}
 @media(max-width:960px){.legal{grid-template-columns:1fr;gap:32px}.legal-nav{position:static;flex-direction:row;flex-wrap:wrap;gap:8px}.legal-nav .k{flex-basis:100%}.legal-nav a{border:1px solid var(--line);padding:6px 10px}.legal-nav .other{margin:0;padding:0;border:0;flex-basis:100%}.legal-head h1{font-size:32px}}
+/* ---- the contact page: office cards on the terminal ground, then the channels ---- */
+.contact{padding:56px 0 96px;max-width:1200px}
+.contact-head{padding-bottom:32px;border-bottom:1px solid var(--line);margin-bottom:28px}
+.contact-head h1{font-size:44px;margin:10px 0 12px}
+.contact-head .lead{color:var(--ink-soft);font-size:17px;max-width:56ch;margin:0;line-height:1.45}
+.contact .draft-note{margin:0 0 28px;max-width:none}
+.offices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.office{position:relative;background:var(--panel);border-radius:12px;box-shadow:rgba(255,255,255,.1) 0 0 0 1px inset;padding:26px 26px 24px;display:flex;flex-direction:column;gap:12px;overflow:hidden;transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
+.office::after{content:"";position:absolute;inset:0;background:radial-gradient(60% 50% at 100% 0,rgba(255,120,23,.14),transparent 70%);pointer-events:none;opacity:0;transition:opacity .3s var(--ease)}
+.office:hover{transform:translateY(-2px);box-shadow:rgba(255,120,23,.45) 0 0 0 1px inset}
+.office:hover::after{opacity:1}
+.office-mark{height:72px;color:var(--ember);margin:-4px 0 6px}
+.office-mark svg{height:100%;width:auto}
+.office .k{color:var(--ember)}
+.office h2{font-size:30px;margin:0;line-height:1.05}
+.office address{font-style:normal;display:flex;flex-direction:column;gap:3px;color:#e5e7eb;font-size:15px;line-height:1.45}
+.office-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0 0;padding-top:14px;border-top:1px solid var(--line);text-transform:none;letter-spacing:.04em;font-size:12px}
+.office-meta div{display:flex;flex-direction:column;gap:5px}
+.office-meta dt{color:var(--mist);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+.office-meta dd{margin:0;color:var(--ink)}
+.channels{padding-top:56px}
+.channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.channel{display:flex;flex-direction:column;gap:10px;padding:22px 24px;border-radius:12px;border:1px solid var(--line);color:inherit;transition:border-color .18s var(--ease),background .18s var(--ease)}
+.channel:hover{border-color:rgba(255,120,23,.55);background:var(--panel)}
+.channel .k{color:var(--ember)}
+.channel strong{font-family:'Playfair Display',Georgia,serif;font-weight:400;font-size:22px;letter-spacing:-.01em;word-break:break-word}
+.channel p{margin:0;color:var(--ink-soft);font-size:14px;line-height:1.5;flex:1}
+.channel .go{color:var(--ember);text-transform:none;letter-spacing:.04em;font-size:12px}
+@media(max-width:960px){.offices,.channel-grid{grid-template-columns:1fr}.contact-head h1{font-size:32px}}
 @media print{nav.bar,footer,.legal-nav,.draft-note,.cta,body::after{display:none!important}body{background:#fff;color:#000}.legal{display:block}.legal-body{font-size:11pt}mark.tbc{background:#eee;color:#000}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media(max-width:820px){nav.bar{padding:14px 16px}nav .links{display:none}.wrap,header.art,.hero,.body,.disc{padding-left:16px;padding-right:16px}h1{font-size:34px}.cards{grid-template-columns:1fr}.hero .img{height:240px}.more h2,.index h1{font-size:26px}.index{grid-template-columns:1fr;padding-top:40px}.masthead{flex-wrap:wrap;gap:18px}.feature{grid-template-columns:1fr}.feature-img{min-height:240px;border-right:0;border-bottom:1px solid var(--line)}.feature-text{padding:24px 20px}.feature-text h2{font-size:28px}}
@@ -284,7 +313,7 @@ ${o.noCta ? '' : `<section class="cta">
   <p>Clients receive the weekly update automatically. Everyone else can open an account in a few minutes.</p>
   <a class="btn-fill" href="/#register">Open an account</a>
 </section>`}
-<footer class="mono"><span>Pantera GP ///</span><span><a href="/blog">Insights</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/risk">Risk warning</a> · © ${new Date().getUTCFullYear()} Pantera GP</span></footer>
+<footer class="mono"><span>Pantera GP ///</span><span><a href="/blog">Insights</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/risk">Risk warning</a> · <a href="/contact">Contact</a> · © ${new Date().getUTCFullYear()} Pantera GP</span></footer>
 </body>
 </html>`;
 }
@@ -443,6 +472,7 @@ export function sitemap(o: { publicUrl: string; articles: Pick<Article, 'slug' |
     `<url><loc>${esc(o.publicUrl)}/terms</loc></url>`,
     `<url><loc>${esc(o.publicUrl)}/privacy</loc></url>`,
     `<url><loc>${esc(o.publicUrl)}/risk</loc></url>`,
+    `<url><loc>${esc(o.publicUrl)}/contact</loc></url>`,
     ...o.articles.map((a) => `<url><loc>${esc(o.publicUrl)}/blog/${esc(a.slug)}</loc><lastmod>${esc((a.updated_at ?? a.published_at).slice(0, 10))}</lastmod></url>`),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;

@@ -680,7 +680,9 @@ the product. Anything the desk has still to settle is written in square brackets
 as a marked "to confirm" chip, and a page that carries any of them says at the top that it is
 a draft and counts them; the banner goes on its own once none remain. Each page opens with a
 plain-words summary and a numbered contents rail, prints as a plain document, and is listed
-in the sitemap. The footer of every public page links all three.
+in the sitemap. The footer of every public page links all three, and `/contact`, built the same
+way from `src/contact-page.ts`: three office cards and the ways to reach the desk, with every
+address a placeholder chip until the desk gives premises it occupies.
 
 ## The auto trader
 
