@@ -17,14 +17,27 @@ import { layout } from './blog-page.ts';
 
 export type LegalKind = 'terms' | 'privacy' | 'risk';
 
-/** Text with the desk's placeholders marked. Escaped first, so brackets in a mark are safe. */
-const t = (s: string) => esc(s).replace(/\[([^\]]+)\]/g, '<mark class="tbc" title="To confirm before publishing">$1</mark>');
-const p = (...paras: string[]) => paras.map((x) => `<p>${t(x)}</p>`).join('\n');
-const ul = (items: string[]) => `<ul>${items.map((x) => `<li>${t(x)}</li>`).join('')}</ul>`;
-const table = (head: string[], rows: string[][]) =>
-  `<div class="tablewrap"><table><thead><tr>${head.map((h) => `<th>${t(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${t(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+/**
+ * The desk's fill-ins: placeholder text -> what to print instead. Set from Settings; a
+ * placeholder with no fill-in renders as the marked chip and counts toward the draft banner.
+ */
+export type Fills = Record<string, string>;
 
-type Section = { id: string; title: string; body: string };
+/** Text with the desk's placeholders filled or marked. Escaped first, so brackets in a mark are safe. */
+const fill = (s: string, fills: Fills) => s.replace(/\[([^\]]+)\]/g, (m, key: string) => {
+  const v = fills[key]?.trim();
+  return v ? v : m;
+});
+const t = (s: string, fills: Fills = {}) => esc(fill(s, fills)).replace(/\[([^\]]+)\]/g, '<mark class="tbc" title="To confirm before publishing">$1</mark>');
+// Bodies are built as functions of the fill-ins, so one page module renders both the
+// draft and the filled page from the same words.
+type Body = (f: Fills) => string;
+const p = (...paras: string[]): Body => (f) => paras.map((x) => `<p>${t(x, f)}</p>`).join('\n');
+const ul = (items: string[]): Body => (f) => `<ul>${items.map((x) => `<li>${t(x, f)}</li>`).join('')}</ul>`;
+const table = (head: string[], rows: string[][]): Body => (f) =>
+  `<div class="tablewrap"><table><thead><tr>${head.map((h) => `<th>${t(h, f)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${t(c, f)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+
+type Section = { id: string; title: string; body: Body };
 type Page = {
   kind: LegalKind; path: string; title: string; description: string; summary: string[]; summaryNote?: string;
   warn?: string; sections: Section[]; updated: string; version: string;
@@ -164,16 +177,25 @@ const RISK: Page = {
 
 const PAGES: Record<LegalKind, Page> = { terms: TERMS, privacy: PRIVACY, risk: RISK };
 
-/** How many of the desk's placeholders a page still carries: zero means it can be published as is. */
-export function placeholdersIn(kind: LegalKind): number {
+/** Every distinct placeholder a page carries, in order of appearance: what the desk can fill in. */
+export function placeholdersOf(kind: LegalKind): string[] {
   const page = PAGES[kind];
-  const text = [page.updated, ...page.sections.map((s) => s.title + ' ' + s.body)].join(' ');
-  return (text.match(/<mark class="tbc"|\[[^\]]+\]/g) ?? []).length;
+  const text = [page.updated, ...page.summary, page.summaryNote ?? '', page.warn ?? '',
+    ...page.sections.map((s) => s.title + ' ' + s.body({}))].join(' ');
+  const out: string[] = [];
+  for (const m of text.matchAll(/\[([^\]]+)\]/g)) if (!out.includes(m[1]!)) out.push(m[1]!);
+  return out;
 }
 
-export function legalPage(kind: LegalKind, o: { publicUrl: string }): string {
+/** How many placeholders a page still carries after the fill-ins: zero means it can be published as is. */
+export function placeholdersIn(kind: LegalKind, fills: Fills = {}): number {
+  return placeholdersOf(kind).filter((k) => !fills[k]?.trim()).length;
+}
+
+export function legalPage(kind: LegalKind, o: { publicUrl: string; fills?: Fills }): string {
   const page = PAGES[kind];
-  const open = placeholdersIn(kind);
+  const f = o.fills ?? {};
+  const open = placeholdersIn(kind, f);
   const others = (Object.values(PAGES) as Page[]).filter((x) => x.kind !== kind);
   const num = (i: number) => String(i + 1).padStart(2, '0');
   return layout({
@@ -185,7 +207,7 @@ export function legalPage(kind: LegalKind, o: { publicUrl: string }): string {
   <header class="legal-head">
     <span class="mono" style="color:var(--ember)">Legal</span>
     <h1 class="display">${esc(page.title)}</h1>
-    <div class="meta mono"><span>Version <b>${esc(page.version)}</b></span><span>Last updated <b>${t(page.updated)}</b></span><span>Applies to <b>pntgp.xyz</b></span></div>
+    <div class="meta mono"><span>Version <b>${esc(page.version)}</b></span><span>Last updated <b>${t(page.updated, f)}</b></span><span>Applies to <b>pntgp.xyz</b></span></div>
   </header>
   ${open ? `<div class="draft-note">Draft · ${open} ${open === 1 ? 'point' : 'points'} to confirm before publishing, marked like <mark class="tbc">this</mark></div>` : ''}
   <nav class="legal-nav" aria-label="Contents">
@@ -194,9 +216,9 @@ export function legalPage(kind: LegalKind, o: { publicUrl: string }): string {
     <div class="other mono"><span class="k">Also</span>${others.map((x) => `<a href="${x.path}">${esc(x.title)}</a>`).join('')}<a href="javascript:print()">Print this page</a></div>
   </nav>
   <article class="legal-body">
-    ${page.summary.length ? `<aside class="summary"><span class="k mono">In plain words</span><ul>${page.summary.map((s) => `<li>${t(s)}</li>`).join('')}</ul>${page.summaryNote ? `<p>${t(page.summaryNote)}</p>` : ''}</aside>` : ''}
-    ${page.warn ? `<div class="warn"><span class="k mono">Risk warning</span>${t(page.warn)} <a href="/risk" style="color:var(--ember);text-decoration:underline;text-underline-offset:3px">Read it in full.</a></div>` : ''}
-    ${page.sections.map((s, i) => `<section><h2 id="${s.id}"><i>${num(i)}</i>${t(s.title)}</h2>${s.body}</section>`).join('\n')}
+    ${page.summary.length ? `<aside class="summary"><span class="k mono">In plain words</span><ul>${page.summary.map((s) => `<li>${t(s, f)}</li>`).join('')}</ul>${page.summaryNote ? `<p>${t(page.summaryNote, f)}</p>` : ''}</aside>` : ''}
+    ${page.warn ? `<div class="warn"><span class="k mono">Risk warning</span>${t(page.warn, f)} <a href="/risk" style="color:var(--ember);text-decoration:underline;text-underline-offset:3px">Read it in full.</a></div>` : ''}
+    ${page.sections.map((s, i) => `<section><h2 id="${s.id}"><i>${num(i)}</i>${t(s.title, f)}</h2>${s.body(f)}</section>`).join('\n')}
     <div class="legal-foot mono"><span>${esc(page.title)} · version ${esc(page.version)}</span><div class="x">${others.map((x) => `<a href="${x.path}">${esc(x.title)}</a>`).join('')}</div></div>
   </article>
 </main>`,

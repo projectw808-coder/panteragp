@@ -24,7 +24,7 @@ Then open **http://localhost:5173**:
 Checks:
 
     npm test         # unit and schema tests, no server needed
-    npm run test:e2e # 147 acceptance checks against the running stack
+    npm run test:e2e # 148 acceptance checks against the running stack
 
 `test:e2e` reads `.env`, so it signs its forged tokens with the same secret the API is
 verifying with — without that the auth checks would pass for the wrong reason.
@@ -683,6 +683,13 @@ plain-words summary and a numbered contents rail, prints as a plain document, an
 in the sitemap. The footer of every public page links all three, and `/contact`, built the same
 way from `src/contact-page.ts`: three office cards and the ways to reach the desk, with every
 address a placeholder chip until the desk gives premises it occupies.
+
+**The desk edits these pages from Settings.** Site content, admin only: the contact page's
+lead line, support address, offices and region hours, and every placeholder the legal pages
+carry, each with a box. Saved sections live in `site_content`, one JSON row per section,
+read by the public pages on every request, so a save is live at once; an empty box keeps
+the page's own words, and a filled placeholder leaves the draft count. `GET|PUT
+/admin/site-content[/:key]`.
 
 ## The auto trader
 

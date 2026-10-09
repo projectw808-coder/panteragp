@@ -27,8 +27,8 @@ import {
 } from './ipo.ts';
 import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
 import { articlePage, indexPage, sitemap, type ArticleCard, type Topic } from './blog-page.ts';
-import { legalPage, LEGAL_PATHS, type LegalKind } from './legal-page.ts';
-import { contactPage } from './contact-page.ts';
+import { legalPage, LEGAL_PATHS, placeholdersOf, type Fills, type LegalKind } from './legal-page.ts';
+import { contactPage, type ContactContent } from './contact-page.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -6601,10 +6601,62 @@ app.get('/blog/:slug', async (req: any, reply) => {
 // The legal pages: the terms, the privacy policy and the risk warning, rendered on the
 // same shell as the articles so a reader from a sign-up link or a search gets the whole
 // text without the app. The words live in legal-page.ts.
-for (const kind of Object.keys(LEGAL_PATHS) as LegalKind[]) {
-  app.get(LEGAL_PATHS[kind], async (_req, reply) => html(reply).send(legalPage(kind, { publicUrl: publicUrl() })));
+// Site content the desk edits from Settings: the contact page, and the fill-ins on the
+// legal pages. One JSON row per section; the public pages read it on every request, so a
+// save is live at once, and a missing row means the page's own defaults.
+async function siteContent<T>(key: string): Promise<T | null> {
+  const { rows: [row] } = await pool.query<{ value: T }>('SELECT value FROM site_content WHERE key = $1', [key]);
+  return row?.value ?? null;
 }
-app.get('/contact', async (_req, reply) => html(reply).send(contactPage({ publicUrl: publicUrl() })));
+
+const officeBody = z.object({
+  role: z.string().max(60).default('Office'),
+  city: z.string().max(80).default(''),
+  lines: z.array(z.string().max(120)).max(6).default([]),
+  hours: z.string().max(80).default(''),
+  phone: z.string().max(40).default(''),
+});
+const contactBody = z.object({
+  lead: z.string().max(300).optional(),
+  support_email: z.string().email().max(120).optional().or(z.literal('')),
+  offices: z.array(officeBody).max(6).optional(),
+  region_hours: z.record(z.string().max(60), z.string().max(60)).optional(),
+});
+const fillsBody = z.record(z.string().max(200), z.string().max(400));
+
+app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
+  const [contact, terms, privacy, risk] = await Promise.all([
+    siteContent<ContactContent>('contact'), siteContent<Fills>('legal:terms'), siteContent<Fills>('legal:privacy'), siteContent<Fills>('legal:risk'),
+  ]);
+  return {
+    contact: contact ?? {},
+    legal: {
+      terms: { placeholders: placeholdersOf('terms'), fills: terms ?? {} },
+      privacy: { placeholders: placeholdersOf('privacy'), fills: privacy ?? {} },
+      risk: { placeholders: placeholdersOf('risk'), fills: risk ?? {} },
+    },
+  };
+});
+
+app.put('/admin/site-content/:key', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const key = String(req.params.key);
+  const schema = key === 'contact' ? contactBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
+  if (!schema) return reply.code(404).send({ error: 'no such section' });
+  const body = schema.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  await pool.query(
+    `INSERT INTO site_content (key, value, updated_by) VALUES ($1, $2, $3)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+    [key, JSON.stringify(body.data), req.principal.sub]);
+  return { ok: true, key };
+});
+
+for (const kind of Object.keys(LEGAL_PATHS) as LegalKind[]) {
+  app.get(LEGAL_PATHS[kind], async (_req, reply) =>
+    html(reply).send(legalPage(kind, { publicUrl: publicUrl(), fills: (await siteContent<Fills>(`legal:${kind}`)) ?? {} })));
+}
+app.get('/contact', async (_req, reply) =>
+  html(reply).send(contactPage({ publicUrl: publicUrl(), content: (await siteContent<ContactContent>('contact')) ?? {} })));
 
 app.get('/sitemap.xml', async (_req, reply) => {
   const { rows } = await pool.query('SELECT slug, published_at, source_updated_at FROM articles WHERE unpublished_at IS NULL ORDER BY published_at DESC');

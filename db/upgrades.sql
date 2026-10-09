@@ -885,3 +885,13 @@ VALUES
    '$7-17bn', 5000000, 250, 0.0720, 120,
    '2026-10-27T09:00:00Z', '2026-11-24T16:00:00Z', '2027-03-24T16:00:00Z', 'upcoming', 12, 4000000)
 ON CONFLICT (slug) DO NOTHING;
+
+-- Site content the desk edits without a deploy: the contact page and the fill-ins on the
+-- legal pages. One row per section, the whole section as JSON, so a change is one write and
+-- the page reads one row. Validated by the route that writes it, not by the table.
+CREATE TABLE IF NOT EXISTS site_content (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid REFERENCES staff(id)
+);

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { alertBox, btn, btnGhost, card, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { SiteContent } from './site-content.tsx';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 type Staff = { id: string; name: string; email: string; role: string; active: boolean };
@@ -71,6 +72,7 @@ export function SettingsView({ me, dark, setDark }: {
       </Section>
 
       {admin && <StaffAccounts meId={me?.sub} />}
+      {admin && <SiteContent />}
     </div>
   );
 }

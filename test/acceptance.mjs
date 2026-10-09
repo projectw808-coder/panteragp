@@ -2365,7 +2365,28 @@ if (!WEBHOOK) {
     assert.equal((await fetch(`${B}/blog/${slug}`)).status, 404);
     assert.ok(!(await fetch(`${B}/sitemap.xml`).then((r) => r.text())).includes(`/blog/${slug}<`));
   });
-  await step('the legal pages are served as HTML at their own paths and listed in the sitemap', async () => {
+  await step('the desk edits the public pages from Settings, and the pages show it on the next request', async () => {
+  const before = await get('/admin/site-content', { token: A });
+  assert.ok(before.legal.terms.placeholders.length > 0, 'the terms carry placeholders to fill');
+  assert.equal(await status('/admin/site-content', { token: T }), 403, 'clients cannot');
+  // One fill-in on the terms: the placeholder prints as text and leaves the draft count.
+  const ph = before.legal.terms.placeholders[0];
+  await get('/admin/site-content/legal:terms', { token: A, method: 'PUT', body: { [ph]: 'eighteen-acceptance' } });
+  const terms = await fetch(`${B}/terms`).then((r) => r.text());
+  assert.match(terms, /eighteen-acceptance/);
+  assert.ok(!terms.includes(`<mark class="tbc" title="To confirm before publishing">${ph}</mark>`), 'the chip is gone');
+  // The contact page: an office appears in place of the regions, and the support address follows.
+  await get('/admin/site-content/contact', { token: A, method: 'PUT', body: { support_email: 'desk@example.com', offices: [{ role: 'Headquarters', city: 'Acceptance City', lines: ['1 Test Street', '', 'AC1 2PT', 'Testland'], hours: 'Mon–Fri 09:00–17:00', phone: '' }] } });
+  const contact = await fetch(`${B}/contact`).then((r) => r.text());
+  assert.match(contact, /Acceptance City/);
+  assert.match(contact, /desk@example\.com/);
+  assert.ok(!/class="region"/.test(contact), 'offices replace the regions');
+  assert.equal(await status('/admin/site-content/nope', { token: A, method: 'PUT', body: {} }), 404);
+  // Back to the defaults, so the next steps read the page as shipped.
+  await get('/admin/site-content/legal:terms', { token: A, method: 'PUT', body: {} });
+  await get('/admin/site-content/contact', { token: A, method: 'PUT', body: {} });
+});
+await step('the legal pages are served as HTML at their own paths and listed in the sitemap', async () => {
   for (const [path, title] of [['/terms', 'Terms of Service'], ['/privacy', 'Privacy Policy'], ['/risk', 'Risk Warning'], ['/contact', 'Talk to the desk']]) {
     const r = await fetch(`${B}${path}`);
     assert.equal(r.status, 200, path);
