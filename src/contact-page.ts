@@ -6,7 +6,7 @@
  * confirm" chip the legal pages use until the desk confirms them.
  */
 import { escapeHtml as esc } from './articles.ts';
-import { layout } from './blog-page.ts';
+import { layout, type FooterView } from './blog-page.ts';
 
 /** What the desk may set on this page from Settings; anything left out keeps the default. */
 export type ContactContent = {
@@ -53,7 +53,7 @@ const OFFICE_MARKS = [
   `<svg viewBox="0 0 120 72" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="60" cy="36" r="10"/><circle cx="60" cy="36" r="22" opacity=".5"/><circle cx="60" cy="36" r="34" opacity=".25"/><path d="M60 2v10M60 60v10M26 36h10M84 36h10" opacity=".5"/></svg>`,
 ];
 
-export function contactPage(o: { publicUrl: string; content?: ContactContent }): string {
+export function contactPage(o: { publicUrl: string; content?: ContactContent; footer?: FooterView }): string {
   const c = o.content ?? {};
   const support = c.support_email?.trim() || 'support@pantera-gp.com';
   const offices = (c.offices ?? []).filter((of) => of.city?.trim() || of.lines?.some((l) => l.trim()));
@@ -74,7 +74,7 @@ export function contactPage(o: { publicUrl: string; content?: ContactContent }):
     title: 'Contact — Pantera GP',
     description: 'Where Pantera GP is, and how to reach the desk: offices, support from your account, and the address for legal and privacy matters.',
     canonical: `${o.publicUrl}/contact`,
-    publicUrl: o.publicUrl, nav: 'legal', noCta: true, theme: 'terminal',
+    publicUrl: o.publicUrl, nav: 'legal', noCta: true, theme: 'terminal', footer: o.footer,
     body: `<main class="wrap contact">
   <header class="contact-head">
     <span class="mono" style="color:var(--ember)">Contact</span>

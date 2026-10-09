@@ -686,7 +686,9 @@ address a placeholder chip until the desk gives premises it occupies.
 
 **The desk edits these pages from Settings.** Site content, admin only: the contact page's
 lead line, support address, offices and region hours, and every placeholder the legal pages
-carry, each with a box. Saved sections live in `site_content`, one JSON row per section,
+carry, each with a box; and the footer — a logo (kept in `site_assets`, in the row like every
+other picture), a paragraph, a column title with its links, and the copyright line — on the
+landing page and every public page alike. Saved sections live in `site_content`, one JSON row per section,
 read by the public pages on every request, so a save is live at once; an empty box keeps
 the page's own words, and a filled placeholder leaves the draft count. `GET|PUT
 /admin/site-content[/:key]`.

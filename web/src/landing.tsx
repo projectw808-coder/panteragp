@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useApi } from './api.ts';
+
+/** The footer as the desk has set it from Settings; anything left out keeps the words here. */
+type FooterView = { text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null };
 import { ShieldCheck } from 'lucide-react';
 
 /**
@@ -263,6 +267,7 @@ function Marquee({ items, reverse = false, onDark = false }: {
 
 export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegister: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const footer = useApi<FooterView>('/site-content/footer').data ?? {};
   const glow = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
 
@@ -602,13 +607,15 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div>
               <div className="flex items-center gap-2">
-                <span className="display text-lg text-vellum">Pantera GP</span>
-                <span className="font-mono text-xs text-ember-ink">///</span>
+                {footer.logo_url
+                  ? <img src={footer.logo_url} alt="Pantera GP" className="h-8 w-auto" />
+                  : <>
+                    <span className="display text-lg text-vellum">Pantera GP</span>
+                    <span className="font-mono text-xs text-ember-ink">///</span>
+                  </>}
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
-                A trading desk and a client system, built as one thing. Orders rest with the
-                engine rather than in an open tab, and every fill, decision and document is
-                written down against the account it belongs to.
+                {footer.text?.trim() || 'A trading desk and a client system, built as one thing. Orders rest with the engine rather than in an open tab, and every fill, decision and document is written down against the account it belongs to.'}
               </p>
 
               {/* Two real figures, not a row of numbers chosen to look substantial. The
@@ -627,14 +634,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             {[
               ['Platform', [['Capabilities', 'platform'], ['The engine', 'engine'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
               ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
-              ['Legal', [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
+              [footer.column_title?.trim() || 'Legal', footer.links?.length
+                ? footer.links.map((l) => [l.label, l.href])
+                : [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
             ].map(([heading, links]) => (
               <div key={heading as string}>
                 <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
                 <ul className="mt-4 space-y-2">
                   {(links as [string, string][]).map(([label, id]) => (
                     <li key={id}>
-                      {id.startsWith('/')
+                      {/^(\/|https?:|mailto:)/.test(id)
                         ? <a href={id} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</a>
                         : <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</button>}
                     </li>
@@ -668,7 +677,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
-            <span className="ml-auto">© {new Date().getFullYear()} Pantera GP</span>
+            <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
           </div>
         </div>
       </section>

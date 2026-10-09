@@ -895,3 +895,13 @@ CREATE TABLE IF NOT EXISTS site_content (
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid REFERENCES staff(id)
 );
+
+-- Pictures the desk puts on the public pages — the footer logo, for now — in the row, for
+-- the same reason the offering covers and the profile photos are: the container's disk is
+-- replaced on every release.
+CREATE TABLE IF NOT EXISTS site_assets (
+  key        text PRIMARY KEY,
+  data       bytea NOT NULL,
+  type       text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

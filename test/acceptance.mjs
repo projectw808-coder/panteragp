@@ -2382,6 +2382,30 @@ if (!WEBHOOK) {
   assert.match(contact, /desk@example\.com/);
   assert.ok(!/class="region"/.test(contact), 'offices replace the regions');
   assert.equal(await status('/admin/site-content/nope', { token: A, method: 'PUT', body: {} }), 404);
+  // The footer: a column, its links and the line, on the public pages and on the public endpoint the landing page reads.
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.' } });
+  const footer = await get('/site-content/footer');
+  assert.equal(footer.column_title, 'Company');
+  assert.equal(footer.logo_url, null, 'no logo until one is uploaded');
+  const foot = await fetch(`${B}/terms`).then((r) => r.text());
+  assert.match(foot, /Acceptance link/);
+  assert.match(foot, /Acceptance line/);
+  assert.match(foot, /A footer paragraph\./);
+  // The logo: a picture goes up as a file, is served back, and comes down again.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const form = new FormData();
+  form.append('file', new Blob([png], { type: 'image/png' }), 'logo.png');
+  const up = await fetch(`${B}/admin/site-content/footer/logo`, { method: 'POST', headers: { authorization: `Bearer ${A}` }, body: form });
+  assert.equal(up.status, 200);
+  const withLogo = await up.json();
+  assert.match(withLogo.logo_url, /^\/api\/site-assets\/footer-logo\?v=\d+$/);
+  const img = await fetch(`${B}/site-assets/footer-logo`);
+  assert.equal(img.status, 200);
+  assert.match(img.headers.get('content-type') ?? '', /image\/png/);
+  assert.match(await fetch(`${B}/terms`).then((r) => r.text()), /class="foot-logo"/, 'the public footer shows it');
+  const down = await call('/admin/site-content/footer/logo', { token: A, method: 'DELETE' }).then(j);
+  assert.equal(down.logo_url, null);
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: {} });
   // Back to the defaults, so the next steps read the page as shipped.
   await get('/admin/site-content/legal:terms', { token: A, method: 'PUT', body: {} });
   await get('/admin/site-content/contact', { token: A, method: 'PUT', body: {} });

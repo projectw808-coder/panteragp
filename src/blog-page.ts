@@ -15,6 +15,15 @@ import { escapeHtml as esc, type Article, type Faq } from './articles.ts';
 
 export type ArticleCard = Pick<Article, 'slug' | 'title' | 'excerpt' | 'cover_url' | 'tags' | 'read_minutes' | 'published_at'>;
 
+/** The footer as the desk has set it from Settings; anything left out keeps the default. */
+export type FooterView = {
+  text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
+};
+export const DEFAULT_FOOTER_LINKS = [
+  { label: 'Insights', href: '/blog' }, { label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' },
+  { label: 'Risk warning', href: '/risk' }, { label: 'Contact', href: '/contact' },
+];
+
 /** The one name on every article. Who wrote it is the desk, not a person. */
 export const BYLINE = 'Pantera GP Research';
 
@@ -169,7 +178,11 @@ h1{font-size:52px;margin:0 0 20px}
 .cta>*{position:relative}
 .cta h2{font-size:36px;margin:0 0 12px}
 .cta p{color:var(--pebble);margin:0 0 28px}
-footer{background:var(--stage);color:var(--mist);padding:24px 32px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px}
+footer{background:var(--stage);color:var(--mist);padding:24px 32px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;font-size:12px}
+.foot-brand{display:flex;flex-direction:column;gap:8px;max-width:52ch}
+.foot-logo{height:28px;width:auto;display:block}
+.foot-text{margin:0;font-family:var(--ui);text-transform:none;letter-spacing:-.01em;font-size:12px;line-height:1.5;color:var(--ink-soft)}
+.foot-links{text-align:right}
 footer a:hover{color:var(--ember)}
 /* ---- the legal pages: a contents rail beside a reading column, with the desk's open
    placeholders marked so nobody mistakes a draft for the finished thing ---- */
@@ -269,7 +282,13 @@ export function layout(o: {
    * product rather than to its editorial — the legal pages.
    */
   theme?: 'terminal';
+  footer?: FooterView;
 }) {
+  const fo = o.footer ?? {};
+  const links = fo.links?.length ? fo.links : DEFAULT_FOOTER_LINKS;
+  const line = fo.line?.trim() || `© ${new Date().getUTCFullYear()} Pantera GP`;
+  const brand = fo.logo_url ? `<img class="foot-logo" src="${esc(fo.logo_url)}" alt="Pantera GP">` : 'Pantera GP ///';
+  const footerHtml = `<footer class="mono"><div class="foot-brand"><span>${brand}</span>${fo.text?.trim() ? `<p class="foot-text">${esc(fo.text.trim())}</p>` : ''}</div><span class="foot-links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')} · ${esc(line)}</span></footer>`;
   const terminal = o.theme === 'terminal' ? `<style>
 :root{--canvas:#09090b;--stage:#09090b;--panel:#18181b;--panel-hover:#1f1f23;--line:rgba(255,255,255,.10);--ink:#ffffff;--ink-soft:#a1a1aa;--mist:#71717a}
 body{background:var(--canvas)}body::after{display:none}
@@ -328,7 +347,7 @@ ${o.noCta ? '' : `<section class="cta">
   <p>Clients receive the weekly update automatically. Everyone else can open an account in a few minutes.</p>
   <a class="btn-fill" href="/#register">Open an account</a>
 </section>`}
-<footer class="mono"><span>Pantera GP ///</span><span><a href="/blog">Insights</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/risk">Risk warning</a> · <a href="/contact">Contact</a> · © ${new Date().getUTCFullYear()} Pantera GP</span></footer>
+${footerHtml}
 </body>
 </html>`;
 }
@@ -367,7 +386,7 @@ function featured(a: ArticleCard) {
  * numbers things — the nav rail, the section heads — and an index that counts its
  * entries reads as a table of contents rather than a feed.
  */
-export function indexPage(o: { articles: ArticleCard[]; page: number; pages: number; publicUrl: string; tag?: string; topics?: Topic[] }) {
+export function indexPage(o: { articles: ArticleCard[]; page: number; pages: number; publicUrl: string; tag?: string; topics?: Topic[]; footer?: FooterView }) {
   const canonical = `${o.publicUrl}/blog${o.page > 1 ? `?page=${o.page}` : ''}`;
   const topics = o.topics ?? [];
   const filtered = !!o.tag;
@@ -404,7 +423,7 @@ export function indexPage(o: { articles: ArticleCard[]; page: number; pages: num
   return layout({
     title: filtered ? `${o.tag} — Insights — Pantera GP` : 'Insights — Pantera GP',
     description: 'Market commentary and platform notes from the Pantera GP desk.',
-    canonical, publicUrl: o.publicUrl, nav: 'insights',
+    canonical, publicUrl: o.publicUrl, nav: 'insights', footer: o.footer,
     body: `<main class="wrap">
   <header class="index">
     <div>
@@ -435,7 +454,7 @@ function faqBlock(faq: Faq[]) {
 }
 
 /** One article, with three more underneath it. */
-export function articlePage(o: { article: Article; more: ArticleCard[]; publicUrl: string }) {
+export function articlePage(o: { article: Article; more: ArticleCard[]; publicUrl: string; footer?: FooterView }) {
   const a = o.article;
   const canonical = `${o.publicUrl}/blog/${a.slug}`;
   const kicker = a.tags[0] ?? 'Insights';
@@ -446,7 +465,7 @@ export function articlePage(o: { article: Article; more: ArticleCard[]; publicUr
   return layout({
     title: a.meta_title ?? a.title,
     description: a.meta_description ?? a.excerpt ?? a.title,
-    canonical, publicUrl: o.publicUrl, nav: 'insights',
+    canonical, publicUrl: o.publicUrl, nav: 'insights', footer: o.footer,
     ogImage: a.og_image_url ?? a.cover_url, ogType: 'article', jsonLd: a.json_ld,
     body: `<div class="wrap crumb mono"><a href="/blog">Insights</a><span class="sep">/</span><span>${esc(kicker)}</span></div>
 <article>

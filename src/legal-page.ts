@@ -13,7 +13,7 @@
  * through the same review as the product does.
  */
 import { escapeHtml as esc } from './articles.ts';
-import { layout } from './blog-page.ts';
+import { layout, type FooterView } from './blog-page.ts';
 
 export type LegalKind = 'terms' | 'privacy' | 'risk';
 
@@ -192,7 +192,7 @@ export function placeholdersIn(kind: LegalKind, fills: Fills = {}): number {
   return placeholdersOf(kind).filter((k) => !fills[k]?.trim()).length;
 }
 
-export function legalPage(kind: LegalKind, o: { publicUrl: string; fills?: Fills }): string {
+export function legalPage(kind: LegalKind, o: { publicUrl: string; fills?: Fills; footer?: FooterView }): string {
   const page = PAGES[kind];
   const f = o.fills ?? {};
   const open = placeholdersIn(kind, f);
@@ -202,7 +202,7 @@ export function legalPage(kind: LegalKind, o: { publicUrl: string; fills?: Fills
     title: `${page.title} — Pantera GP`,
     description: page.description,
     canonical: `${o.publicUrl}${page.path}`,
-    publicUrl: o.publicUrl, nav: 'legal', noCta: true, theme: 'terminal',
+    publicUrl: o.publicUrl, nav: 'legal', noCta: true, theme: 'terminal', footer: o.footer,
     body: `<main class="wrap legal">
   <header class="legal-head">
     <span class="mono" style="color:var(--ember)">Legal</span>

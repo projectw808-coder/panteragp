@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { alertBox, btn, btnGhost, card, input } from './App.tsx';
-import { api, useApi } from './api.ts';
+import { api, token, useApi } from './api.ts';
 
 /**
  * Site content: what the desk can change on the public pages without a deploy.
@@ -17,7 +17,82 @@ import { api, useApi } from './api.ts';
 type Office = { role: string; city: string; lines: string[]; hours: string; phone: string };
 type Contact = { lead?: string; support_email?: string; offices?: Office[]; region_hours?: Record<string, string> };
 type Legal = Record<'terms' | 'privacy' | 'risk', { placeholders: string[]; fills: Record<string, string> }>;
-type Content = { contact: Contact; legal: Legal };
+type FooterLink = { label: string; href: string };
+type Footer = { text?: string; column_title?: string; links?: FooterLink[]; line?: string; logo_url?: string | null };
+type Content = { contact: Contact; legal: Legal; footer: Footer };
+
+/**
+ * The footer: a logo, a paragraph, one column of links and the copyright line, on the
+ * landing page and on every public page. The logo goes up as a file; everything else is a
+ * box. Links may be a path on this site, a web address or a mailto.
+ */
+function FooterEditor({ initial, busy, saved, onSave, onLogo }: {
+  initial: Footer; busy: boolean; saved: boolean;
+  onSave: (f: Footer) => Promise<void>;
+  onLogo: (file: File | null) => Promise<Footer | null>;
+}) {
+  const [f, setF] = useState<Footer>(initial);
+  const [logoBusy, setLogoBusy] = useState(false);
+  useEffect(() => { setF(initial); }, [initial]);
+  const links = f.links ?? [];
+  const setLink = (i: number, patch: Partial<FooterLink>) => setF({ ...f, links: links.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
+  const logo = async (file: File | null) => {
+    setLogoBusy(true);
+    try { const next = await onLogo(file); if (next) setF({ ...f, logo_url: next.logo_url }); } finally { setLogoBusy(false); }
+  };
+  return (
+    <div className="space-y-3 border-t border-pebble pt-4 dark:border-white/10">
+      <div className="flex items-baseline gap-3">
+        <h3 className="text-sm font-semibold">Footer</h3>
+        <span className="text-xs text-slate-ink">On the landing page and every public page.</span>
+      </div>
+      <Row label="Logo">
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          {f.logo_url
+            ? <img src={f.logo_url} alt="Footer logo" className="h-8 w-auto rounded bg-onyx p-1" />
+            : <span className="text-xs text-slate-ink">None: the footer shows the Pantera GP wordmark.</span>}
+          <label className={`${btnGhost} cursor-pointer`}>
+            {logoBusy ? 'Uploading…' : f.logo_url ? 'Replace' : 'Upload'}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={logoBusy}
+              onChange={(e) => { const file = e.target.files?.[0]; if (file) void logo(file); e.target.value = ''; }} />
+          </label>
+          {f.logo_url && <button type="button" className="text-xs text-slate-ink hover:text-down" disabled={logoBusy} onClick={() => void logo(null)}>Remove</button>}
+          <span className="basis-full text-xs text-slate-ink">PNG, JPEG or WebP up to 2 MB, shown 28px tall; a wide, light-on-dark mark reads best.</span>
+        </div>
+      </Row>
+      <Row label="Text">
+        <textarea className={`${input} min-h-20`} value={f.text ?? ''} maxLength={400}
+          placeholder="A trading desk and a client system, built as one thing…"
+          onChange={(e) => setF({ ...f, text: e.target.value })} />
+      </Row>
+      <Row label="Column title">
+        <input className={`${input} max-w-xs`} value={f.column_title ?? ''} placeholder="Legal" onChange={(e) => setF({ ...f, column_title: e.target.value })} />
+      </Row>
+      <Row label="Links">
+        <div className="flex-1 space-y-2">
+          {links.map((l, i) => (
+            <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+              <input className={input} value={l.label} placeholder="Label" aria-label="Link label" onChange={(e) => setLink(i, { label: e.target.value })} />
+              <input className={input} value={l.href} placeholder="/terms, https://… or mailto:…" aria-label="Link address" onChange={(e) => setLink(i, { href: e.target.value })} />
+              <button type="button" className="text-xs text-slate-ink hover:text-down" onClick={() => setF({ ...f, links: links.filter((_, j) => j !== i) })}>Remove</button>
+            </div>
+          ))}
+          {links.length < 12 && <button type="button" className={btnGhost} onClick={() => setF({ ...f, links: [...links, { label: '', href: '' }] })}>Add a link</button>}
+          <p className="text-xs text-slate-ink">With no links, the column shows Terms, Privacy, Risk warning and Contact.</p>
+        </div>
+      </Row>
+      <Row label="Copyright line">
+        <input className={`${input} max-w-md`} value={f.line ?? ''} placeholder={`© ${new Date().getFullYear()} Pantera GP`} onChange={(e) => setF({ ...f, line: e.target.value })} />
+      </Row>
+      <div className="flex items-center gap-3">
+        <button className={btn} disabled={busy} onClick={() => onSave({ ...f, links: links.filter((l) => l.label.trim() && l.href.trim()) })}>
+          {busy ? 'Saving…' : 'Save footer'}
+        </button>
+        {saved && <span className="text-xs text-up">Saved · live now</span>}
+      </div>
+    </div>
+  );
+}
 
 const REGIONS = ['Americas', 'Europe', 'Asia-Pacific'];
 const PAGES: { key: keyof Legal; title: string; path: string }[] = [
@@ -120,6 +195,22 @@ export function SiteContent() {
           {saved === 'contact' && <span className="text-xs text-up">Saved · live now</span>}
         </div>
       </div>
+
+      {/* ------------------------------------------------------------- footer */}
+      <FooterEditor initial={loaded.data?.footer ?? {}} busy={busy === 'footer'} saved={saved === 'footer'}
+        onSave={(f) => save('footer', { text: f.text, column_title: f.column_title, links: f.links, line: f.line })}
+        onLogo={async (file) => {
+          setError(null);
+          try {
+            if (!file) return await api<Footer>('/admin/site-content/footer/logo', { method: 'DELETE' });
+            // Multipart goes through fetch, not the api helper: a JSON content-type on it
+            // would strip the boundary the server needs to read the parts.
+            const form = new FormData(); form.append('file', file);
+            const res = await fetch('/api/admin/site-content/footer/logo', { method: 'POST', headers: { authorization: `Bearer ${token.get()}` }, body: form });
+            if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Upload failed');
+            return await res.json() as Footer;
+          } catch (err) { setError((err as Error).message); return null; }
+        }} />
 
       {/* -------------------------------------------------------------- legal */}
       {PAGES.map(({ key, title, path }) => {

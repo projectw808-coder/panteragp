@@ -26,7 +26,7 @@ import {
   accruableDays, allocation, effectiveStatus, group as ipoGroup, settlement, type Status as IpoStatus,
 } from './ipo.ts';
 import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, type Delivery } from './articles.ts';
-import { articlePage, indexPage, sitemap, type ArticleCard, type Topic } from './blog-page.ts';
+import { articlePage, indexPage, sitemap, type ArticleCard, type FooterView, type Topic } from './blog-page.ts';
 import { legalPage, LEGAL_PATHS, placeholdersOf, type Fills, type LegalKind } from './legal-page.ts';
 import { contactPage, type ContactContent } from './contact-page.ts';
 
@@ -6582,8 +6582,8 @@ async function liveTopics(): Promise<Topic[]> {
 
 app.get('/blog', async (req: any, reply) => {
   const q = listQuery.parse(req.query);
-  const [list, topics] = await Promise.all([liveArticles(q), liveTopics()]);
-  return html(reply).send(indexPage({ ...list, tag: q.tag, topics, publicUrl: publicUrl() }));
+  const [list, topics, footer] = await Promise.all([liveArticles(q), liveTopics(), footerView()]);
+  return html(reply).send(indexPage({ ...list, tag: q.tag, topics, publicUrl: publicUrl(), footer }));
 });
 app.get('/blog/:slug', async (req: any, reply) => {
   const slug = String(req.params.slug).toLowerCase();
@@ -6591,12 +6591,12 @@ app.get('/blog/:slug', async (req: any, reply) => {
     ? await pool.query('SELECT * FROM articles WHERE slug = $1 AND unpublished_at IS NULL', [slug])
     : { rows: [] as any[] };
   if (!row) {
-    const [list, topics] = await Promise.all([liveArticles({ page: 1 }), liveTopics()]);
-    return html(reply).code(404).send(indexPage({ ...list, topics, publicUrl: publicUrl() }));
+    const [list, topics, footer] = await Promise.all([liveArticles({ page: 1 }), liveTopics(), footerView()]);
+    return html(reply).code(404).send(indexPage({ ...list, topics, publicUrl: publicUrl(), footer }));
   }
   const { rows: more } = await pool.query(
     `SELECT ${CARD} FROM articles WHERE unpublished_at IS NULL AND slug <> $1 ORDER BY published_at DESC LIMIT 3`, [slug]);
-  return html(reply).send(articlePage({ article: articleOf(row), more: more.map(cardOf), publicUrl: publicUrl() }));
+  return html(reply).send(articlePage({ article: articleOf(row), more: more.map(cardOf), publicUrl: publicUrl(), footer: await footerView() }));
 });
 // The legal pages: the terms, the privacy policy and the risk warning, rendered on the
 // same shell as the articles so a reader from a sign-up link or a search gets the whole
@@ -6623,13 +6623,55 @@ const contactBody = z.object({
   region_hours: z.record(z.string().max(60), z.string().max(60)).optional(),
 });
 const fillsBody = z.record(z.string().max(200), z.string().max(400));
+const footerBody = z.object({
+  text: z.string().max(400).optional(),
+  column_title: z.string().max(40).optional(),
+  links: z.array(z.object({ label: z.string().min(1).max(60), href: z.string().min(1).max(300) })).max(12).optional(),
+  line: z.string().max(200).optional(),
+});
+
+/** The footer as the pages and the landing page render it: the desk's settings plus the logo's address, if one is up. */
+async function footerView(): Promise<FooterView> {
+  const [saved, { rows: [logo] }] = await Promise.all([
+    siteContent<FooterView>('footer'),
+    pool.query<{ v: string }>(`SELECT extract(epoch FROM updated_at)::bigint::text AS v FROM site_assets WHERE key = 'footer-logo'`),
+  ]);
+  return { ...(saved ?? {}), logo_url: logo ? `/api/site-assets/footer-logo?v=${logo.v}` : null };
+}
+
+// Public: the landing page is client-rendered and asks for this once.
+app.get('/site-content/footer', async (_req, reply) =>
+  reply.header('cache-control', 'public, max-age=60').send(await footerView()));
+
+const SITE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+app.get('/site-assets/:key', async (req: any, reply) => {
+  const { rows: [row] } = await pool.query<{ data: Buffer; type: string }>('SELECT data, type FROM site_assets WHERE key = $1', [req.params.key]);
+  if (!row) return reply.code(404).send({ error: 'not found' });
+  return reply.type(row.type).header('cache-control', 'public, max-age=86400').send(row.data);
+});
+app.post('/admin/site-content/footer/logo', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const file = await req.file();
+  if (!file) return reply.code(400).send({ error: 'no file' });
+  if (!SITE_IMAGE_TYPES.has(file.mimetype)) return reply.code(415).send({ error: 'only png, jpeg or webp' });
+  const bytes = await file.toBuffer();
+  if (file.file.truncated || bytes.length > 2 * 1024 * 1024) return reply.code(413).send({ error: 'that picture is larger than 2 MB' });
+  await pool.query(
+    `INSERT INTO site_assets (key, data, type) VALUES ('footer-logo', $1, $2)
+     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, type = EXCLUDED.type, updated_at = now()`, [bytes, file.mimetype]);
+  return footerView();
+});
+app.delete('/admin/site-content/footer/logo', { preHandler: auth('admin') }, async () => {
+  await pool.query(`DELETE FROM site_assets WHERE key = 'footer-logo'`);
+  return footerView();
+});
 
 app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
-  const [contact, terms, privacy, risk] = await Promise.all([
-    siteContent<ContactContent>('contact'), siteContent<Fills>('legal:terms'), siteContent<Fills>('legal:privacy'), siteContent<Fills>('legal:risk'),
+  const [contact, terms, privacy, risk, footer] = await Promise.all([
+    siteContent<ContactContent>('contact'), siteContent<Fills>('legal:terms'), siteContent<Fills>('legal:privacy'), siteContent<Fills>('legal:risk'), footerView(),
   ]);
   return {
     contact: contact ?? {},
+    footer,
     legal: {
       terms: { placeholders: placeholdersOf('terms'), fills: terms ?? {} },
       privacy: { placeholders: placeholdersOf('privacy'), fills: privacy ?? {} },
@@ -6640,7 +6682,7 @@ app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
 
 app.put('/admin/site-content/:key', { preHandler: auth('admin') }, async (req: any, reply) => {
   const key = String(req.params.key);
-  const schema = key === 'contact' ? contactBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
+  const schema = key === 'contact' ? contactBody : key === 'footer' ? footerBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
   if (!schema) return reply.code(404).send({ error: 'no such section' });
   const body = schema.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
@@ -6653,10 +6695,10 @@ app.put('/admin/site-content/:key', { preHandler: auth('admin') }, async (req: a
 
 for (const kind of Object.keys(LEGAL_PATHS) as LegalKind[]) {
   app.get(LEGAL_PATHS[kind], async (_req, reply) =>
-    html(reply).send(legalPage(kind, { publicUrl: publicUrl(), fills: (await siteContent<Fills>(`legal:${kind}`)) ?? {} })));
+    html(reply).send(legalPage(kind, { publicUrl: publicUrl(), fills: (await siteContent<Fills>(`legal:${kind}`)) ?? {}, footer: await footerView() })));
 }
 app.get('/contact', async (_req, reply) =>
-  html(reply).send(contactPage({ publicUrl: publicUrl(), content: (await siteContent<ContactContent>('contact')) ?? {} })));
+  html(reply).send(contactPage({ publicUrl: publicUrl(), content: (await siteContent<ContactContent>('contact')) ?? {}, footer: await footerView() })));
 
 app.get('/sitemap.xml', async (_req, reply) => {
   const { rows } = await pool.query('SELECT slug, published_at, source_updated_at FROM articles WHERE unpublished_at IS NULL ORDER BY published_at DESC');
