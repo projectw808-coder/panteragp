@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from './api.ts';
 
 /** The footer as the desk has set it from Settings; anything left out keeps the words here. */
-type FooterView = { text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null };
+type FooterView = {
+  text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
+  capabilities_title?: string; capabilities?: string[];
+};
 import { ShieldCheck } from 'lucide-react';
 
 /**
@@ -268,6 +271,8 @@ function Marquee({ items, reverse = false, onDark = false }: {
 export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegister: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
   const footer = useApi<FooterView>('/site-content/footer').data ?? {};
+  // The strip the marquee and the footer both show: the desk's list when it has set one.
+  const capabilities = footer.capabilities?.length ? footer.capabilities : CAPABILITIES;
   const glow = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
 
@@ -580,7 +585,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       {/* ------------------------------------------------------------- closing */}
       <section className="stage relative overflow-hidden">
         <div className="border-b border-white/10">
-          <Marquee items={CAPABILITIES} reverse onDark />
+          <Marquee items={capabilities} reverse onDark />
         </div>
 
         <Reveal>
@@ -668,9 +673,9 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               past at the top of the page, where they read as texture rather than as a
               specification; here they sit still long enough to be read. */}
           <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
-            <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">What the engine takes</h4>
+            <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
             <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-              {CAPABILITIES.map((c) => (
+              {capabilities.map((c) => (
                 <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-mist">{c}</li>
               ))}
             </ul>

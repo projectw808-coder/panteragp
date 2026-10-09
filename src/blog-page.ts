@@ -18,6 +18,8 @@ export type ArticleCard = Pick<Article, 'slug' | 'title' | 'excerpt' | 'cover_ur
 /** The footer as the desk has set it from Settings; anything left out keeps the default. */
 export type FooterView = {
   text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
+  /** The landing page's "What the engine takes" strip; the server-rendered pages do not show it. */
+  capabilities_title?: string; capabilities?: string[];
 };
 export const DEFAULT_FOOTER_LINKS = [
   { label: 'Insights', href: '/blog' }, { label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' },

@@ -2383,9 +2383,10 @@ if (!WEBHOOK) {
   assert.ok(!/class="region"/.test(contact), 'offices replace the regions');
   assert.equal(await status('/admin/site-content/nope', { token: A, method: 'PUT', body: {} }), 404);
   // The footer: a column, its links and the line, on the public pages and on the public endpoint the landing page reads.
-  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.' } });
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.', capabilities_title: 'What it does', capabilities: ['ONE', 'TWO'] } });
   const footer = await get('/site-content/footer');
   assert.equal(footer.column_title, 'Company');
+  assert.deepEqual(footer.capabilities, ['ONE', 'TWO'], 'the engine strip follows the desk');
   assert.equal(footer.logo_url, null, 'no logo until one is uploaded');
   const foot = await fetch(`${B}/terms`).then((r) => r.text());
   assert.match(foot, /Acceptance link/);

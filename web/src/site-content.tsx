@@ -18,7 +18,10 @@ type Office = { role: string; city: string; lines: string[]; hours: string; phon
 type Contact = { lead?: string; support_email?: string; offices?: Office[]; region_hours?: Record<string, string> };
 type Legal = Record<'terms' | 'privacy' | 'risk', { placeholders: string[]; fills: Record<string, string> }>;
 type FooterLink = { label: string; href: string };
-type Footer = { text?: string; column_title?: string; links?: FooterLink[]; line?: string; logo_url?: string | null };
+type Footer = {
+  text?: string; column_title?: string; links?: FooterLink[]; line?: string; logo_url?: string | null;
+  capabilities_title?: string; capabilities?: string[];
+};
 type Content = { contact: Contact; legal: Legal; footer: Footer };
 
 /**
@@ -84,8 +87,19 @@ function FooterEditor({ initial, busy, saved, onSave, onLogo }: {
       <Row label="Copyright line">
         <input className={`${input} max-w-md`} value={f.line ?? ''} placeholder={`© ${new Date().getFullYear()} Pantera GP`} onChange={(e) => setF({ ...f, line: e.target.value })} />
       </Row>
+      <Row label="Engine strip title">
+        <input className={`${input} max-w-xs`} value={f.capabilities_title ?? ''} placeholder="What the engine takes" onChange={(e) => setF({ ...f, capabilities_title: e.target.value })} />
+      </Row>
+      <Row label="Engine strip items">
+        <div className="flex-1 space-y-1">
+          <textarea className={`${input} min-h-28 font-mono text-xs`} value={(f.capabilities ?? []).join('\n')} maxLength={1000}
+            placeholder={'MARKET\nLIMIT\nSTOP\nSTOP-LIMIT\nTRAILING STOP\nTAKE PROFIT\nRISK SIZING\nMULTI-CURRENCY\nPORTFOLIOS\nAUDIT LOG\nKYC REVIEW\nSETTLEMENT'}
+            onChange={(e) => setF({ ...f, capabilities: e.target.value.split('\n') })} />
+          <p className="text-xs text-slate-ink">One item per line, up to 24. They appear in the strip at the foot of the landing page and in the moving band at the top. Empty keeps the list the page ships with.</p>
+        </div>
+      </Row>
       <div className="flex items-center gap-3">
-        <button className={btn} disabled={busy} onClick={() => onSave({ ...f, links: links.filter((l) => l.label.trim() && l.href.trim()) })}>
+        <button className={btn} disabled={busy} onClick={() => onSave({ ...f, links: links.filter((l) => l.label.trim() && l.href.trim()), capabilities: (f.capabilities ?? []).map((c) => c.trim()).filter(Boolean) })}>
           {busy ? 'Saving…' : 'Save footer'}
         </button>
         {saved && <span className="text-xs text-up">Saved · live now</span>}
@@ -198,7 +212,7 @@ export function SiteContent() {
 
       {/* ------------------------------------------------------------- footer */}
       <FooterEditor initial={loaded.data?.footer ?? {}} busy={busy === 'footer'} saved={saved === 'footer'}
-        onSave={(f) => save('footer', { text: f.text, column_title: f.column_title, links: f.links, line: f.line })}
+        onSave={(f) => save('footer', { text: f.text, column_title: f.column_title, links: f.links, line: f.line, capabilities_title: f.capabilities_title, capabilities: f.capabilities })}
         onLogo={async (file) => {
           setError(null);
           try {

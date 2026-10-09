@@ -6628,6 +6628,9 @@ const footerBody = z.object({
   column_title: z.string().max(40).optional(),
   links: z.array(z.object({ label: z.string().min(1).max(60), href: z.string().min(1).max(300) })).max(12).optional(),
   line: z.string().max(200).optional(),
+  // The "What the engine takes" strip on the landing page: its title and its items.
+  capabilities_title: z.string().max(60).optional(),
+  capabilities: z.array(z.string().min(1).max(40)).max(24).optional(),
 });
 
 /** The footer as the pages and the landing page render it: the desk's settings plus the logo's address, if one is up. */
