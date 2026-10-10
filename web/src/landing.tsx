@@ -264,6 +264,22 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
   const capabilities = footer.capabilities?.length ? footer.capabilities : CAPABILITIES;
   const glow = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
+  // The one arrow on the right edge: down to the footer all the way through the page,
+  // and up to the top once the footer is in view.
+  const [atFoot, setAtFoot] = useState(false);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let was = false;
+    const onScroll = () => {
+      const foot = el.querySelector('#footer');
+      const now = !!foot && foot.getBoundingClientRect().top < el.clientHeight;
+      if (now !== was) { was = now; setAtFoot(now); }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   /** Nav links scroll the container, not the window — the page scrolls inside a div. */
   const go = (id: string) => {
@@ -273,8 +289,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
   /**
    * The arrows' scroll: a long, eased glide rather than the browser's quick smooth scroll,
-   * so the page passes by on the way down and on the way back up. About three seconds
-   * down and four and a half back up, shorter for a shorter trip. A wheel, a touch or a key hands control back at
+   * so the page passes by on the way down and on the way back up. About five and a half
+   * seconds down and four and a half back up, shorter for a shorter trip. A wheel, a touch or a key hands control back at
    * once; with reduced motion it is a plain jump.
    */
   const glide = (id: string) => {
@@ -282,12 +298,13 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     const el = sc?.querySelector<HTMLElement>(`#${id}`);
     if (!sc || !el) return;
     const top = Math.min(el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop, sc.scrollHeight - sc.clientHeight);
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { sc.scrollTo({ top }); return; }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { sc.scrollTo({ top }); setAtFoot(id === 'footer'); return; }
     const from = sc.scrollTop;
     const distance = top - from;
-    // The way up is the slower of the two: about four and a half seconds for the whole page.
-    const rate = distance < 0 ? 0.45 : 0.3;
-    const duration = Math.min(distance < 0 ? 4800 : 3200, 700 + Math.abs(distance) * rate);
+    // Slow enough to take the page in: about five and a half seconds down the whole page
+    // and four and a half back up.
+    const rate = distance < 0 ? 0.45 : 0.58;
+    const duration = Math.min(distance < 0 ? 4800 : 5600, 700 + Math.abs(distance) * rate);
     const start = performance.now();
     let frame = 0;
     const stop = () => { cancelAnimationFrame(frame); for (const ev of ['wheel', 'touchstart', 'keydown'] as const) sc.removeEventListener(ev, stop); };
@@ -296,7 +313,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
       sc.scrollTop = from + distance * ease(t);
-      if (t < 1) frame = requestAnimationFrame(step); else stop();
+      if (t < 1) frame = requestAnimationFrame(step); else { stop(); setAtFoot(id === 'footer'); }
     };
     frame = requestAnimationFrame(step);
   };
@@ -375,15 +392,17 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
         </div>
 
-        {/* A way straight to the foot of the page: a down arrow on the right edge of the
-            hero, with its label set on its side. Takes the same smooth scroll as the nav. */}
-        <button onClick={() => glide('footer')} aria-label="Go to the footer"
-          className="to-footer anim-rise absolute right-8 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex"
+        {/* The arrow that rides along the right edge for the whole page: down to the
+            footer, with its label on its side, until the footer is in view; then it turns
+            round and goes back to the top. Fixed to the viewport, so it is there wherever
+            the page is. Hidden on phones, where it would sit over the text. */}
+        <button onClick={() => glide(atFoot ? 'top' : 'footer')} aria-label={atFoot ? 'Back to the top' : 'Go to the footer'}
+          className={`to-footer anim-rise fixed right-8 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex ${atFoot ? 'to-top' : ''}`}
           style={{ animationDelay: '900ms' }}>
-          <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-mist uppercase">Footer</span>
+          <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-mist uppercase">{atFoot ? 'Top' : 'Footer'}</span>
           <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-ember-ink">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M8 2v12M3 9l5 5 5-5" />
+              {atFoot ? <path d="M8 14V2M3 7l5-5 5 5" /> : <path d="M8 2v12M3 9l5 5 5-5" />}
             </svg>
           </span>
         </button>
@@ -807,16 +826,6 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           )}
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
-            {/* The way back: the hero's arrow turned round, gliding up through the page. */}
-            <button onClick={() => glide('top')} aria-label="Back to the top"
-              className="to-footer to-top flex items-center gap-4">
-              <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-ember-ink">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M8 14V2M3 7l5-5 5 5" />
-                </svg>
-              </span>
-              <span className="font-mono text-[11px] tracking-[0.22em] text-mist uppercase">Top</span>
-            </button>
             <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
           </div>
         </div>
