@@ -192,7 +192,7 @@ function QuickNote({ clientId, onDone }: { clientId: string; onDone: () => void 
     <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="space-y-2">
       <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Note</h3>
       <div className="flex flex-wrap gap-2">
-        <input className={`${field} min-w-64 flex-1`} required maxLength={4000}
+        <input className={`${field} min-w-0 flex-1 sm:min-w-64`} required maxLength={4000}
           placeholder="What happened — goes on their timeline"
           value={text} onChange={(e) => setText(e.target.value)} />
         <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Add note'}</button>

@@ -171,7 +171,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
   return (
     <div className={`${card} space-y-3`}>
       <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-64">
+        <div className="min-w-0 sm:min-w-64">
           {/* The serif starts at 28px; below that the system uses the sans. */}
           <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
           {/* Contact details are read aloud off this screen, so they are set at the full
@@ -198,7 +198,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
         </div>
 
         {/* The dark sidebar takes 224px, so four stat columns need a wide viewport. */}
-        <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 text-sm xl:grid-cols-4">
+        <dl className="grid min-w-full flex-1 grid-cols-2 gap-x-6 gap-y-2 text-sm sm:min-w-0 xl:grid-cols-4">
           <Stat label="Holdings" value={totals ? usd(totals.holdings_usd) : '—'} />
           <Stat label="Open P&L" value={totals ? usd(totals.open_pnl) : '—'}
             className={totals ? pnlColour(totals.open_pnl) : ''} />
