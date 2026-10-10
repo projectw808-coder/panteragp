@@ -271,6 +271,34 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  /**
+   * The arrows' scroll: a long, eased glide rather than the browser's quick smooth scroll,
+   * so the page passes by on the way down and on the way back up. About three seconds end
+   * to end, shorter for a shorter trip. A wheel, a touch or a key hands control back at
+   * once; with reduced motion it is a plain jump.
+   */
+  const glide = (id: string) => {
+    const sc = scroller.current;
+    const el = sc?.querySelector<HTMLElement>(`#${id}`);
+    if (!sc || !el) return;
+    const top = Math.min(el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop, sc.scrollHeight - sc.clientHeight);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { sc.scrollTo({ top }); return; }
+    const from = sc.scrollTop;
+    const distance = top - from;
+    const duration = Math.min(3200, 700 + Math.abs(distance) * 0.3);
+    const start = performance.now();
+    let frame = 0;
+    const stop = () => { cancelAnimationFrame(frame); for (const ev of ['wheel', 'touchstart', 'keydown'] as const) sc.removeEventListener(ev, stop); };
+    for (const ev of ['wheel', 'touchstart', 'keydown'] as const) sc.addEventListener(ev, stop, { passive: true });
+    const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      sc.scrollTop = from + distance * ease(t);
+      if (t < 1) frame = requestAnimationFrame(step); else stop();
+    };
+    frame = requestAnimationFrame(step);
+  };
+
   // Reading progress, and a slow parallax on the hero glow. Both read the same scroll
   // position and are written inside one rAF, so scrolling stays on one frame's work.
   useEffect(() => {
@@ -347,7 +375,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         {/* A way straight to the foot of the page: a down arrow on the right edge of the
             hero, with its label set on its side. Takes the same smooth scroll as the nav. */}
-        <button onClick={() => go('footer')} aria-label="Go to the footer"
+        <button onClick={() => glide('footer')} aria-label="Go to the footer"
           className="to-footer anim-rise absolute right-8 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex"
           style={{ animationDelay: '900ms' }}>
           <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-mist uppercase">Footer</span>
@@ -777,6 +805,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           )}
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
+            {/* The way back: the hero's arrow turned round, gliding up through the page. */}
+            <button onClick={() => glide('top')} aria-label="Back to the top"
+              className="to-footer to-top flex items-center gap-4">
+              <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-ember-ink">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M8 14V2M3 7l5-5 5 5" />
+                </svg>
+              </span>
+              <span className="font-mono text-[11px] tracking-[0.22em] text-mist uppercase">Top</span>
+            </button>
             <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
           </div>
         </div>

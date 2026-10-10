@@ -419,8 +419,9 @@
   border-color: var(--ember); background: rgba(255, 120, 23, 0.12); box-shadow: 0 0 24px rgba(255, 120, 23, 0.45);
 }
 .landing .to-footer:hover .to-footer-ring svg { transform: translateY(3px); }
+.landing .to-top:hover .to-footer-ring svg { transform: translateY(-3px); }
 .landing .to-footer:focus-visible { outline: none; }
-@media (prefers-reduced-motion: reduce) { .landing .to-footer:hover .to-footer-ring svg { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .landing .to-footer:hover .to-footer-ring svg, .landing .to-top:hover .to-footer-ring svg { transform: none; } }
 .anim-fade { animation: fade 0.9s ease-out both; }
 /* Candles grow from the axis, like a chart drawing itself in. */
 .anim-grow { transform-origin: bottom; animation: grow 0.8s var(--ease-enter) both; }
