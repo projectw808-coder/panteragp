@@ -6631,15 +6631,47 @@ const footerBody = z.object({
   // The "What the engine takes" strip on the landing page: its title and its items.
   capabilities_title: z.string().max(60).optional(),
   capabilities: z.array(z.string().min(1).max(40)).max(24).optional(),
+  // The row of company marks: the pictures go up through their own route; this is their
+  // order, their names and their links.
+  marks_title: z.string().max(60).optional(),
+  marks: z.array(z.object({
+    id: z.string().regex(/^[0-9a-f]{8}$/),
+    name: z.string().min(1).max(60),
+    href: z.string().max(300).regex(/^(\/|https?:\/\/|mailto:)/).optional().or(z.literal('')),
+  })).max(12).optional(),
 });
+type SavedFooter = Omit<FooterView, 'marks'> & { marks?: { id: string; name: string; href?: string }[] };
 
-/** The footer as the pages and the landing page render it: the desk's settings plus the logo's address, if one is up. */
+/** The footer as the pages and the landing page render it: the desk's settings plus the addresses of the pictures that are up. */
 async function footerView(): Promise<FooterView> {
-  const [saved, { rows: [logo] }] = await Promise.all([
-    siteContent<FooterView>('footer'),
-    pool.query<{ v: string }>(`SELECT extract(epoch FROM updated_at)::bigint::text AS v FROM site_assets WHERE key = 'footer-logo'`),
+  const [saved, { rows: assets }] = await Promise.all([
+    siteContent<SavedFooter>('footer'),
+    pool.query<{ key: string; v: string }>(`SELECT key, extract(epoch FROM updated_at)::bigint::text AS v FROM site_assets WHERE key = 'footer-logo' OR key LIKE 'footer-mark-%'`),
   ]);
-  return { ...(saved ?? {}), logo_url: logo ? `/api/site-assets/footer-logo?v=${logo.v}` : null };
+  const version = new Map(assets.map((a) => [a.key, a.v]));
+  const logo = version.get('footer-logo');
+  // A mark whose picture is gone is left out rather than shown broken.
+  const marks = (saved?.marks ?? []).flatMap((m) => {
+    const v = version.get(`footer-mark-${m.id}`);
+    return v ? [{ id: m.id, name: m.name, href: m.href || undefined, url: `/api/site-assets/footer-mark-${m.id}?v=${v}` }] : [];
+  });
+  return { ...(saved ?? {}), logo_url: logo ? `/api/site-assets/footer-logo?v=${logo}` : null, marks };
+}
+
+/** One picture from a multipart request, checked the way every site picture is; a reply when it fails. */
+async function sitePicture(req: any, reply: any): Promise<{ bytes: Buffer; type: string; filename: string } | null> {
+  const file = await req.file();
+  if (!file) { reply.code(400).send({ error: 'no file' }); return null; }
+  if (!SITE_IMAGE_TYPES.has(file.mimetype)) { reply.code(415).send({ error: 'only png, jpeg or webp' }); return null; }
+  const bytes = await file.toBuffer();
+  if (file.file.truncated || bytes.length > 2 * 1024 * 1024) { reply.code(413).send({ error: 'that picture is larger than 2 MB' }); return null; }
+  return { bytes, type: file.mimetype, filename: String(file.filename ?? '') };
+}
+async function saveFooter(value: SavedFooter, by: string) {
+  await pool.query(
+    `INSERT INTO site_content (key, value, updated_by) VALUES ('footer', $1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+    [JSON.stringify(value), by]);
 }
 
 // Public: the landing page is client-rendered and asks for this once.
@@ -6653,18 +6685,39 @@ app.get('/site-assets/:key', async (req: any, reply) => {
   return reply.type(row.type).header('cache-control', 'public, max-age=86400').send(row.data);
 });
 app.post('/admin/site-content/footer/logo', { preHandler: auth('admin') }, async (req: any, reply) => {
-  const file = await req.file();
-  if (!file) return reply.code(400).send({ error: 'no file' });
-  if (!SITE_IMAGE_TYPES.has(file.mimetype)) return reply.code(415).send({ error: 'only png, jpeg or webp' });
-  const bytes = await file.toBuffer();
-  if (file.file.truncated || bytes.length > 2 * 1024 * 1024) return reply.code(413).send({ error: 'that picture is larger than 2 MB' });
+  const pic = await sitePicture(req, reply);
+  if (!pic) return;
   await pool.query(
     `INSERT INTO site_assets (key, data, type) VALUES ('footer-logo', $1, $2)
-     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, type = EXCLUDED.type, updated_at = now()`, [bytes, file.mimetype]);
+     ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, type = EXCLUDED.type, updated_at = now()`, [pic.bytes, pic.type]);
   return footerView();
 });
 app.delete('/admin/site-content/footer/logo', { preHandler: auth('admin') }, async () => {
   await pool.query(`DELETE FROM site_assets WHERE key = 'footer-logo'`);
+  return footerView();
+});
+// The logo row: one picture per call, named after its file until the desk renames it in
+// the footer form; its order, name and link are saved with the rest of the footer.
+app.post('/admin/site-content/footer/marks', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const pic = await sitePicture(req, reply);
+  if (!pic) return;
+  const saved = (await siteContent<SavedFooter>('footer')) ?? {};
+  const marks = saved.marks ?? [];
+  if (marks.length >= 12) return reply.code(409).send({ error: 'the row holds twelve logos; remove one first' });
+  const id = randomUUID().replace(/-/g, '').slice(0, 8);
+  const name = pic.filename.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim().slice(0, 60) || 'Logo';
+  await pool.query(`INSERT INTO site_assets (key, data, type) VALUES ($1, $2, $3)`, [`footer-mark-${id}`, pic.bytes, pic.type]);
+  await saveFooter({ ...saved, marks: [...marks, { id, name }] }, req.principal.sub);
+  return footerView();
+});
+app.delete('/admin/site-content/footer/marks/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const id = String(req.params.id);
+  if (!/^[0-9a-f]{8}$/.test(id)) return reply.code(404).send({ error: 'no such logo' });
+  const { rowCount } = await pool.query(`DELETE FROM site_assets WHERE key = $1`, [`footer-mark-${id}`]);
+  const saved = (await siteContent<SavedFooter>('footer')) ?? {};
+  const had = (saved.marks ?? []).some((m) => m.id === id);
+  if (!rowCount && !had) return reply.code(404).send({ error: 'no such logo' });
+  await saveFooter({ ...saved, marks: (saved.marks ?? []).filter((m) => m.id !== id) }, req.principal.sub);
   return footerView();
 });
 

@@ -18,9 +18,11 @@ type Office = { role: string; city: string; lines: string[]; hours: string; phon
 type Contact = { lead?: string; support_email?: string; offices?: Office[]; region_hours?: Record<string, string> };
 type Legal = Record<'terms' | 'privacy' | 'risk', { placeholders: string[]; fills: Record<string, string> }>;
 type FooterLink = { label: string; href: string };
+type FooterMark = { id: string; name: string; href?: string; url: string };
 type Footer = {
   text?: string; column_title?: string; links?: FooterLink[]; line?: string; logo_url?: string | null;
   capabilities_title?: string; capabilities?: string[];
+  marks_title?: string; marks?: FooterMark[];
 };
 type Content = { contact: Contact; legal: Legal; footer: Footer };
 
@@ -29,19 +31,32 @@ type Content = { contact: Contact; legal: Legal; footer: Footer };
  * landing page and on every public page. The logo goes up as a file; everything else is a
  * box. Links may be a path on this site, a web address or a mailto.
  */
-function FooterEditor({ initial, busy, saved, onSave, onLogo }: {
+function FooterEditor({ initial, busy, saved, onSave, onLogo, onMark }: {
   initial: Footer; busy: boolean; saved: boolean;
   onSave: (f: Footer) => Promise<void>;
   onLogo: (file: File | null) => Promise<Footer | null>;
+  /** A file adds a logo to the row; an id alone removes that one. */
+  onMark: (file: File | null, id?: string) => Promise<Footer | null>;
 }) {
   const [f, setF] = useState<Footer>(initial);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [markBusy, setMarkBusy] = useState(false);
   useEffect(() => { setF(initial); }, [initial]);
   const links = f.links ?? [];
+  const marks = f.marks ?? [];
   const setLink = (i: number, patch: Partial<FooterLink>) => setF({ ...f, links: links.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
+  const setMark = (i: number, patch: Partial<FooterMark>) => setF({ ...f, marks: marks.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
   const logo = async (file: File | null) => {
     setLogoBusy(true);
     try { const next = await onLogo(file); if (next) setF({ ...f, logo_url: next.logo_url }); } finally { setLogoBusy(false); }
+  };
+  // A new logo joins the row with the server's id; names and links typed so far are kept.
+  const mark = async (file: File | null, id?: string) => {
+    setMarkBusy(true);
+    try {
+      const next = await onMark(file, id);
+      if (next) setF({ ...f, marks: (next.marks ?? []).map((m) => marks.find((o) => o.id === m.id) ?? m) });
+    } finally { setMarkBusy(false); }
   };
   return (
     <div className="space-y-3 border-t border-pebble pt-4 dark:border-white/10">
@@ -87,6 +102,34 @@ function FooterEditor({ initial, busy, saved, onSave, onLogo }: {
       <Row label="Copyright line">
         <input className={`${input} max-w-md`} value={f.line ?? ''} placeholder={`© ${new Date().getFullYear()} Pantera GP`} onChange={(e) => setF({ ...f, line: e.target.value })} />
       </Row>
+      <Row label="Logo row title">
+        <input className={`${input} max-w-xs`} value={f.marks_title ?? ''} placeholder="Leave empty for no title" onChange={(e) => setF({ ...f, marks_title: e.target.value })} />
+      </Row>
+      <Row label="Logo row">
+        <div className="flex-1 space-y-2">
+          {marks.map((m, i) => (
+            <div key={m.id} className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[auto_1fr_1.4fr_auto]">
+              <img src={m.url} alt={m.name} className="h-8 w-auto max-w-32 rounded bg-onyx p-1" />
+              <input className={input} value={m.name} placeholder="Name" aria-label="Logo name" maxLength={60} onChange={(e) => setMark(i, { name: e.target.value })} />
+              <input className={input} value={m.href ?? ''} placeholder="Link, optional: /path, https://… or mailto:…" aria-label="Logo link" onChange={(e) => setMark(i, { href: e.target.value })} />
+              <button type="button" className="text-xs text-slate-ink hover:text-down" disabled={markBusy} onClick={() => void mark(null, m.id)}>Remove</button>
+            </div>
+          ))}
+          {marks.length === 0 && <p className="text-xs text-slate-ink">None: the row is not shown.</p>}
+          {marks.length < 12 && (
+            <label className={`${btnGhost} inline-block cursor-pointer`}>
+              {markBusy ? 'Uploading…' : 'Add a logo'}
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={markBusy}
+                onChange={(e) => { const file = e.target.files?.[0]; if (file) void mark(file); e.target.value = ''; }} />
+            </label>
+          )}
+          <p className="text-xs text-slate-ink">
+            Up to twelve, PNG, JPEG or WebP, 2 MB each, shown 28px tall in a row above the copyright line on the landing
+            page and every public page. The name is what a screen reader says and what shows if the picture fails; the link is
+            optional. Only put up marks you have the right to show. Save the footer after renaming or linking.
+          </p>
+        </div>
+      </Row>
       <Row label="Engine strip title">
         <input className={`${input} max-w-xs`} value={f.capabilities_title ?? ''} placeholder="What the engine takes" onChange={(e) => setF({ ...f, capabilities_title: e.target.value })} />
       </Row>
@@ -99,7 +142,12 @@ function FooterEditor({ initial, busy, saved, onSave, onLogo }: {
         </div>
       </Row>
       <div className="flex items-center gap-3">
-        <button className={btn} disabled={busy} onClick={() => onSave({ ...f, links: links.filter((l) => l.label.trim() && l.href.trim()), capabilities: (f.capabilities ?? []).map((c) => c.trim()).filter(Boolean) })}>
+        <button className={btn} disabled={busy} onClick={() => onSave({
+          ...f,
+          links: links.filter((l) => l.label.trim() && l.href.trim()),
+          capabilities: (f.capabilities ?? []).map((c) => c.trim()).filter(Boolean),
+          marks: marks.map((m) => ({ ...m, name: m.name.trim() || 'Logo', href: m.href?.trim() || undefined })),
+        })}>
           {busy ? 'Saving…' : 'Save footer'}
         </button>
         {saved && <span className="text-xs text-up">Saved · live now</span>}
@@ -123,6 +171,20 @@ export function SiteContent() {
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /** A footer picture: a file goes up to the path, no file takes the path's picture down. Either way the footer comes back. */
+  const picture = async (path: string, file: File | null): Promise<Footer | null> => {
+    setError(null);
+    try {
+      if (!file) return await api<Footer>(path, { method: 'DELETE' });
+      // Multipart goes through fetch, not the api helper: a JSON content-type on it
+      // would strip the boundary the server needs to read the parts.
+      const form = new FormData(); form.append('file', file);
+      const res = await fetch(`/api${path}`, { method: 'POST', headers: { authorization: `Bearer ${token.get()}` }, body: form });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Upload failed');
+      return await res.json() as Footer;
+    } catch (err) { setError((err as Error).message); return null; }
+  };
 
   useEffect(() => {
     if (!loaded.data) return;
@@ -212,19 +274,13 @@ export function SiteContent() {
 
       {/* ------------------------------------------------------------- footer */}
       <FooterEditor initial={loaded.data?.footer ?? {}} busy={busy === 'footer'} saved={saved === 'footer'}
-        onSave={(f) => save('footer', { text: f.text, column_title: f.column_title, links: f.links, line: f.line, capabilities_title: f.capabilities_title, capabilities: f.capabilities })}
-        onLogo={async (file) => {
-          setError(null);
-          try {
-            if (!file) return await api<Footer>('/admin/site-content/footer/logo', { method: 'DELETE' });
-            // Multipart goes through fetch, not the api helper: a JSON content-type on it
-            // would strip the boundary the server needs to read the parts.
-            const form = new FormData(); form.append('file', file);
-            const res = await fetch('/api/admin/site-content/footer/logo', { method: 'POST', headers: { authorization: `Bearer ${token.get()}` }, body: form });
-            if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Upload failed');
-            return await res.json() as Footer;
-          } catch (err) { setError((err as Error).message); return null; }
-        }} />
+        onSave={(f) => save('footer', {
+          text: f.text, column_title: f.column_title, links: f.links, line: f.line,
+          capabilities_title: f.capabilities_title, capabilities: f.capabilities,
+          marks_title: f.marks_title, marks: (f.marks ?? []).map(({ id, name, href }) => ({ id, name, href })),
+        })}
+        onLogo={(file) => picture('/admin/site-content/footer/logo', file)}
+        onMark={(file, id) => picture(id ? `/admin/site-content/footer/marks/${id}` : '/admin/site-content/footer/marks', file)} />
 
       {/* -------------------------------------------------------------- legal */}
       {PAGES.map(({ key, title, path }) => {

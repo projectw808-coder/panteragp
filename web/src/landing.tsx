@@ -5,6 +5,7 @@ import { useApi } from './api.ts';
 type FooterView = {
   text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
   capabilities_title?: string; capabilities?: string[];
+  marks_title?: string; marks?: { id: string; name: string; href?: string; url: string }[];
 };
 import { ShieldCheck } from 'lucide-react';
 
@@ -724,6 +725,25 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               ))}
             </ul>
           </div>
+
+          {/* The row of company marks the desk put up from Settings; nothing when there are none. */}
+          {!!footer.marks?.length && (
+            <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+              {!!footer.marks_title?.trim() && (
+                <h4 className="mb-5 font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.marks_title.trim()}</h4>
+              )}
+              <ul className="flex flex-wrap items-center gap-x-10 gap-y-5">
+                {footer.marks.map((m) => {
+                  const img = <img src={m.url} alt={m.name} loading="lazy" className="h-7 w-auto opacity-75 transition-opacity duration-200 hover:opacity-100" />;
+                  return (
+                    <li key={m.id}>
+                      {m.href ? <a href={m.href} rel={/^https?:/.test(m.href) ? 'noopener' : undefined} title={m.name}>{img}</a> : img}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
             <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>

@@ -20,7 +20,10 @@ export type FooterView = {
   text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
   /** The landing page's "What the engine takes" strip; the server-rendered pages do not show it. */
   capabilities_title?: string; capabilities?: string[];
+  /** The row of company marks above the copyright line: each a picture the desk put up, with a name and, if set, a link. */
+  marks_title?: string; marks?: FooterMark[];
 };
+export type FooterMark = { id: string; name: string; href?: string; url: string };
 export const DEFAULT_FOOTER_LINKS = [
   { label: 'Insights', href: '/blog' }, { label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' },
   { label: 'Risk warning', href: '/risk' }, { label: 'Contact', href: '/contact' },
@@ -186,6 +189,10 @@ footer{background:var(--stage);color:var(--mist);padding:24px 32px;border-top:1p
 .foot-text{margin:0;font-family:var(--ui);text-transform:none;letter-spacing:-.01em;font-size:12px;line-height:1.5;color:var(--ink-soft)}
 .foot-links{text-align:right}
 footer a:hover{color:var(--ember)}
+.foot-marks{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:20px 40px;padding-top:16px;border-top:1px solid var(--line)}
+.foot-marks-title{flex-basis:100%;margin:0;letter-spacing:.16em;color:var(--vellum)}
+.foot-marks img{height:28px;width:auto;display:block;opacity:.75;transition:opacity .2s}
+.foot-marks a:hover img{opacity:1}
 /* ---- the legal pages: a contents rail beside a reading column, with the desk's open
    placeholders marked so nobody mistakes a draft for the finished thing ---- */
 .legal{display:grid;grid-template-columns:260px minmax(0,720px);gap:64px;justify-content:center;padding:56px 0 80px}
@@ -290,7 +297,13 @@ export function layout(o: {
   const links = fo.links?.length ? fo.links : DEFAULT_FOOTER_LINKS;
   const line = fo.line?.trim() || `© ${new Date().getUTCFullYear()} Pantera GP`;
   const brand = fo.logo_url ? `<img class="foot-logo" src="${esc(fo.logo_url)}" alt="Pantera GP">` : 'Pantera GP ///';
-  const footerHtml = `<footer class="mono"><div class="foot-brand"><span>${brand}</span>${fo.text?.trim() ? `<p class="foot-text">${esc(fo.text.trim())}</p>` : ''}</div><span class="foot-links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')} · ${esc(line)}</span></footer>`;
+  const marks = fo.marks?.length
+    ? `<div class="foot-marks">${fo.marks_title?.trim() ? `<p class="foot-marks-title">${esc(fo.marks_title.trim().toUpperCase())}</p>` : ''}${fo.marks.map((m) => {
+      const img = `<img src="${esc(m.url)}" alt="${esc(m.name)}" loading="lazy">`;
+      return m.href ? `<a href="${esc(m.href)}"${/^https?:/.test(m.href) ? ' rel="noopener"' : ''}>${img}</a>` : img;
+    }).join('')}</div>`
+    : '';
+  const footerHtml = `<footer class="mono"><div class="foot-brand"><span>${brand}</span>${fo.text?.trim() ? `<p class="foot-text">${esc(fo.text.trim())}</p>` : ''}</div><span class="foot-links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')} · ${esc(line)}</span>${marks}</footer>`;
   const terminal = o.theme === 'terminal' ? `<style>
 :root{--canvas:#09090b;--stage:#09090b;--panel:#18181b;--panel-hover:#1f1f23;--line:rgba(255,255,255,.10);--ink:#ffffff;--ink-soft:#a1a1aa;--mist:#71717a}
 body{background:var(--canvas)}body::after{display:none}

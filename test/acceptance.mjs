@@ -2406,6 +2406,27 @@ if (!WEBHOOK) {
   assert.match(await fetch(`${B}/terms`).then((r) => r.text()), /class="foot-logo"/, 'the public footer shows it');
   const down = await call('/admin/site-content/footer/logo', { token: A, method: 'DELETE' }).then(j);
   assert.equal(down.logo_url, null);
+  // The logo row: a company mark goes up, is named after its file, takes a name and a link
+  // with the footer, shows on the public pages, and comes down with its picture.
+  const mform = new FormData();
+  mform.append('file', new Blob([png], { type: 'image/png' }), 'acme-partner.png');
+  const mup = await fetch(`${B}/admin/site-content/footer/marks`, { method: 'POST', headers: { authorization: `Bearer ${A}` }, body: mform });
+  assert.equal(mup.status, 200, 'a mark goes up');
+  const withMark = await mup.json();
+  assert.equal(withMark.marks.length, 1);
+  assert.equal(withMark.marks[0].name, 'acme partner', 'named after the file until renamed');
+  assert.match(withMark.marks[0].url, /^\/api\/site-assets\/footer-mark-[0-9a-f]{8}\?v=\d+$/);
+  const markId = withMark.marks[0].id;
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { marks_title: 'Partners', marks: [{ id: markId, name: 'Acme', href: 'https://example.com' }] } });
+  const withRow = await get('/site-content/footer');
+  assert.equal(withRow.marks[0].name, 'Acme');
+  assert.equal(withRow.marks[0].href, 'https://example.com');
+  assert.match(await fetch(`${B}/terms`).then((r) => r.text()), /class="foot-marks"[\s\S]*PARTNERS[\s\S]*alt="Acme"/, 'the public footer shows the row');
+  assert.equal(await status('/admin/site-content/footer', { token: A, method: 'PUT', body: { marks: [{ id: markId, name: 'Acme', href: 'javascript:alert(1)' }] } }), 400, 'a link is a path, a web address or a mailto');
+  assert.equal(await status('/admin/site-content/footer/marks/zzzzzzzz', { token: A, method: 'DELETE' }), 404);
+  const markGone = await call(`/admin/site-content/footer/marks/${markId}`, { token: A, method: 'DELETE' }).then(j);
+  assert.equal(markGone.marks.length, 0);
+  assert.equal((await fetch(`${B}/site-assets/footer-mark-${markId}`)).status, 404, 'its picture goes with it');
   await get('/admin/site-content/footer', { token: A, method: 'PUT', body: {} });
   // Back to the defaults, so the next steps read the page as shipped.
   await get('/admin/site-content/legal:terms', { token: A, method: 'PUT', body: {} });
