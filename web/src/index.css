@@ -460,10 +460,14 @@
 /* Masked line reveal: the line slides up from behind its own edge rather than fading in
    place. This is the move that makes a GSAP site feel like one, and it is just a clipped
    box with a transform inside. */
-.mask { overflow: hidden; display: block; }
+/* The clip box reaches below the baseline, or a g or a y loses its tail at the display
+   size, where the line box is tighter than the glyphs: padding gives the descenders room
+   and the negative margin gives it back, so the line spacing does not change. The start
+   offset grows to match, so no glyph top shows through the padding before the reveal. */
+.mask { overflow: hidden; display: block; padding-bottom: 0.2em; margin-bottom: -0.2em; }
 .mask > span {
   display: block;
-  transform: translateY(105%);
+  transform: translateY(130%);
   transition: transform 0.9s var(--ease-enter);
 }
 .shown .mask > span, .mask.shown > span { transform: none; }
