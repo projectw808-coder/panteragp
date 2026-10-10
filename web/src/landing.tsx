@@ -195,7 +195,7 @@ function SimTerminal() {
       <div className="flex h-12 items-center justify-between border-b border-[color:var(--st-border)] px-4 sm:px-6">
         <div className="flex items-center gap-2 text-xs text-[color:var(--st-muted-foreground)]">
           <span className={`size-2 rounded-full ${running ? 'bg-[color:var(--st-success)] animate-pulse' : 'bg-[color:var(--st-muted-foreground)]'}`} />
-          {running ? 'SIMULATION LIVE' : 'SIMULATION PAUSED'}
+          {running ? 'DEMO LIVE' : 'DEMO PAUSED'}
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setRunning((r) => !r)} className="border border-[color:var(--st-border)] px-2.5 py-1 font-mono text-[10px] text-[color:var(--st-foreground)] transition-colors hover:border-[color:var(--st-primary)] hover:text-[color:var(--st-primary)]">
@@ -208,7 +208,7 @@ function SimTerminal() {
       <div className="p-5 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="st-eyebrow">Portfolio value · simulated</p>
+            <p className="st-eyebrow">Portfolio value · demo</p>
             <p className="mt-2 font-mono text-3xl text-[color:var(--st-foreground)] tabular-nums sm:text-4xl">£{value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
           <div className="text-right">
@@ -245,7 +245,7 @@ function SimTerminal() {
         <div className="mt-5 border border-[color:var(--st-primary)]/30 bg-[color:var(--st-primary)]/5 p-4">
           <div className="flex gap-3">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[color:var(--st-primary)]" />
-            <p className="text-xs leading-5 text-[color:var(--st-muted-foreground)]">Risk guard active. Simulated data for illustration only — not real trades.</p>
+            <p className="text-xs leading-5 text-[color:var(--st-muted-foreground)]">Risk guard active. A demo of the terminal, not a live account.</p>
           </div>
         </div>
       </div>
