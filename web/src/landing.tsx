@@ -345,6 +345,19 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </div>
         </div>
 
+        {/* A way straight to the foot of the page: a down arrow on the right edge of the
+            hero, with its label set on its side. Takes the same smooth scroll as the nav. */}
+        <button onClick={() => go('footer')} aria-label="Go to the footer"
+          className="to-footer anim-rise absolute right-8 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex"
+          style={{ animationDelay: '900ms' }}>
+          <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-mist uppercase">Footer</span>
+          <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-ember-ink">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M8 2v12M3 9l5 5 5-5" />
+            </svg>
+          </span>
+        </button>
+
         {/* The signature: a warm glow rising from the foot of the hero, with bars growing
             out of it. Decorative texture, not a section background. The bars themselves
             take pointer events (their parent's pointer-events-none doesn't stop a child
@@ -662,7 +675,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
         {/* Footer: columns of real destinations only. Nothing here links to a page that
             does not exist — a dead "Careers" link is worse than no link. */}
-        <div className="border-t border-white/10">
+        <div id="footer" className="scroll-mt-0 border-t border-white/10">
           <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div>
               <div className="flex items-center gap-2">
