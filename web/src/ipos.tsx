@@ -600,8 +600,7 @@ function Subscribe({ ipo, on, onDone }: { ipo: Ipo; on: On; onDone: () => void }
           onClick={onDone}>Cancel</button>
       </div>
       <p className="text-xs text-slate-ink">
-        Taken from your {ipo.currency} balance now, not at close. Simulated balances — nothing
-        here is a securities offering.
+        Taken from your {ipo.currency} balance now, not at close.
       </p>
     </form>
   );

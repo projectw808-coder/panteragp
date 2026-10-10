@@ -78,8 +78,8 @@ export function HoldingsPanel() {
         <h3 className="mb-1 text-xs font-medium text-slate-ink">Crypto wallets</h3>
         {/* A real safety warning, so it must be readable: ember edge, obsidian words. */}
         <p className={`${alertBox} mb-2 text-xs`}>
-          Simulated wallets. Addresses are labelled <code>DEMO-</code> and belong to no chain —
-          never send real funds to one.
+          These addresses are labelled <code>DEMO-</code> and belong to no chain — never send
+          funds to one.
         </p>
         {a?.wallets.map((w) => (
           <Wallet key={w.id} wallet={w} decimals={decimals(w.asset)} onDone={reload} />
