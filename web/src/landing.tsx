@@ -273,8 +273,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
 
   /**
    * The arrows' scroll: a long, eased glide rather than the browser's quick smooth scroll,
-   * so the page passes by on the way down and on the way back up. About three seconds end
-   * to end, shorter for a shorter trip. A wheel, a touch or a key hands control back at
+   * so the page passes by on the way down and on the way back up. About three seconds
+   * down and four and a half back up, shorter for a shorter trip. A wheel, a touch or a key hands control back at
    * once; with reduced motion it is a plain jump.
    */
   const glide = (id: string) => {
@@ -285,7 +285,9 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { sc.scrollTo({ top }); return; }
     const from = sc.scrollTop;
     const distance = top - from;
-    const duration = Math.min(3200, 700 + Math.abs(distance) * 0.3);
+    // The way up is the slower of the two: about four and a half seconds for the whole page.
+    const rate = distance < 0 ? 0.45 : 0.3;
+    const duration = Math.min(distance < 0 ? 4800 : 3200, 700 + Math.abs(distance) * rate);
     const start = performance.now();
     let frame = 0;
     const stop = () => { cancelAnimationFrame(frame); for (const ev of ['wheel', 'touchstart', 'keydown'] as const) sc.removeEventListener(ev, stop); };
