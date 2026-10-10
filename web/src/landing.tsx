@@ -318,7 +318,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               Contrast was never the problem — mist reads 7.82:1 on this ground — it was
               12px at almost no tracking, which looks faint whatever colour it is. */}
           <div className="ml-10 hidden items-center gap-9 xl:flex">
-            {[['platform','Platform'],['engine','The engine'],['audiences','Who it is for'],['how','How it works'],['security','Security']].map(([id,label]) => (
+            {[['autotrader','Auto trader'],['platform','Services'],['engine','The engine'],['audiences','Who it is for'],['security','Security']].map(([id,label]) => (
               <button key={id} onClick={() => go(id)} className="nav-link focus-ring">
                 {label}
               </button>
@@ -417,21 +417,90 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </div>
       </section>
 
-      {/* -------------------------------------------------- numbered capabilities */}
-      <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pb-28">
+      {/* ------------------------------------------------------- the auto trader
+          Every claim here is behaviour of the engine in src/server.ts and src/autotrader.ts:
+          three strategies, real orders on the book, risk per trade against the stop, stops
+          and targets attached, the switch and the kill switch. No performance figure and no
+          promise of profit: a record is a record, and the note says so. */}
+      <section id="autotrader" className="stage scroll-mt-20 border-b border-white/10">
+        <div className="mx-auto max-w-[1100px] px-8 py-24">
+          <Reveal>
+            <Eyebrow>Auto trading algorithm // developed in-house</Eyebrow>
+            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
+              lines={['Switch it on.', 'The algorithm does the rest.']} />
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-mist">
+              Our own auto trader reads every instrument every ten seconds, places a real order on
+              your account when a setup appears, sizes it against your risk, attaches its stop and
+              target, and leaves when its rules say so — around the clock, whether or not you are
+              looking. You keep the switch.
+            </p>
+          </Reveal>
+
+          <div className="mt-12 grid gap-[10px] md:grid-cols-3">
+            {[
+              ['Grid', 'Buys a set step below the recent average and sells a step above, taking each level back to the average. Patient by design: it waits for the price to come back.'],
+              ['Mean reversion', 'Fades a stretch. When price runs more than one and a half standard deviations from its average, it takes the other side and exits at the average.'],
+              ['Trend follower', 'A moving-average crossover: long while the fast average sits above the slow one, short while it sits below, out when they cross back.'],
+            ].map(([title, body], i) => (
+              <Reveal key={title} delay={i * 80}>
+                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-mono text-xs text-ember-ink">{String(i + 1).padStart(2, '0')}</span>
+                    <h3 className="display text-[22px] text-vellum">{title}</h3>
+                  </div>
+                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <div className="mt-[10px] grid gap-[10px] md:grid-cols-2">
+            {[
+              ['Risk before anything else', 'One percent of the bot\'s equity per trade by default, measured against the stop. Every entry carries its stop and target from the first fill, a loser is cut at half its risk, and the day limits halt new entries when they are reached.'],
+              ['Your hand stays on the switch', 'Pause one strategy, change what it may deploy, or switch the trader off; open positions keep their stops and targets. The kill switch closes everything, cancels everything and stops. Every use of it is on your record.'],
+            ].map(([title, body], i) => (
+              <Reveal key={title} delay={240 + i * 80}>
+                <div className="h-full border border-white/10 p-8">
+                  <h3 className="display text-[22px] text-vellum">{title}</h3>
+                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={400}>
+            <div className="mt-10 flex flex-wrap items-center justify-between gap-6">
+              <p className="max-w-3xl font-mono text-xs leading-relaxed text-mist">
+                <span className="text-ember-ink">NOTE //</span> a rules-based engine, not a promise. It can
+                lose, it can lose several times in a row, and a record of past results is no guide to the
+                next one. Read the risk warning before you switch it on.
+              </p>
+              <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* -------------------------------------------------- the other services, numbered */}
+      <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pt-24 pb-28">
         <Reveal>
-          <MaskedHeading className="display max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['Built as one system,', 'not two that sync.']} />
+          <Eyebrow>Our services</Eyebrow>
+          <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
+            lines={['Everything else the desk', 'does for you.']} />
         </Reveal>
 
         <div className="mt-14 divide-y divide-black/10 border-y border-black/10">
           {[
-            ['01', 'Single source of state.',
-              'Balances in any currency, crypto wallets, portfolios, orders, fills, funding, documents, tickets and notes — on one client timeline. Nothing to reconcile, because nothing was ever split.'],
-            ['02', 'Execution that does not sleep.',
-              'Market, limit, stop, stop-limit and trailing orders, positions priced continuously, risk-based sizing, and a settlement engine that fills resting orders whether or not anyone has the screen open.'],
-            ['03', 'Audit enforced below the app.',
-              'Every change to a client or a trade is written by a database trigger to an append-only log — not an updated-at column. Compliance flags, KYC review and withdrawal thresholds sit in the flow of work.'],
+            ['01', 'The trading terminal.',
+              'Live charts with drawing tools and indicators, every order type — market, limit, stop, stop-limit, trailing — with take-profit and stop-loss attached, and position sizing against the risk you set.'],
+            ['02', 'Offerings.',
+              'A shelf of fixed-return offerings, each with its rate, term, minimum and allocation shown up front. Subscribe through a window, accrue daily, and settle at maturity.'],
+            ['03', 'Portfolios and staking.',
+              'Managed portfolios that accrue interest every day, and staking products on ETH, BTC, SOL and the stablecoins — flexible, or locked for a higher rate.'],
+            ['04', 'Wallets and currencies.',
+              'Balances in 168 currencies and crypto wallets side by side, with exchange between them at the desk\'s rate, and a connected MetaMask read in your own browser.'],
+            ['05', 'The desk behind it.',
+              'A named team on your account: support from the Support page, document review for verification, and a weekly update written by Pantera GP Research.'],
           ].map(([n, title, body], i) => (
             <Reveal key={n} delay={i * 90}>
               <div className="row-rule grid gap-5 py-10 transition-colors duration-300 hover:bg-black/[0.03] md:grid-cols-[80px_1fr] md:gap-12">
@@ -452,7 +521,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       {/* --------------------------------------------------------- the engine
           Every claim in this section is behaviour that exists: see settle() and
           startTicker() in src/server.ts. It describes order automation, not a
-          strategy engine — there are no bots here, and the copy must not imply any. */}
+          strategy engine; the auto trader has its own section above. */}
       <section id="engine" className="stage scroll-mt-20 border-t border-white/10">
         <div className="mx-auto max-w-[1100px] px-8 py-24">
           <Reveal>
@@ -637,7 +706,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               </dl>
             </div>
             {[
-              ['Platform', [['Capabilities', 'platform'], ['The engine', 'engine'], ['Who it is for', 'audiences'], ['How it works', 'how']]],
+              ['Platform', [['Auto trader', 'autotrader'], ['Services', 'platform'], ['The engine', 'engine'], ['How it works', 'how']]],
               ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
               [footer.column_title?.trim() || 'Legal', footer.links?.length
                 ? footer.links.map((l) => [l.label, l.href])
