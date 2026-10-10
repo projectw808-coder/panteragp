@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { bearerMatches, markdownToHtml, parseDelivery, readMinutes, sanitizeHtml, signatureMatches } from '../src/articles.ts';
-import { articlePage, indexPage, sitemap } from '../src/blog-page.ts';
+import { articlePage, indexPage, noticeBlocks, noticeHtml, sitemap } from '../src/blog-page.ts';
 
 const SECRET = 'whsec_test_0123456789';
 const sign = (body: string, secret = SECRET) => 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
@@ -193,5 +193,18 @@ describe('the legal pages', () => {
     }
     assert.match(legalPage('terms', { publicUrl: 'https://x' }), /<link rel="canonical" href="https:\/\/x\/terms">/);
     assert.match(legalPage('terms', { publicUrl: 'https://x' }), /Playfair Display/, 'the platform look, not the Insights one');
+  });
+});
+
+describe('the footer notice', () => {
+  it('keeps the shape of what was pasted and escapes it', () => {
+    const blocks = noticeBlocks('First paragraph.\r\nSecond line.\n\n\n- one\n* two\n• three\n\nLast.');
+    assert.deepEqual(blocks, [
+      { kind: 'p', lines: ['First paragraph.', 'Second line.'] },
+      { kind: 'ul', lines: ['one', 'two', 'three'] },
+      { kind: 'p', lines: ['Last.'] },
+    ]);
+    assert.equal(noticeHtml('a <b>\n\n- x & y'), '<p>a &lt;b&gt;</p><ul><li>x &amp; y</li></ul>');
+    assert.deepEqual(noticeBlocks('  \n\n '), []);
   });
 });

@@ -6633,6 +6633,8 @@ const footerBody = z.object({
   capabilities: z.array(z.string().min(1).max(40)).max(24).optional(),
   // The row of company marks: the pictures go up through their own route; this is their
   // order, their names and their links.
+  // Free text above the copyright line, any shape: paragraphs, line breaks, lists.
+  notice: z.string().max(6000).optional(),
   marks_title: z.string().max(60).optional(),
   marks: z.array(z.object({
     id: z.string().regex(/^[0-9a-f]{8}$/),

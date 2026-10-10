@@ -23,6 +23,7 @@ type Footer = {
   text?: string; column_title?: string; links?: FooterLink[]; line?: string; logo_url?: string | null;
   capabilities_title?: string; capabilities?: string[];
   marks_title?: string; marks?: FooterMark[];
+  notice?: string;
 };
 type Content = { contact: Contact; legal: Legal; footer: Footer };
 
@@ -138,7 +139,15 @@ function FooterEditor({ initial, busy, saved, onSave, onLogo, onMark }: {
           <textarea className={`${input} min-h-28 font-mono text-xs`} value={(f.capabilities ?? []).join('\n')} maxLength={1000}
             placeholder={'MARKET\nLIMIT\nSTOP\nSTOP-LIMIT\nTRAILING STOP\nTAKE PROFIT\nRISK SIZING\nMULTI-CURRENCY\nPORTFOLIOS\nAUDIT LOG\nKYC REVIEW\nSETTLEMENT'}
             onChange={(e) => setF({ ...f, capabilities: e.target.value.split('\n') })} />
-          <p className="text-xs text-slate-ink">One item per line, up to 24. They appear in the strip at the foot of the landing page and in the moving band at the top. Empty keeps the list the page ships with.</p>
+          <p className="text-xs text-slate-ink">Short labels only: one per line, up to 24, each up to 40 characters, shown as a row of chips at the foot of the landing page. Empty keeps the list the page ships with. Longer writing goes in the notice below.</p>
+        </div>
+      </Row>
+      <Row label="Notice">
+        <div className="flex-1 space-y-1">
+          <textarea className={`${input} min-h-44 text-sm`} value={f.notice ?? ''} maxLength={6000}
+            placeholder={'Paste any text here, in any shape.\n\nA blank line starts a new paragraph. Lines that start with - become a list:\n- one point\n- another'}
+            onChange={(e) => setF({ ...f, notice: e.target.value })} />
+          <p className="text-xs text-slate-ink">Shown as written, above the copyright line on the landing page and on every public page: paragraphs stay paragraphs, line breaks stay, lists stay lists. Up to 6,000 characters. Empty shows nothing.</p>
         </div>
       </Row>
       <div className="flex items-center gap-3">
@@ -276,7 +285,7 @@ export function SiteContent() {
       <FooterEditor initial={loaded.data?.footer ?? {}} busy={busy === 'footer'} saved={saved === 'footer'}
         onSave={(f) => save('footer', {
           text: f.text, column_title: f.column_title, links: f.links, line: f.line,
-          capabilities_title: f.capabilities_title, capabilities: f.capabilities,
+          capabilities_title: f.capabilities_title, capabilities: f.capabilities, notice: f.notice,
           marks_title: f.marks_title, marks: (f.marks ?? []).map(({ id, name, href }) => ({ id, name, href })),
         })}
         onLogo={(file) => picture('/admin/site-content/footer/logo', file)}

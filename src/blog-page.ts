@@ -22,7 +22,24 @@ export type FooterView = {
   capabilities_title?: string; capabilities?: string[];
   /** The row of company marks above the copyright line: each a picture the desk put up, with a name and, if set, a link. */
   marks_title?: string; marks?: FooterMark[];
+  /** Free text above the copyright line, pasted as written: paragraphs, line breaks and lists survive. */
+  notice?: string;
 };
+
+/**
+ * Plain text as the desk pasted it, kept in its shape: a blank line ends a paragraph, a
+ * line break inside one stays a line break, and a run of lines starting with -, * or •
+ * becomes a list. No other markup; the text is escaped, never trusted.
+ */
+export function noticeBlocks(text: string): { kind: 'p' | 'ul'; lines: string[] }[] {
+  return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((b) => b.split('\n').map((l) => l.trim()).filter(Boolean)).filter((lines) => lines.length)
+    .map((lines) => (lines.every((l) => /^[-*•]\s+/.test(l)) ? { kind: 'ul', lines: lines.map((l) => l.replace(/^[-*•]\s+/, '')) } : { kind: 'p', lines }));
+}
+export function noticeHtml(text: string): string {
+  return noticeBlocks(text).map((b) => (b.kind === 'ul'
+    ? `<ul>${b.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`
+    : `<p>${b.lines.map(esc).join('<br>')}</p>`)).join('');
+}
 export type FooterMark = { id: string; name: string; href?: string; url: string };
 export const DEFAULT_FOOTER_LINKS = [
   { label: 'Insights', href: '/blog' }, { label: 'Terms', href: '/terms' }, { label: 'Privacy', href: '/privacy' },
@@ -193,6 +210,10 @@ footer a:hover{color:var(--ember)}
 .foot-marks-title{flex-basis:100%;margin:0;letter-spacing:.16em;color:var(--vellum)}
 .foot-marks img{height:28px;width:auto;display:block;opacity:.75;transition:opacity .2s}
 .foot-marks a:hover img{opacity:1}
+.foot-notice{flex-basis:100%;border-top:1px solid var(--line);padding-top:16px;max-width:96ch;font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:12px;line-height:1.6;color:var(--ink-soft)}
+.foot-notice p,.foot-notice ul{margin:0 0 10px}
+.foot-notice ul{padding-left:18px}
+.foot-notice :last-child{margin-bottom:0}
 /* ---- the legal pages: a contents rail beside a reading column, with the desk's open
    placeholders marked so nobody mistakes a draft for the finished thing ---- */
 .legal{display:grid;grid-template-columns:260px minmax(0,720px);gap:64px;justify-content:center;padding:56px 0 80px}
@@ -303,7 +324,8 @@ export function layout(o: {
       return m.href ? `<a href="${esc(m.href)}"${/^https?:/.test(m.href) ? ' rel="noopener"' : ''}>${img}</a>` : img;
     }).join('')}</div>`
     : '';
-  const footerHtml = `<footer class="mono"><div class="foot-brand"><span>${brand}</span>${fo.text?.trim() ? `<p class="foot-text">${esc(fo.text.trim())}</p>` : ''}</div><span class="foot-links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')} · ${esc(line)}</span>${marks}</footer>`;
+  const notice = fo.notice?.trim() ? `<div class="foot-notice">${noticeHtml(fo.notice)}</div>` : '';
+  const footerHtml = `<footer class="mono"><div class="foot-brand"><span>${brand}</span>${fo.text?.trim() ? `<p class="foot-text">${esc(fo.text.trim())}</p>` : ''}</div><span class="foot-links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join(' · ')} · ${esc(line)}</span>${marks}${notice}</footer>`;
   const terminal = o.theme === 'terminal' ? `<style>
 :root{--canvas:#09090b;--stage:#09090b;--panel:#18181b;--panel-hover:#1f1f23;--line:rgba(255,255,255,.10);--ink:#ffffff;--ink-soft:#a1a1aa;--mist:#71717a}
 body{background:var(--canvas)}body::after{display:none}

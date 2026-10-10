@@ -6,7 +6,14 @@ type FooterView = {
   text?: string; column_title?: string; links?: { label: string; href: string }[]; line?: string; logo_url?: string | null;
   capabilities_title?: string; capabilities?: string[];
   marks_title?: string; marks?: { id: string; name: string; href?: string; url: string }[];
+  notice?: string;
 };
+
+/** The footer notice as the desk pasted it: a blank line ends a paragraph, lines starting with -, * or • make a list. Same rules as the server's noticeBlocks. */
+function noticeBlocks(text: string): { kind: 'p' | 'ul'; lines: string[] }[] {
+  return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((b) => b.split('\n').map((l) => l.trim()).filter(Boolean)).filter((lines) => lines.length)
+    .map((lines) => (lines.every((l) => /^[-*•]\s+/.test(l)) ? { kind: 'ul', lines: lines.map((l) => l.replace(/^[-*•]\s+/, '')) } : { kind: 'p', lines }));
+}
 import { ShieldCheck } from 'lucide-react';
 
 /**
@@ -742,6 +749,17 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                   );
                 })}
               </ul>
+            </div>
+          )}
+
+          {/* The notice the desk pasted from Settings, in its own shape; nothing when it is empty. */}
+          {!!footer.notice?.trim() && (
+            <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+              <div className="max-w-[96ch] space-y-3 text-xs leading-relaxed text-mist">
+                {noticeBlocks(footer.notice).map((b, i) => (b.kind === 'ul'
+                  ? <ul key={i} className="list-disc space-y-1 pl-5">{b.lines.map((l, k) => <li key={k}>{l}</li>)}</ul>
+                  : <p key={i}>{b.lines.map((l, k) => <span key={k}>{k > 0 && <br />}{l}</span>)}</p>))}
+              </div>
             </div>
           )}
 

@@ -2383,7 +2383,7 @@ if (!WEBHOOK) {
   assert.ok(!/class="region"/.test(contact), 'offices replace the regions');
   assert.equal(await status('/admin/site-content/nope', { token: A, method: 'PUT', body: {} }), 404);
   // The footer: a column, its links and the line, on the public pages and on the public endpoint the landing page reads.
-  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.', capabilities_title: 'What it does', capabilities: ['ONE', 'TWO'] } });
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.', capabilities_title: 'What it does', capabilities: ['ONE', 'TWO'], notice: 'Acceptance notice, first paragraph.\r\nSecond line of it.\n\n- one point <b>\n- another' } });
   const footer = await get('/site-content/footer');
   assert.equal(footer.column_title, 'Company');
   assert.deepEqual(footer.capabilities, ['ONE', 'TWO'], 'the engine strip follows the desk');
@@ -2392,6 +2392,7 @@ if (!WEBHOOK) {
   assert.match(foot, /Acceptance link/);
   assert.match(foot, /Acceptance line/);
   assert.match(foot, /A footer paragraph\./);
+  assert.match(foot, /<div class="foot-notice"><p>Acceptance notice, first paragraph\.<br>Second line of it\.<\/p><ul><li>one point &lt;b&gt;<\/li><li>another<\/li><\/ul><\/div>/, 'the notice keeps its shape and is escaped');
   // The logo: a picture goes up as a file, is served back, and comes down again.
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
   const form = new FormData();
