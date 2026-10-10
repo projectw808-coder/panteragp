@@ -408,15 +408,6 @@
   from { transform: scaleY(0); }
   to   { transform: scaleY(1); }
 }
-@keyframes drift {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
-/* The second strip runs the other way, as on the reference site. */
-@keyframes drift-rev {
-  from { transform: translateX(-50%); }
-  to   { transform: translateX(0); }
-}
 
 .anim-rise { animation: rise 0.7s var(--ease-enter) both; }
 .anim-fade { animation: fade 0.9s ease-out both; }
@@ -443,11 +434,6 @@
   .hero-bar { transition: filter 0.35s var(--ease-enter); }
   .hero-bar:hover { transform: none; }
 }
-/* Marquee strips: one continuous pass, content duplicated so the loop never gaps.
-   60s to match the reference — slow enough to read, not a conveyor belt. */
-.anim-drift { animation: drift 60s linear infinite; }
-.anim-drift-rev { animation: drift-rev 60s linear infinite; }
-
 /* Revealed by IntersectionObserver — see useReveal in landing.tsx. Hidden until
    seen, so a section arrives as you reach it rather than all at once on load. */
 .reveal { opacity: 0; transform: translateY(18px); }
@@ -485,9 +471,6 @@
 .row-arrow { transform: translateX(-6px); opacity: 0; transition: transform 0.4s, opacity 0.4s; }
 .row-rule:hover .row-arrow { transform: none; opacity: 1; }
 
-/* A marquee you can stop to read. */
-.anim-drift:hover, .anim-drift-rev:hover { animation-play-state: paused; }
-
 /* Reading progress along the top of the page. */
 .progress {
   position: fixed; top: 0; left: 0; height: 2px; z-index: 50;
@@ -496,7 +479,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-rise, .anim-fade, .anim-grow, .anim-drift, .anim-drift-rev { animation: none; }
+  .anim-rise, .anim-fade, .anim-grow { animation: none; }
   .reveal, .reveal.shown { opacity: 1; transform: none; transition: none; }
   .mask > span { transform: none; transition: none; }
   .row-rule::after, .row-arrow { transition: none; }

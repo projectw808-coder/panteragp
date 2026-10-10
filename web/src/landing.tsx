@@ -249,29 +249,10 @@ const MARKETS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'XA
 const CAPABILITIES = ['MARKET', 'LIMIT', 'STOP', 'STOP-LIMIT', 'TRAILING STOP', 'TAKE PROFIT',
   'RISK SIZING', 'MULTI-CURRENCY', 'PORTFOLIOS', 'AUDIT LOG', 'KYC REVIEW', 'SETTLEMENT'];
 
-/** Two strips drifting opposite ways, 60s, as on the reference. Duplicated for a seamless loop. */
-function Marquee({ items, reverse = false, onDark = false }: {
-  items: string[]; reverse?: boolean; onDark?: boolean;
-}) {
-  const row = items.map((t) => (
-    <span key={t} className={`flex items-center gap-8 px-8 font-mono text-xs tracking-[0.14em] ${onDark ? 'text-mist' : 'soft'}`}>
-      {t}<span className="text-ember-ink">/</span>
-    </span>
-  ));
-  return (
-    <div className="overflow-hidden py-4">
-      <div className={`flex w-max ${reverse ? 'anim-drift-rev' : 'anim-drift'}`}>
-        <div className="flex">{row}</div>
-        <div className="flex" aria-hidden>{row}</div>
-      </div>
-    </div>
-  );
-}
-
 export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegister: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
   const footer = useApi<FooterView>('/site-content/footer').data ?? {};
-  // The strip the marquee and the footer both show: the desk's list when it has set one.
+  // The footer's "what the engine takes" list: the desk's own when it has set one.
   const capabilities = footer.capabilities?.length ? footer.capabilities : CAPABILITIES;
   const glow = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -652,11 +633,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       </section>
 
       {/* ------------------------------------------------------------- closing */}
-      <section className="stage relative overflow-hidden">
-        <div className="border-b border-white/10">
-          <Marquee items={capabilities} reverse onDark />
-        </div>
-
+      <section className="stage relative overflow-hidden border-t border-white/10">
         <Reveal>
           <div className="mx-auto max-w-[860px] px-8 py-28 text-center">
             <Eyebrow>Paper by default</Eyebrow>
@@ -738,9 +715,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             </div>
           </div>
 
-          {/* What the engine actually takes, listed once. The marquee shows these drifting
-              past at the top of the page, where they read as texture rather than as a
-              specification; here they sit still long enough to be read. */}
+          {/* What the engine actually takes, listed once, still enough to be read. */}
           <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
             <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
             <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
