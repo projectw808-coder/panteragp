@@ -341,20 +341,64 @@ function Shell({ dark, setDark, onLogout }: {
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
 
+  // Below the lg breakpoint the rail is a drawer: a bar across the top holds the brand,
+  // the bell and a menu button, and the rail slides in over the page when asked. It closes
+  // itself when the page changes, when the backdrop is tapped, or from its own button.
+  const [menu, setMenu] = useState(false);
+  useEffect(() => { setMenu(false); }, [hash]);
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [menu]);
+
   return (
-    <div className="flex h-full bg-vellum text-obsidian dark:bg-obsidian dark:text-vellum">
-      {/* The dark palette lives in the nav chrome, so tables and forms stay readable
-          while the app keeps the same visual DNA as the marketing hero. */}
+    <div className="flex h-full flex-col bg-vellum text-obsidian lg:flex-row dark:bg-obsidian dark:text-vellum">
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
           while the app keeps the same visual DNA as the marketing hero. The rail reads
           as instrument panel rather than website menu: numbered slots, mono labels, a
           scanline wash, and an accent bar that slides between items. */}
       <TerminalGround />
-      <aside className="nav-rail relative z-10 flex w-56 shrink-0 flex-col overflow-hidden bg-obsidian dark:bg-onyx">
+
+      {/* The bar a phone or a tablet gets instead of the rail. */}
+      <header className="nav-rail relative z-20 flex shrink-0 items-center gap-3 overflow-hidden bg-obsidian px-4 py-3 lg:hidden dark:bg-onyx">
+        <div className="relative z-10 flex items-baseline gap-1">
+          <span className="font-display text-lg text-vellum">Pantera GP</span>
+          <span className="text-ember-ink">///</span>
+        </div>
+        <p className="relative z-10 ml-1 hidden items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase sm:flex">
+          <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
+          {crm ? 'Client desk' : 'Terminal'}
+        </p>
+        <div className="relative z-10 ml-auto flex items-center gap-2 text-mist">
+          <NotificationBell />
+          <button type="button" onClick={() => setMenu(true)} aria-expanded={menu} aria-controls="app-rail" aria-label="Open the menu"
+            className="focus-ring flex h-11 w-11 items-center justify-center rounded-full text-vellum transition-colors hover:bg-white/10">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+              <path d="M3 5h14M3 10h14M3 15h14" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      {menu && (
+        <button type="button" aria-label="Close the menu" onClick={() => setMenu(false)}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[2px] lg:hidden" />
+      )}
+
+      <aside id="app-rail"
+        className={`nav-rail fixed inset-y-0 left-0 z-40 flex w-72 max-w-[86vw] shrink-0 flex-col overflow-hidden bg-obsidian transition-transform duration-300 ease-out lg:static lg:z-10 lg:w-56 lg:max-w-none lg:translate-x-0 lg:transition-none dark:bg-onyx ${menu ? 'translate-x-0' : '-translate-x-full'}`}
+        aria-hidden={!menu ? undefined : false}>
         <div className="relative z-10 px-5 py-5">
           <div className="flex items-baseline gap-1">
             <span className="font-display text-lg text-vellum">Pantera GP</span>
             <span className="text-ember-ink">///</span>
+            <button type="button" onClick={() => setMenu(false)} aria-label="Close the menu"
+              className="focus-ring ml-auto -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-mist transition-colors hover:text-vellum lg:hidden">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
           </div>
           <p className="mt-1 flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase">
             <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
@@ -363,7 +407,7 @@ function Shell({ dark, setDark, onLogout }: {
           <ThemeToggle dark={dark} setDark={setDark} />
         </div>
 
-        <nav className="relative z-10 flex flex-col py-2 text-sm">
+        <nav className="relative z-10 flex min-h-0 flex-col overflow-y-auto py-2 text-sm">
           {nav.filter(([, , show]) => show).map(([href, label], i) => (
             <a key={href} href={href} className={`nav-item ${here(href) ? navOn : navOff}`}>
               {/* A slot number, as on a console. Ordinal, not a keyboard shortcut — except
@@ -388,7 +432,12 @@ function Shell({ dark, setDark, onLogout }: {
           </div>
         </div>
       </aside>
-      <main className={`relative z-10 flex min-h-0 flex-1 flex-col ${charts ? 'p-4' : 'overflow-auto p-6'}`}>
+      {/* Every page is a direct child here and most centre themselves with mx-auto and a
+          max width. In a flex column, auto margins size an item to its content, so a page
+          with a wide table would grow to the table and push the whole screen sideways on a
+          phone; full width with the page's own cap keeps it to the screen, and the table's
+          card scrolls instead. */}
+      <main className={`relative z-10 flex min-h-0 flex-1 flex-col [&>*]:w-full ${charts ? 'overflow-auto p-3 lg:overflow-hidden lg:p-4' : 'overflow-auto p-4 sm:p-6'}`}>
         {/* On every client screen, charts included. It used to be hidden there because the
             charts run full-bleed, which stopped mattering the moment charts became where a
             trader lands. */}
@@ -460,7 +509,7 @@ const Person = () => (
 const GROUND_BARS = [24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58];
 
 const TerminalGround = () => (
-  <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-56 z-0 overflow-hidden">
+  <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-0 z-0 overflow-hidden lg:left-56">
     <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
     {/* The bars are the light theme's. Dark sets --ground-bar transparent and keeps the
         bloom alone, because on the terminal ground twelve more lit shapes are a second
@@ -520,7 +569,7 @@ export const btnGhost = 'rounded-full border border-pebble bg-bone px-4 py-2 fon
 // a shadow would have done.
 export const card = 'rounded-lg bg-bone p-4 dark:bg-onyx dark:[box-shadow:var(--shadow-inset-dark)]';
 // Tables get their own container: vellum inside a pebble hairline, header row on bone.
-export const tableCard = 'overflow-hidden rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx';
+export const tableCard = 'table-card overflow-x-auto rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx';
 export const thead = 'bg-bone text-left text-xs font-medium tracking-wide text-slate-ink dark:bg-vellum/5 dark:text-mist';
 
 // Ember is a fill and a mark, never small text on a light surface: measured, it is 2.64:1

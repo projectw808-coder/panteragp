@@ -446,6 +446,18 @@
   .hero-bar { transition: filter 0.35s var(--ease-enter); }
   .hero-bar:hover { transform: none; }
 }
+/* The landing bar on a phone: the brand and one button, at a size that leaves room. */
+@media (max-width: 639px) {
+  .landing .btn-fill, .landing .btn-line { padding: 10px 14px; font-size: 11px; letter-spacing: 0.14em; }
+}
+
+/* Tables on a phone: the card scrolls sideways rather than crushing the columns. A table
+   with four or more columns keeps a readable width and scrolls; a narrow one just fits. */
+@media (max-width: 767px) {
+  .table-card table:has(th:nth-child(4)) { min-width: 40rem; }
+  .table-card table:has(th:nth-child(7)) { min-width: 56rem; }
+}
+
 /* Revealed by IntersectionObserver — see useReveal in landing.tsx. Hidden until
    seen, so a section arrives as you reach it rather than all at once on load. */
 .reveal { opacity: 0; transform: translateY(18px); }

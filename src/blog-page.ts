@@ -298,6 +298,11 @@ mark.tbc{background:rgba(255,120,23,.16);color:#ffb26b;padding:1px 6px;border-ra
 @media print{nav.bar,footer,.legal-nav,.draft-note,.cta,body::after{display:none!important}body{background:#fff;color:#000}.legal{display:block}.legal-body{font-size:11pt}mark.tbc{background:#eee;color:#000}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media(max-width:820px){nav.bar{padding:14px 16px}nav .links{display:none}.wrap,header.art,.hero,.body,.disc{padding-left:16px;padding-right:16px}h1{font-size:34px}.cards{grid-template-columns:1fr}.hero .img{height:240px}.more h2,.index h1{font-size:26px}.index{grid-template-columns:1fr;padding-top:40px}.masthead{flex-wrap:wrap;gap:18px}.feature{grid-template-columns:1fr}.feature-img{min-height:240px;border-right:0;border-bottom:1px solid var(--line)}.feature-text{padding:24px 20px}.feature-text h2{font-size:28px}}
+/* Phones: the legal column never grows past the screen for a long link or a table (a
+   1fr track still has a min-content floor), tables scroll inside their wrap, and the bar
+   keeps the brand and one button. */
+@media(max-width:960px){.legal{grid-template-columns:minmax(0,1fr)}.legal-head h1.display{font-size:32px}.legal-nav a{white-space:normal}.legal-body{overflow-wrap:anywhere}mark.tbc{white-space:normal;overflow-wrap:anywhere}.legal-body .tablewrap{margin:0 0 24px}.legal-body table{min-width:540px;margin:0}}
+@media(max-width:480px){nav.bar{gap:10px}nav .right{gap:8px}nav .right .mono{display:none}nav .right .btn-fill{padding:8px 12px;font-size:11px}.summary{padding:18px 16px}.legal-head h1.display,.contact-head h1{font-size:30px}}
 `;
 
 /** The page shell every public page shares: bar, bloom, footer. Exported for the legal pages. */

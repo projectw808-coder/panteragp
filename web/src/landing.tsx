@@ -267,6 +267,10 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
   // The one arrow on the right edge: down to the footer all the way through the page,
   // and up to the top once the footer is in view.
   const [atFoot, setAtFoot] = useState(false);
+  // The section links live in the bar from xl up; below that they fold into a menu
+  // under the bar, opened from a button beside the account button.
+  const [menu, setMenu] = useState(false);
+  const SECTIONS: [string, string][] = [['autotrader', 'Auto trader'], ['platform', 'Services'], ['engine', 'The engine'], ['audiences', 'Who it is for'], ['security', 'Security']];
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -354,7 +358,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               Contrast was never the problem — mist reads 7.82:1 on this ground — it was
               12px at almost no tracking, which looks faint whatever colour it is. */}
           <div className="ml-10 hidden items-center gap-9 xl:flex">
-            {[['autotrader','Auto trader'],['platform','Services'],['engine','The engine'],['audiences','Who it is for'],['security','Security']].map(([id,label]) => (
+            {SECTIONS.map(([id,label]) => (
               <button key={id} onClick={() => go(id)} className="nav-link focus-ring">
                 {label}
               </button>
@@ -362,10 +366,29 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             {/* A real link, not a scroll: the articles are served as their own pages. */}
             <a href="/blog" className="nav-link focus-ring">Insights</a>
           </div>
-          <div className="ml-auto flex items-center gap-4">
-            <button onClick={onSignIn} className="nav-link focus-ring">Sign in</button>
+          <div className="ml-auto flex items-center gap-3 sm:gap-4">
+            <button onClick={onSignIn} className="nav-link focus-ring hidden sm:inline-block">Sign in</button>
             <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
+            <button type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="landing-menu" aria-label={menu ? 'Close the menu' : 'Open the menu'}
+              className="focus-ring -mr-2 flex h-11 w-11 items-center justify-center rounded-full text-vellum transition-colors hover:bg-white/10 xl:hidden">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+                {menu ? <path d="M4 4l12 12M16 4L4 16" /> : <path d="M3 5h14M3 10h14M3 15h14" />}
+              </svg>
+            </button>
           </div>
+        {menu && (
+          <div id="landing-menu" className="absolute inset-x-0 top-full z-30 border-b border-white/10 bg-[color:var(--stage)]/95 px-8 py-4 backdrop-blur xl:hidden">
+            <ul className="flex flex-col">
+              {SECTIONS.map(([id, label]) => (
+                <li key={id}>
+                  <button onClick={() => { setMenu(false); go(id); }} className="nav-link focus-ring block w-full py-3 text-left">{label}</button>
+                </li>
+              ))}
+              <li><a href="/blog" className="nav-link focus-ring block w-full py-3 text-left">Insights</a></li>
+              <li className="sm:hidden"><button onClick={() => { setMenu(false); onSignIn(); }} className="nav-link focus-ring block w-full py-3 text-left">Sign in</button></li>
+            </ul>
+          </div>
+        )}
         </nav>
 
         {/* pointer-events-none so this box's empty space (it's centred text in a wide

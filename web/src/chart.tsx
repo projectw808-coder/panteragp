@@ -214,7 +214,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
   const width = box.current?.clientWidth ?? 0;
 
   return (
-    <div className={`${card} flex min-h-0 flex-col gap-2 p-2`}>
+    <div className={`${card} flex h-[420px] min-h-0 flex-col gap-2 p-2 lg:h-auto`}>
       <div className="flex flex-wrap items-center gap-1 text-xs">
         <select className={`${sel} w-28`} value={symbol} onChange={(e) => onSymbol(e.target.value)}>
           {grouped(instruments).map(([label, items]) => (
@@ -229,7 +229,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
         <select className={`${sel} w-28`} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
           {TYPES.map((f) => <option key={f}>{f}</option>)}
         </select>
-        <span className="mx-1 flex gap-1">
+        <span className="mx-1 flex flex-wrap gap-1">
           {[...OVERLAYS, ...PANELS].map((i) => (
             <button key={i} onClick={() => toggle(i)} aria-pressed={on.includes(i)}
               className={`rounded-full px-2 py-1 ${on.includes(i) ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
@@ -237,7 +237,7 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
             </button>
           ))}
         </span>
-        <span className="flex gap-1">
+        <span className="flex flex-wrap gap-1">
           {(['none', 'trend', 'hline', 'fib'] as Tool[]).map((t) => (
             <button key={t} onClick={() => { setTool(t); pending.current = null; setAwaiting(false); }} aria-pressed={tool === t}
               className={`rounded-full px-2 py-1 ${tool === t ? 'bg-ember text-graphite' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
@@ -368,8 +368,10 @@ export function ChartsView({ dark }: { dark: boolean }) {
   const setAt = (i: number, s: string) => setSymbols((v) => v.map((x, j) => (j === i ? s : x)));
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
-        <div className="flex min-h-0 w-72 shrink-0 flex-col gap-3">
+    // Side by side from lg up; on a phone or a tablet the watchlist sits above the charts,
+    // kept short so the charts are not a screen away, and each chart has its own height.
+    <div className="flex min-h-0 flex-col gap-4 lg:h-full lg:flex-row">
+        <div className="flex max-h-72 min-h-0 w-full shrink-0 flex-col gap-3 lg:max-h-none lg:w-72">
         <div className="flex gap-1 text-xs">
             {[1, 2, 4].map((n) => (
               <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
@@ -386,7 +388,7 @@ export function ChartsView({ dark }: { dark: boolean }) {
           chart measures the same width mid-animation as at rest. Nothing here re-runs on a
           price tick — the series is updated in place — so this is arrival only, which is the
           whole rule. Changing the 1/2/4 count does remount and replay it, and should. */}
-      <div className={`stagger grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'grid-cols-2'} ${count === 4 ? 'grid-rows-2' : ''}`}>
+      <div className={`stagger grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'md:grid-cols-2'} ${count === 4 ? 'md:grid-rows-2' : ''}`}>
         {symbols.slice(0, count).map((s, i) => (
           <ChartPanel key={i} symbol={s} onSymbol={(v) => setAt(i, v)}
             instruments={instruments.data ?? []} dark={dark} />
