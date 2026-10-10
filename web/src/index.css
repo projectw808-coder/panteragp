@@ -451,6 +451,15 @@
   .landing .btn-fill, .landing .btn-line { padding: 10px 14px; font-size: 11px; letter-spacing: 0.14em; }
 }
 
+/* Phones: everything that can be tapped is tall enough for a thumb. The pill toggles and
+   the chart toolbars are sized for a cursor on a desk; here they grow to 40px. */
+@media (max-width: 767px) {
+  main button:not(.sr-only), main select, main input:not([type="checkbox"]):not([type="radio"]):not(.sr-only), main textarea, main a.btn-fill {
+    min-height: 2.5rem;
+  }
+  .nav-item { padding-top: 0.8rem; padding-bottom: 0.8rem; }
+}
+
 /* Tables on a phone: the card scrolls sideways rather than crushing the columns. A table
    with four or more columns keeps a readable width and scrolls; a narrow one just fits. */
 @media (max-width: 767px) {

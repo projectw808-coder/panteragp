@@ -313,7 +313,7 @@ function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolea
               <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
             </div>
 
-            <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
               <div>
                 <dt className="metric-label">Term</dt>
                 <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.term_days}d</dd>
@@ -413,7 +413,7 @@ function Offer({ ipo, on, clock, onDone, staff }: {
         <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
       </div>
 
-      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
         <div>
           <dt className="metric-label">Term</dt>
           <dd className="font-mono text-sm leading-none font-medium tabular-nums">
@@ -506,7 +506,7 @@ function Done({ ipo }: { ipo: Ipo }) {
         {ipo.matures_at && ` · ${cancelled ? 'withdrawn' : 'matured'} ${day(ipo.matures_at)}`}
       </p>
       {mine ? (
-        <dl className="grid grid-cols-3 gap-2">
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div>
             <dt className="metric-label">Subscribed</dt>
             <dd className="font-mono text-sm font-medium tabular-nums">{fixed(mine.amount)}</dd>
