@@ -213,15 +213,11 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {groups.finished.map((i) => <Done key={i.id} ipo={i} />)}
                 </div>
-                {/* Where the company facts come from, and — more to the point — what the
-                    return on these cards is and is not. Somebody reading a finished deal is
-                    the most likely person to assume it tracked the share price. */}
+                {/* One line on what the return on these cards is: somebody reading a finished
+                    deal is the most likely person to assume it tracked the share price. */}
                 <p className="mt-3 text-xs text-slate-ink">
-                  Company facts, dates and prices are drawn from public reporting on the 2026
-                  IPO calendar. Allocations, ROI rates and terms are this desk's own, and the
-                  return shown is the ROI accrued over the term rather than any movement in
-                  the share price. Balances here are simulated and nothing on this page is a
-                  securities offering or a transferable instrument.
+                  The return shown is the offering's ROI accrued over its term, not a movement
+                  in the company's share price.
                 </p>
               </details>
             </section>
