@@ -450,6 +450,14 @@
 @media (max-width: 639px) {
   .landing .btn-fill, .landing .btn-line { padding: 10px 14px; font-size: 11px; letter-spacing: 0.14em; }
 }
+/* The landing footer's links and the menu's items are thumb-sized on a phone. */
+@media (max-width: 767px) {
+  .landing #footer li > a, .landing #footer li > button, .landing #landing-menu li > a, .landing #landing-menu li > button {
+    display: inline-block; min-height: 44px; padding-top: 10px; padding-bottom: 10px;
+  }
+  .landing #footer ul { margin-top: 0.25rem; }
+  .landing #footer ul > li + li { margin-top: 0; }
+}
 
 /* Phones: everything that can be tapped is tall enough for a thumb. The pill toggles and
    the chart toolbars are sized for a cursor on a desk; here they grow to 40px. */
