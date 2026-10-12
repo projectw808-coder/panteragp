@@ -1404,6 +1404,10 @@ app.get('/trades', { preHandler: trader }, async (req: any) => {
 // variables that set them. The health check and bunzy's deliveries are never refused,
 // nor is anything arriving over a private address, which is development and the tests.
 const geoPolicy = policyFromEnv();
+/** The door's state, said on the health check so it can be read from outside without the logs. */
+const doorState = () => (geoPolicy
+  ? { countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY?.trim() }
+  : null);
 if (geoPolicy) {
   const geoLookup = makeLookup({ key: process.env.GEO_API_KEY?.trim() || undefined });
   const geoAllow = new Set((process.env.GEO_ALLOW_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
@@ -5003,7 +5007,7 @@ app.get('/health', async (_req, reply) => {
     // See UPLOAD_PERSISTENCE: proven from a marker left on the last boot, not inferred
     // from an environment variable being set. Reported here so it can be read from
     // outside without signing in.
-    return { ok: true, uploads: UPLOAD_PERSISTENCE };
+    return { ok: true, uploads: UPLOAD_PERSISTENCE, door: doorState() };
   } catch {
     return reply.code(503).send({ ok: false });
   }
