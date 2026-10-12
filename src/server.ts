@@ -1412,7 +1412,7 @@ if (geoPolicy) {
   const geoLookup = makeLookup({ key: process.env.GEO_API_KEY?.trim() || undefined });
   const geoAllow = new Set((process.env.GEO_ALLOW_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
   const geoCrawlers = (process.env.GEO_ALLOW_CRAWLERS ?? '1') === '1';
-  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy']);
+  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami']);
   app.addHook('onRequest', async (req: any, reply) => {
     const path = (req.raw.url ?? '/').split('?')[0];
     if (GEO_OPEN.has(path)) return;
@@ -1427,10 +1427,19 @@ if (geoPolicy) {
     const wantsHtml = /text\/html/.test(String(req.headers.accept ?? '')) && !req.raw.cameInUnderApi;
     reply.code(451).header('cache-control', 'no-store');
     return wantsHtml
-      ? reply.type('text/html; charset=utf-8').send(BLOCKED_PAGE(verdict))
+      ? reply.type('text/html; charset=utf-8').send(BLOCKED_PAGE(verdict, { ip, country: info.country }))
       : reply.send({ error: verdict.reason === 'country' ? 'not available in your location' : 'not available through a VPN or proxy' });
   });
   app.log.info({ countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY }, 'the door is on');
+  // What the door makes of the caller, readable from a refused device: the address it
+  // was judged on, what the lookup said, and the verdict. For working out why someone
+  // was turned away, and what to put in GEO_ALLOW_IPS.
+  app.get('/whereami', async (req: any) => {
+    const ip = String(req.ip ?? '');
+    if (!isPublicIp(ip)) return { ip, public: false, verdict: { allow: true } };
+    const info = await geoLookup(ip);
+    return { ip, public: true, lookup: info, verdict: info ? decide(info, geoPolicy) : { allow: true, note: 'lookup unavailable' } };
+  });
 }
 
 await app.register(websocket);

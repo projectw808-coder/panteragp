@@ -143,7 +143,8 @@ export function makeLookup(o: { key?: string; fetch?: Fetch; ttlMs?: number; fai
   };
 }
 
-export const BLOCKED_PAGE = (reason: Verdict & { allow: false }) => `<!doctype html>
+/** The refusal, with the address and country it was judged on, so a wrong placement can be reported and allowed. */
+export const BLOCKED_PAGE = (reason: Verdict & { allow: false }, who: { ip: string; country: string | null }) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not available — Pantera GP</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f0504;color:#f5efe6;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:34rem;padding:32px}h1{font-family:'Playfair Display',Georgia,serif;font-weight:400;font-size:30px;margin:0 0 14px}p{color:#a39a90;line-height:1.6;margin:0 0 10px}
@@ -152,4 +153,4 @@ main{max-width:34rem;padding:32px}h1{font-family:'Playfair Display',Georgia,seri
 <p>${reason.reason === 'country'
     ? 'Pantera GP is not offered to visitors in your location.'
     : 'Pantera GP cannot be reached through a VPN, a proxy or an anonymising network. Turn it off and try again.'}</p>
-<p>If you believe this is a mistake, write to support@pantera-gp.com.</p></main></body></html>`;
+<p>If you believe this is a mistake, write to support@pantera-gp.com and quote this line:<br><span class="k">${who.ip.replace(/[^0-9a-f.:]/gi, '')} · ${(who.country ?? 'unknown').replace(/[<>&]/g, '')}</span></p></main></body></html>`;
