@@ -16,6 +16,10 @@
  *   GEO_ALLOW_CRAWLERS    1 to let search engines' crawlers through on their user agent;
  *                         default 1, since Google and Bing crawl from the United States
  *                         and the Insights pages would otherwise fall out of search
+ *   GEO_PASS              a secret for the desk's own people, who may well work through a
+ *                         VPN themselves: opening /door/pass?key=<GEO_PASS> once in a
+ *                         browser sets a cookie that lets that browser past the door for
+ *                         a year. The cookie holds a signature, never the secret
  *   GEO_OFF               1 switches the whole door off
  *
  * The lookup is ipapi.is, one request per address, remembered for twelve hours. When the
@@ -25,6 +29,23 @@
  *
  * A refused request gets 451 with a short page for a browser and JSON for anything else.
  */
+
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+/** The cookie a desk browser carries past the door: a signature derived from the secret, never the secret. */
+export const PASS_COOKIE = 'door_pass';
+export const passCookieValue = (secret: string) => createHmac('sha256', secret).update('door-pass').digest('hex');
+const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+export const passKeyMatches = (key: unknown, secret: string) => typeof key === 'string' && key.length > 0 && same(key, secret);
+export function hasPass(cookieHeader: unknown, secret: string): boolean {
+  if (typeof cookieHeader !== 'string' || !cookieHeader) return false;
+  const expected = passCookieValue(secret);
+  for (const part of cookieHeader.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === PASS_COOKIE && same(rest.join('='), expected)) return true;
+  }
+  return false;
+}
 
 export type GeoInfo = {
   country: string | null;        // ISO 3166-1 alpha-2 where known, else the service's name

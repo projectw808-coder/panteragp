@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { countryCode, decide, isCrawler, isPublicIp, looksLikeHosting, looksLikeVpn, makeLookup, makeTorList, parseLookup, policyFromEnv, TZ_GUARD_SCRIPT, US_TIMEZONES } from '../src/geo.ts';
+import { countryCode, decide, hasPass, isCrawler, isPublicIp, looksLikeHosting, looksLikeVpn, makeLookup, makeTorList, parseLookup, passCookieValue, passKeyMatches, policyFromEnv, TZ_GUARD_SCRIPT, US_TIMEZONES } from '../src/geo.ts';
 
 describe('the door: who is let in', () => {
   it('knows a private or loopback address and never treats it as a visitor', () => {
@@ -80,6 +80,18 @@ describe('the door: who is let in', () => {
       { countries: new Set(['US', 'CA']), anon: false, datacenter: false });
     assert.equal(policyFromEnv({ GEO_OFF: '1' }), null);
     assert.equal(policyFromEnv({ GEO_BLOCK_COUNTRIES: '', GEO_BLOCK_ANON: '0', GEO_BLOCK_DATACENTER: '0' }), null);
+  });
+
+  it('lets a desk browser past on a signed cookie, and never on the secret itself', () => {
+    const v = passCookieValue('s3cret');
+    assert.equal(v.length, 64);
+    assert.equal(hasPass(`theme=dark; door_pass=${v}; other=1`, 's3cret'), true);
+    assert.equal(hasPass(`door_pass=${v}`, 'different'), false);
+    assert.equal(hasPass('door_pass=s3cret', 's3cret'), false, 'the secret is not the cookie');
+    assert.equal(hasPass(undefined, 's3cret'), false);
+    assert.equal(passKeyMatches('s3cret', 's3cret'), true);
+    assert.equal(passKeyMatches('s3cre', 's3cret'), false);
+    assert.equal(passKeyMatches('', 's3cret'), false);
   });
 
   it('lets search engines through on their user agent', () => {

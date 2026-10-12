@@ -5,7 +5,7 @@ import { assertSecretConfigured, can, hashPassword, signToken, verifyPassword, v
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { BLOCKED_PAGE, decide, isCrawler, isPublicIp, makeLookup, makeTorList, policyFromEnv, TZ_GUARD_SCRIPT } from './geo.ts';
+import { BLOCKED_PAGE, decide, hasPass, isCrawler, isPublicIp, makeLookup, makeTorList, PASS_COOKIE, passCookieValue, passKeyMatches, policyFromEnv, TZ_GUARD_SCRIPT } from './geo.ts';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -1414,13 +1414,15 @@ if (geoPolicy) {
   const geoLookup = makeLookup({ key: process.env.GEO_API_KEY?.trim() || undefined });
   const geoAllow = new Set((process.env.GEO_ALLOW_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
   const geoCrawlers = (process.env.GEO_ALLOW_CRAWLERS ?? '1') === '1';
-  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami', '/door']);
+  const geoPass = process.env.GEO_PASS?.trim() || undefined;
+  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami', '/door', '/door/pass']);
   torExits.start();
   app.addHook('onRequest', async (req: any, reply) => {
     const path = (req.raw.url ?? '/').split('?')[0];
     if (GEO_OPEN.has(path)) return;
     const ip = String(req.ip ?? '');
     if (!isPublicIp(ip) || geoAllow.has(ip)) return;
+    if (geoPass && hasPass(req.headers.cookie, geoPass)) return;
     if (geoCrawlers && isCrawler(req.headers['user-agent'])) return;
     // A Tor exit is refused before the lookup is even asked: the list is local and certain.
     const info = await geoLookup(ip);
@@ -1446,6 +1448,15 @@ if (geoPolicy) {
     return { ip, public: true, lookup: info, tor_exit: tor, verdict: info ? decide(info, geoPolicy, tor) : (tor ? { allow: false, reason: 'anon' } : { allow: true, note: 'lookup unavailable' }) };
   });
 }
+// The desk's own way past the door, for people who work through a VPN themselves: open
+// this once with the secret and the browser carries a signed cookie for a year. A wrong
+// or missing key is a 404, so the route gives nothing away.
+app.get('/door/pass', async (req: any, reply) => {
+  const secret = process.env.GEO_PASS?.trim();
+  if (!secret || !passKeyMatches(req.query?.key, secret)) return reply.code(404).send({ error: 'not found' });
+  reply.header('set-cookie', `${PASS_COOKIE}=${passCookieValue(secret)}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`);
+  return reply.redirect('/');
+});
 // What the app needs to take the door's second look in the browser: whether the door is
 // on, and whether the refused countries include one whose time zones the page can check.
 app.get('/door', async (_req, reply) => {
