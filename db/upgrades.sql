@@ -907,11 +907,36 @@ CREATE TABLE IF NOT EXISTS site_assets (
 );
 
 -- Every client has an account number: the reference a person quotes on the phone or on
--- a transfer, shorter and steadier than an email. Drawn from a sequence, never reused,
--- and given to every client already here in the order they joined.
-CREATE SEQUENCE IF NOT EXISTS client_account_seq START 1000001;
+-- a transfer, shorter and steadier than an email. Six random digits, so the number says
+-- nothing about how many clients there are or who joined when; unique by retry; given
+-- by a trigger to every new row, and once to every client already here. (The first cut
+-- drew them from a sequence with a PGP- prefix; those are replaced below, once.)
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS account_number text UNIQUE;
-UPDATE clients c SET account_number = 'PGP-' || nextval('client_account_seq')::text
-  FROM (SELECT id FROM clients WHERE account_number IS NULL ORDER BY created_at, id) o
- WHERE c.id = o.id AND c.account_number IS NULL;
-ALTER TABLE clients ALTER COLUMN account_number SET DEFAULT 'PGP-' || nextval('client_account_seq')::text;
+ALTER TABLE clients ALTER COLUMN account_number DROP DEFAULT;
+CREATE OR REPLACE FUNCTION assign_account_number() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.account_number IS NULL THEN
+    LOOP
+      NEW.account_number := (100000 + floor(random() * 900000))::int::text;
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM clients WHERE account_number = NEW.account_number);
+    END LOOP;
+  END IF;
+  RETURN NEW;
+END $fn$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS clients_account_number ON clients;
+CREATE TRIGGER clients_account_number BEFORE INSERT ON clients
+  FOR EACH ROW EXECUTE FUNCTION assign_account_number();
+DO $do$
+DECLARE r record; n text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'random-account-numbers') THEN
+    FOR r IN SELECT id FROM clients WHERE account_number IS NULL OR account_number LIKE 'PGP-%' LOOP
+      LOOP
+        n := (100000 + floor(random() * 900000))::int::text;
+        EXIT WHEN NOT EXISTS (SELECT 1 FROM clients WHERE account_number = n);
+      END LOOP;
+      UPDATE clients SET account_number = n WHERE id = r.id;
+    END LOOP;
+    INSERT INTO data_migrations (name) VALUES ('random-account-numbers');
+  END IF;
+END $do$;

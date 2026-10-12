@@ -657,6 +657,7 @@ await step('one pot at a time rides on the balance strip', async () => {
 });
 
 await step('the auto trader switch is the client\'s own', async () => {
+  assert.match((await get('/me/profile', { token: T })).account_number ?? '', /^[1-9]\d{5}$/, 'an account number: six digits, given on registration');
   assert.equal((await get('/me/profile', { token: T })).auto_trader, false, 'off until asked for');
   assert.equal((await get('/me/auto-trader', { token: T, method: 'POST', body: { on: true } })).on, true);
   assert.equal((await get('/me/profile', { token: T })).auto_trader, true, 'and it sticks');
