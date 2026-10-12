@@ -5,7 +5,7 @@ import { assertSecretConfigured, can, hashPassword, signToken, verifyPassword, v
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { BLOCKED_PAGE, decide, isCrawler, isPublicIp, makeLookup, policyFromEnv } from './geo.ts';
+import { BLOCKED_PAGE, decide, isCrawler, isPublicIp, makeLookup, makeTorList, policyFromEnv, TZ_GUARD_SCRIPT } from './geo.ts';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -1405,29 +1405,33 @@ app.get('/trades', { preHandler: trader }, async (req: any) => {
 // nor is anything arriving over a private address, which is development and the tests.
 const geoPolicy = policyFromEnv();
 /** The door's state, said on the health check so it can be read from outside without the logs. */
+// Tor's exit list, kept fresh while the process runs; empty when the door is off.
+const torExits = makeTorList();
 const doorState = () => (geoPolicy
-  ? { countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY?.trim() }
+  ? { countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY?.trim(), tor_exits: torExits.size() }
   : null);
 if (geoPolicy) {
   const geoLookup = makeLookup({ key: process.env.GEO_API_KEY?.trim() || undefined });
   const geoAllow = new Set((process.env.GEO_ALLOW_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
   const geoCrawlers = (process.env.GEO_ALLOW_CRAWLERS ?? '1') === '1';
-  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami']);
+  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami', '/door']);
+  torExits.start();
   app.addHook('onRequest', async (req: any, reply) => {
     const path = (req.raw.url ?? '/').split('?')[0];
     if (GEO_OPEN.has(path)) return;
     const ip = String(req.ip ?? '');
     if (!isPublicIp(ip) || geoAllow.has(ip)) return;
     if (geoCrawlers && isCrawler(req.headers['user-agent'])) return;
+    // A Tor exit is refused before the lookup is even asked: the list is local and certain.
     const info = await geoLookup(ip);
-    if (!info) return;
-    const verdict = decide(info, geoPolicy);
+    if (!info && !torExits.has(ip)) return;
+    const verdict = decide(info ?? { country: null, vpn: null, proxy: null, tor: null, datacenter: null, asn: null, company: null, vpnProvider: false, hosting: false }, geoPolicy, torExits.has(ip));
     if (verdict.allow) return;
-    req.log.info({ ip, country: info.country, reason: verdict.reason }, 'refused at the door');
+    req.log.info({ ip, country: info?.country ?? null, network: info?.asn ?? null, reason: verdict.reason }, 'refused at the door');
     const wantsHtml = /text\/html/.test(String(req.headers.accept ?? '')) && !req.raw.cameInUnderApi;
     reply.code(451).header('cache-control', 'no-store');
     return wantsHtml
-      ? reply.type('text/html; charset=utf-8').send(BLOCKED_PAGE(verdict, { ip, country: info.country }))
+      ? reply.type('text/html; charset=utf-8').send(BLOCKED_PAGE(verdict, { ip, country: info?.country ?? null }))
       : reply.send({ error: verdict.reason === 'country' ? 'not available in your location' : 'not available through a VPN or proxy' });
   });
   app.log.info({ countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY }, 'the door is on');
@@ -1438,9 +1442,16 @@ if (geoPolicy) {
     const ip = String(req.ip ?? '');
     if (!isPublicIp(ip)) return { ip, public: false, verdict: { allow: true } };
     const info = await geoLookup(ip);
-    return { ip, public: true, lookup: info, verdict: info ? decide(info, geoPolicy) : { allow: true, note: 'lookup unavailable' } };
+    const tor = torExits.has(ip);
+    return { ip, public: true, lookup: info, tor_exit: tor, verdict: info ? decide(info, geoPolicy, tor) : (tor ? { allow: false, reason: 'anon' } : { allow: true, note: 'lookup unavailable' }) };
   });
 }
+// What the app needs to take the door's second look in the browser: whether the door is
+// on, and whether the refused countries include one whose time zones the page can check.
+app.get('/door', async (_req, reply) => {
+  const on = !!geoPolicy;
+  return reply.header('cache-control', 'public, max-age=300').send({ on, countries: on ? [...geoPolicy!.countries] : [], timezones: on && geoPolicy!.countries.has('US') });
+});
 
 await app.register(websocket);
 
@@ -6619,7 +6630,18 @@ app.get('/articles/:slug', async (req: any, reply) => {
 // The pages themselves. Cached briefly at the edge and in the browser: an article changes
 // when the service says so, and a minute's staleness is nothing against a page load that
 // hits the database for every crawler.
-const html = (reply: any) => reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60');
+// Every public page goes out through here. With the door refusing the United States, the
+// page carries the guard that takes the door's second look in the browser: a device on
+// United States time refuses the page itself, VPN or no VPN.
+const html = (reply: any) => {
+  const r = reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60');
+  const guard = geoPolicy?.countries.has('US') ? TZ_GUARD_SCRIPT : '';
+  const out = {
+    code(n: number) { r.code(n); return out; },
+    send: (page: string) => r.send(guard ? page.replace('</head>', `${guard}</head>`) : page),
+  };
+  return out;
+};
 
 /** The tags across everything live, most used first, for the index's topic row. */
 async function liveTopics(): Promise<Topic[]> {

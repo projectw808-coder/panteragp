@@ -22,6 +22,7 @@ import { Landing } from './landing.tsx';
 import { IposPanel } from './ipos.tsx';
 import { IposAdmin } from './ipos-admin.tsx';
 import { EmailAdmin } from './email-admin.tsx';
+import { deviceInUs, type DoorState } from './door.ts';
 
 type Me = { sub: string; kind: 'staff' | 'client'; role: string };
 
@@ -45,7 +46,34 @@ function useDarkMode() {
   return [dark, setDark] as const;
 }
 
+/**
+ * The door's second look, taken here in the browser: the server judged the address, and
+ * this judges the device. A visitor behind a VPN arrives from somewhere else, but their
+ * device keeps the time of where they are. Asked once per load; until the answer comes
+ * the app renders as usual, and a device on a refused country's time gets the refusal.
+ */
+function useDoor() {
+  const [refused, setRefused] = useState(false);
+  useEffect(() => {
+    if (!deviceInUs()) return;
+    fetch('/api/door').then((r) => r.json()).then((d: DoorState) => { if (d.on && d.timezones) setRefused(true); }).catch(() => {});
+  }, []);
+  return refused;
+}
+
+const Refused = () => (
+  <div className="auth-screen grid min-h-full place-items-center bg-onyx px-6 py-12 text-vellum">
+    <main className="max-w-[34rem]">
+      <p className="font-mono text-[11px] tracking-[0.18em] text-ember-ink uppercase">Pantera GP</p>
+      <h1 className="font-display mt-3 text-[30px] font-normal">Not available here</h1>
+      <p className="mt-4 text-sm leading-relaxed text-mist">Pantera GP is not offered to visitors in your location.</p>
+      <p className="mt-2 text-sm leading-relaxed text-mist">If you believe this is a mistake, write to support@pantera-gp.com.</p>
+    </main>
+  </div>
+);
+
 export function App() {
+  const refused = useDoor();
   const [authed, setAuthed] = useState(!!token.get());
   const [dark, setDark] = useDarkMode();
   // What a visitor with no session sees: the public page first, the forms on request.
@@ -54,6 +82,7 @@ export function App() {
   const [gate, setGate] = useState<'landing' | 'signin' | 'register'>(() =>
     location.hash === '#signin' ? 'signin' : location.hash === '#register' ? 'register' : 'landing');
 
+  if (refused) return <Refused />;
   if (authed) {
     return <Shell dark={dark} setDark={setDark} onLogout={() => { token.clear(); setAuthed(false); setGate('landing'); }} />;
   }
