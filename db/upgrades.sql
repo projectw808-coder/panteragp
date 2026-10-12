@@ -905,3 +905,13 @@ CREATE TABLE IF NOT EXISTS site_assets (
   type       text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Every client has an account number: the reference a person quotes on the phone or on
+-- a transfer, shorter and steadier than an email. Drawn from a sequence, never reused,
+-- and given to every client already here in the order they joined.
+CREATE SEQUENCE IF NOT EXISTS client_account_seq START 1000001;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS account_number text UNIQUE;
+UPDATE clients c SET account_number = 'PGP-' || nextval('client_account_seq')::text
+  FROM (SELECT id FROM clients WHERE account_number IS NULL ORDER BY created_at, id) o
+ WHERE c.id = o.id AND c.account_number IS NULL;
+ALTER TABLE clients ALTER COLUMN account_number SET DEFAULT 'PGP-' || nextval('client_account_seq')::text;

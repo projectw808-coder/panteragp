@@ -89,7 +89,7 @@ export function ClientList() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input className={`${field} min-w-56 flex-1`} placeholder="Search name or email"
+        <input className={`${field} min-w-56 flex-1`} placeholder="Search name, email or account number"
           value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={`${field} w-36`} value={stage} onChange={(e) => setStage(e.target.value)}>
           <option value="">All stages</option>

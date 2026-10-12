@@ -54,7 +54,10 @@ export function useApi<T>(path: string | null) {
 export type Stage = { id: number; name: string; sort_order: number; is_terminal: boolean };
 export type Staff = { id: string; name: string; email: string; role: string };
 export type ClientRow = {
-  id: string; email: string; name: string; tier: string; kyc_status: string;
+  id: string;
+  /** The reference a client quotes: PGP- and a number from a sequence, never reused. */
+  account_number: string | null;
+  email: string; name: string; tier: string; kyc_status: string;
   risk_profile: string | null; created_at: string; stage_id: number; stage: string;
   owner_staff_id: string | null; owner_name: string | null;
   /** False until someone sets a password: the record exists, the login does not. */

@@ -14,7 +14,7 @@ import { BalancePanel } from './balance.tsx';
  */
 
 type Profile = {
-  id: string; email: string; name: string; phone: string | null; country: string | null;
+  id: string; account_number: string | null; email: string; name: string; phone: string | null; country: string | null;
   date_of_birth: string | null; address: string | null;
   tier: string; kyc_status: string; created_at: string;
   avatar_key: string | null;
@@ -65,6 +65,11 @@ export function ProfileView() {
         <Avatar p={p} onChanged={me.reload} />
         <div className="min-w-0">
           <h2 className="font-display text-[22px] leading-tight tracking-tight">{p.name}</h2>
+          {p.account_number && (
+            <p className={`text-sm text-obsidian dark:text-vellum ${mono}`}>
+              <span className="text-xs tracking-[0.14em] text-slate-ink uppercase">Account </span>{p.account_number}
+            </p>
+          )}
           <p className={`text-sm text-ember-ink ${mono}`}>{p.email}</p>
           <p className={`text-xs text-slate-ink ${mono}`}>
             Client since {new Date(p.created_at).toLocaleDateString()}
@@ -140,6 +145,10 @@ function Held({ p }: { p: Profile }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
+        {p.account_number && (
+          <Card label="Account number" value={<span className={`text-sm ${mono}`}>{p.account_number}</span>}
+            note="Quote it when you write or call, and on any transfer to us. It never changes." />
+        )}
         <Card label="Sign-in email" value={<span className={`text-sm break-all ${mono}`}>{p.email}</span>}
           note="It is how you sign in, so it is changed with us rather than here." />
         <Card label="Tier" value={<span className="text-base font-medium capitalize">{p.tier}</span>}

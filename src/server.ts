@@ -338,7 +338,7 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
   }).parse(req.query);
   // ponytail: ILIKE '%x%' is a seq scan; add a pg_trgm index when the client list gets long.
   const { rows } = await pool.query(
-    `SELECT c.id, c.email, c.name, c.tier, c.kyc_status, c.risk_profile, c.created_at,
+    `SELECT c.id, c.account_number, c.email, c.name, c.tier, c.kyc_status, c.risk_profile, c.created_at,
             c.stage_id, s.name AS stage, c.owner_staff_id, o.name AS owner_name,
             -- Whether they can sign in at all, never the hash itself. A client created
             -- from the CRM has no password until someone sets one, and that state was
@@ -351,7 +351,7 @@ app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
        LEFT JOIN staff o ON o.id = c.owner_staff_id
       WHERE ($1::smallint IS NULL OR c.stage_id = $1)
         AND ($2::uuid IS NULL OR c.owner_staff_id = $2)
-        AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.email ILIKE '%'||$3||'%')
+        AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.email ILIKE '%'||$3||'%' OR c.account_number ILIKE '%'||$3||'%')
         AND ($5::text IS NULL OR c.kyc_status = $5)
       ORDER BY c.created_at DESC LIMIT $4`,
     [q.stage_id ?? null, q.owner_staff_id ?? null, q.q || null, q.limit, q.kyc_status ?? null],
@@ -988,7 +988,7 @@ const profileBody = z.object({
 
 app.get('/me/profile', { preHandler: trader }, async (req: any) => {
   const { rows } = await pool.query(
-    `SELECT id, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at,
+    `SELECT id, account_number, email, name, phone, country, date_of_birth, address, tier, kyc_status, created_at,
             commission_bps, spread_bps, auto_trader, avatar_key
        FROM clients WHERE id = $1`, [req.principal.sub]);
   // Sent resolved rather than raw: a null means "the desk default", and the client should

@@ -176,7 +176,16 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
           <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
           {/* Contact details are read aloud off this screen, so they are set at the full
               ink rather than the muted grey the rest of the metadata uses. */}
-          <p className="mt-2 flex flex-wrap items-center gap-2 font-mono text-sm text-ember-ink">
+          {/* The account number first: it is what the client quotes and what the desk
+              searches by, and it does not change when an email does. */}
+          {c.account_number && (
+            <p className="mt-2 flex flex-wrap items-center gap-2 font-mono text-sm text-obsidian dark:text-vellum">
+              <span className="text-xs tracking-[0.14em] text-slate-ink uppercase">Account</span>
+              {c.account_number}
+              <CopyButton text={c.account_number} />
+            </p>
+          )}
+          <p className="mt-1 flex flex-wrap items-center gap-2 font-mono text-sm text-ember-ink">
             {c.email}
             <CopyButton text={c.email} />
           </p>

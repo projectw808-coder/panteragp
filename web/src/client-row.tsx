@@ -48,6 +48,9 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
             <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
               aria-hidden>›</span>
             <span className="font-medium">{c.name}</span>
+            {c.account_number && (
+              <span className="font-mono text-[11px] tracking-wide text-slate-ink" title="Account number">{c.account_number}</span>
+            )}
             {/* A record without a password is a lead, not an account — and until this said
                 so, it was indistinguishable from a working login in every column here. */}
             {!c.has_login && (
