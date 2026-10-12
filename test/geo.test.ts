@@ -75,11 +75,12 @@ describe('the door: who is let in', () => {
   });
 
   it('reads the policy from the environment, with the United States and anonymisers refused by default', () => {
-    assert.deepEqual(policyFromEnv({}), { countries: new Set(['US']), anon: true, datacenter: true });
+    assert.deepEqual(policyFromEnv({}), { countries: new Set(['US']), anon: false, datacenter: false }, 'the country rule alone, for now');
+    assert.deepEqual(policyFromEnv({ GEO_BLOCK_ANON: '1', GEO_BLOCK_DATACENTER: '1' }), { countries: new Set(['US']), anon: true, datacenter: true });
     assert.deepEqual(policyFromEnv({ GEO_BLOCK_COUNTRIES: 'us, ca', GEO_BLOCK_ANON: '0', GEO_BLOCK_DATACENTER: '0' }),
       { countries: new Set(['US', 'CA']), anon: false, datacenter: false });
     assert.equal(policyFromEnv({ GEO_OFF: '1' }), null);
-    assert.equal(policyFromEnv({ GEO_BLOCK_COUNTRIES: '', GEO_BLOCK_ANON: '0', GEO_BLOCK_DATACENTER: '0' }), null);
+    assert.equal(policyFromEnv({ GEO_BLOCK_COUNTRIES: '' }), null);
   });
 
   it('lets a desk browser past on a signed cookie, and never on the secret itself', () => {

@@ -5,10 +5,10 @@
  * widen them without a deploy:
  *
  *   GEO_BLOCK_COUNTRIES   comma list of ISO country codes refused outright; default US
- *   GEO_BLOCK_ANON        1 to refuse VPNs, proxies and Tor exits; default 1
+ *   GEO_BLOCK_ANON        1 to refuse VPNs, proxies and Tor exits; default 0 for now
  *   GEO_BLOCK_DATACENTER  1 to also refuse addresses in hosting ranges, which is where
- *                         every proxy and relay terminates; default 1. An uptime monitor
- *                         that must get through goes in GEO_ALLOW_IPS
+ *                         every proxy and relay terminates; default 0 for now. An uptime
+ *                         monitor that must get through goes in GEO_ALLOW_IPS
  *   GEO_API_KEY           the lookup service's key. Without it the service still says
  *                         which country an address is in, but says nothing about VPNs,
  *                         so only the country rule can work
@@ -216,10 +216,10 @@ export function isPublicIp(ip: string): boolean {
 export function policyFromEnv(env: NodeJS.ProcessEnv = process.env): GeoPolicy | null {
   if (env.GEO_OFF === '1') return null;
   const countries = new Set((env.GEO_BLOCK_COUNTRIES ?? 'US').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean));
-  const anon = (env.GEO_BLOCK_ANON ?? '1') === '1';
-  // On by default: a proxy, a relay or a scraper terminates in a hosting range, and nobody
-  // browses from one. A monitor that must get through goes in GEO_ALLOW_IPS.
-  const datacenter = (env.GEO_BLOCK_DATACENTER ?? '1') === '1';
+  // Both off until asked for: the desk's own people reach the site through a VPN, and the
+  // country rule is the one in force for now. Set either to 1 to turn it on.
+  const anon = env.GEO_BLOCK_ANON === '1';
+  const datacenter = env.GEO_BLOCK_DATACENTER === '1';
   if (!countries.size && !anon && !datacenter) return null;
   return { countries, anon, datacenter };
 }
