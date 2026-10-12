@@ -5,6 +5,7 @@ import { assertSecretConfigured, can, hashPassword, signToken, verifyPassword, v
 import websocket from '@fastify/websocket';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import { BLOCKED_PAGE, decide, isCrawler, isPublicIp, makeLookup, policyFromEnv } from './geo.ts';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -92,6 +93,10 @@ type ApiMarked = { cameInUnderApi?: boolean };
 
 const app = Fastify({
   logger: true,
+  // One proxy in front of the process, the platform's edge, which appends the visitor's
+  // address to x-forwarded-for. Trusting exactly that hop means req.ip is the address the
+  // edge saw, and a visitor who sends their own x-forwarded-for gains nothing by it.
+  trustProxy: (_address: string, hop: number) => hop === 0,
   rewriteUrl: (req) => {
     const url = req.url ?? '/';
     // Record that this arrived under /api before the prefix is stripped. Nothing
@@ -1392,6 +1397,37 @@ app.get('/trades', { preHandler: trader }, async (req: any) => {
       WHERE o.client_id = $1 ORDER BY f.filled_at DESC LIMIT 200`, [req.principal.sub]);
   return rows;
 });
+
+// ---------------------------------------------------------------------------
+// The door. Before any route: a visitor from a refused country, or arriving through a
+// VPN, a proxy or Tor, gets 451 and nothing else. See src/geo.ts for the rules and the
+// variables that set them. The health check and bunzy's deliveries are never refused,
+// nor is anything arriving over a private address, which is development and the tests.
+const geoPolicy = policyFromEnv();
+if (geoPolicy) {
+  const geoLookup = makeLookup({ key: process.env.GEO_API_KEY?.trim() || undefined });
+  const geoAllow = new Set((process.env.GEO_ALLOW_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const geoCrawlers = (process.env.GEO_ALLOW_CRAWLERS ?? '1') === '1';
+  const GEO_OPEN = new Set(['/health', '/webhooks/bunzy']);
+  app.addHook('onRequest', async (req: any, reply) => {
+    const path = (req.raw.url ?? '/').split('?')[0];
+    if (GEO_OPEN.has(path)) return;
+    const ip = String(req.ip ?? '');
+    if (!isPublicIp(ip) || geoAllow.has(ip)) return;
+    if (geoCrawlers && isCrawler(req.headers['user-agent'])) return;
+    const info = await geoLookup(ip);
+    if (!info) return;
+    const verdict = decide(info, geoPolicy);
+    if (verdict.allow) return;
+    req.log.info({ ip, country: info.country, reason: verdict.reason }, 'refused at the door');
+    const wantsHtml = /text\/html/.test(String(req.headers.accept ?? '')) && !req.raw.cameInUnderApi;
+    reply.code(451).header('cache-control', 'no-store');
+    return wantsHtml
+      ? reply.type('text/html; charset=utf-8').send(BLOCKED_PAGE(verdict))
+      : reply.send({ error: verdict.reason === 'country' ? 'not available in your location' : 'not available through a VPN or proxy' });
+  });
+  app.log.info({ countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY }, 'the door is on');
+}
 
 await app.register(websocket);
 
