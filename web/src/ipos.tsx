@@ -466,7 +466,9 @@ function Offer({ ipo, on, clock, onDone, staff }: {
           absent button reads as a broken card. */}
       {opening ? (
         <p className="text-xs text-slate-ink">
-          Opens {ipo.opens_at && day(ipo.opens_at)}. Nothing is taken until then.
+          {ipo.opens_at
+            ? <>Opens {day(ipo.opens_at)}. Nothing is taken until then.</>
+            : <>Listing date to be announced. The window opens once it is, and nothing is taken until then.</>}
         </p>
       ) : open ? (
         <Subscribe ipo={ipo} on={on} onDone={() => { setOpen(false); onDone(); }} />

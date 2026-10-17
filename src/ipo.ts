@@ -35,7 +35,10 @@ export type Timestamps = {
  */
 export function effectiveStatus(o: Timestamps, now: Date = new Date()): Status {
   if (DECIDED.has(o.status)) return o.status as Status;
-  if (!o.opens_at || !o.closes_at || !o.matures_at) return 'draft';
+  // An announced offering with no window yet is upcoming, date to be announced: it shows,
+  // takes nothing, and gets its window when the listing date is known. Anything else
+  // without a full window is a draft nobody sees.
+  if (!o.opens_at || !o.closes_at || !o.matures_at) return o.status === 'upcoming' ? 'upcoming' : 'draft';
 
   const t = now.getTime();
   const opens = new Date(o.opens_at).getTime();

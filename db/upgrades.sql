@@ -391,50 +391,50 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order)
 VALUES
   ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
-   'Filed confidentially on 1 June 2026; listing has shifted to mid-October on Nasdaq. Bankers are floating up to $2tn, which would top SpaceX.',
-   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026. Lead underwriters are reported as Morgan Stanley, Goldman Sachs and JPMorgan.',
+   'Filed confidentially on 1 June 2026 for a Nasdaq listing. The float has slipped from October to the days after the 3 November midterms, per Reuters; no date, price or share count is set.',
+   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
    '$2tn', 10000000, 500, 0.0725, 180,
-   '2026-09-11T09:00:00Z', '2026-10-09T16:00:00Z', '2027-04-07T16:00:00Z', 'upcoming', 1),
+   NULL, NULL, NULL, 'upcoming', 1),
 
   ('nscale-2026', 'Nscale', 'NSCL', 'USD',
-   'London-founded GPU data-centre operator leasing compute on multi-year contracts, flagship campus in Narvik. The most imminent of the group.',
-   'A March 2026 Series C valued it at $14.6bn; a later convertible round carried a $30bn conversion cap. Contracted backlog has swelled to $103bn.',
+   'London-founded GPU data-centre operator, flagship campus in Narvik. Filed its S-1 on 18 September 2026 to list on the NYSE as NSCL at up to $35bn; the share count and price range are not yet set.',
+   'Contracted backlog is put at about $103bn after the Anthropic deal, with a $3.36bn pre-IPO convertible round and a $1bn Nvidia commitment due in mid-November. Narvik has reported construction delays. The window opens once pricing is scheduled.',
    '$30bn', 3000000, 250, 0.0910, 90,
-   '2026-09-15T09:00:00Z', '2026-09-26T16:00:00Z', '2026-12-25T16:00:00Z', 'upcoming', 2),
+   NULL, NULL, NULL, 'upcoming', 2),
 
   ('openai-2026', 'OpenAI', 'OAI', 'USD',
-   'S-1 submitted confidentially around 22 May 2026 and confirmed publicly on 8 June, seeking above $1tn. A September window was targeted.',
-   'Reports point to a possible slip into 2027. Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters.',
+   'S-1 submitted confidentially around 22 May 2026 and confirmed on 8 June, seeking above $1tn. The company is now reported to be weighing a delay into 2027.',
+   'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. The CFO is reported to favour a 2027 listing, and the company says no date has been set. The window opens once one is.',
    '$1tn+', 25000000, 1000, 0.0640, 365,
-   '2026-09-29T09:00:00Z', '2026-10-27T16:00:00Z', '2027-10-27T16:00:00Z', 'upcoming', 3),
+   NULL, NULL, NULL, 'upcoming', 3),
 
   ('databricks-2026', 'Databricks', 'DBX', 'USD',
-   'Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with fresh talks at $165-175bn.',
-   'No S-1 has been filed. The CEO has called 2026 a terrible year to go public, pointing instead at 2027.',
+   'Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with talks at $165-175bn.',
+   'No S-1 has been filed. The CEO has called 2026 a terrible year to go public and points at 2027. The window opens once a filing and a date exist.',
    '$175bn', 12000000, 1000, 0.0580, 365,
-   '2026-11-02T09:00:00Z', '2026-12-02T16:00:00Z', '2027-12-02T16:00:00Z', 'upcoming', 4),
+   NULL, NULL, NULL, 'upcoming', 4),
 
   ('spacex-2026', 'SpaceX', 'SPCX', 'USD',
-   'The largest IPO in history: priced at $135 on 11 June 2026 and listed on Nasdaq the next day, raising $86bn with the greenshoe at a $1.77tn valuation.',
-   'The listing values Starlink and Starship together. The raise topped Saudi Aramco''s 2019 record.',
+   'The largest IPO in history: priced at $135 on 11 June 2026 and listed on Nasdaq as SPCX the next day, raising about $75bn at a $1.75tn valuation.',
+   'Opened at $150 and closed its first session at $160.95, up 19%, which put the company near $2.1tn. This offering runs 180 days from the listing, to 9 December 2026.',
    '$1.77tn', 20000000, 500, 0.0725, 180,
    '2026-06-01T09:00:00Z', '2026-06-12T16:00:00Z', '2026-12-09T16:00:00Z', 'upcoming', 5),
 
   ('crne-2026', 'China Resources New Energy', 'CRNE', 'USD',
-   'Asia''s biggest IPO of 2026 and the largest ever on Shenzhen: a wind and solar developer spun out of China Resources Power, raising 24.5bn yuan.',
-   'Listed on the Shenzhen exchange on 3 July 2026 after a book covered many times over.',
+   'Asia''s biggest IPO of 2026 and the largest ever on Shenzhen: the wind and solar arm of China Resources Power, 2.1bn shares at RMB10.11, raising 21.3bn yuan.',
+   'Listed on the Shenzhen main board as 001248 on 2 July 2026. This offering ran 90 days from the listing, to 30 September 2026, and has completed.',
    'CNY 24.5bn raise', 8000000, 500, 0.0610, 90,
-   '2026-06-22T09:00:00Z', '2026-07-03T16:00:00Z', '2026-10-01T16:00:00Z', 'upcoming', 6),
+   '2026-06-22T09:00:00Z', '2026-07-02T16:00:00Z', '2026-09-30T16:00:00Z', 'upcoming', 6),
 
   ('sk-hynix-2026', 'SK hynix', 'SKHY', 'USD',
-   'The largest US listing ever by a non-American company, topping Alibaba''s 2014 raise. 177.9m ADSs at $149 on 10 July 2026, raising $26.5bn.',
-   'The book was reported seven times oversubscribed, driven by HBM memory demand.',
+   'The largest US listing ever by a non-American company: ADSs priced at $149 on 9 July 2026 and listed on Nasdaq as SKHY on 10 July, raising $26.5bn.',
+   'Opened at $170 and closed the first session at $168.01, up 13%. Ten ADSs make one Seoul-listed share. This offering ran 60 days from the listing, to 8 September 2026, and has completed.',
    '$26.5bn raise', 6000000, 500, 0.0540, 60,
    '2026-07-01T09:00:00Z', '2026-07-10T16:00:00Z', '2026-09-08T16:00:00Z', 'completed', 7),
 
   ('cerebras-2026', 'Cerebras Systems', 'CBRS', 'USD',
-   'The year''s first blockbuster tech listing: wafer-scale AI inference chips, 2025 revenue $510m and a swing to profit. Priced at $185 on 14 May 2026.',
-   'The range was raised twice before pricing. The stock opened at $385 against the $185 offer.',
+   'The year''s first blockbuster tech listing: wafer-scale AI inference chips, 2025 revenue $510m and a swing to profit. Priced at $185 on 13 May 2026 and listed on Nasdaq as CBRS on 14 May, raising $5.55bn.',
+   'The range was raised twice before pricing and the book was covered more than twenty times. The stock opened at $385 against the $185 offer. This offering ran 90 days from the listing, to 12 August 2026, and has completed.',
    '$8.1bn', 4000000, 500, 0.0840, 90,
    '2026-05-05T09:00:00Z', '2026-05-14T16:00:00Z', '2026-08-12T16:00:00Z', 'completed', 8)
 ON CONFLICT (slug) DO NOTHING;
@@ -862,28 +862,28 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order, raised_baseline)
 VALUES
   ('switch-2026', 'Switch', 'SWCH', 'USD',
-   'Las Vegas data-centre operator planning the sector''s biggest listing: up to $10bn raised at around $80bn, with Goldman Sachs and JPMorgan leading. Could reach the market as soon as Q4 2026.',
-   'No public S-1 yet. The campuses lease capacity to hyperscalers and AI tenants on long contracts, which is what the valuation is being set on.',
+   'Las Vegas data-centre operator planning the sector''s biggest listing: up to $10bn raised at around $80bn, with Goldman Sachs and JPMorgan leading. Filed confidentially in August 2026; a listing as soon as November is reported.',
+   'No public S-1 yet. The campuses lease capacity to hyperscalers and AI tenants on long contracts, which is what the valuation is being set on. The window opens once the filing goes public and a date is set.',
    '$80bn', 15000000, 500, 0.0690, 180,
-   '2026-10-20T09:00:00Z', '2026-11-20T16:00:00Z', '2027-05-19T16:00:00Z', 'upcoming', 9, 12000000),
+   NULL, NULL, NULL, 'upcoming', 9, 12000000),
 
   ('lambda-2026', 'Lambda', 'LMBD', 'USD',
-   'AI cloud renting GPU capacity to model builders. Reported in late August to be raising up to $3bn pre-IPO at $12bn or more, with a listing targeted for the second half of 2026.',
-   'A Series E earlier in the year was reported at $5.9bn and secondary marks ran to about $9bn by June. The pre-IPO talks were still open in September.',
+   'AI cloud renting GPU capacity to model builders. Reported in October 2026 to be raising up to $4bn in a final private round led by Blackstone and Coatue, with a listing now targeted for 2027.',
+   'A Series E earlier in the year was reported at $5.9bn and secondary marks ran to about $9bn by June. The 2026 timetable has slipped; the window opens once a date exists.',
    '$12bn+', 6000000, 250, 0.0880, 120,
-   '2026-11-09T09:00:00Z', '2026-12-04T16:00:00Z', '2027-04-03T16:00:00Z', 'upcoming', 10, 4800000),
+   NULL, NULL, NULL, 'upcoming', 10, 4800000),
 
   ('crusoe-2026', 'Crusoe', 'CRSO', 'USD',
-   'AI data-centre builder that pairs its compute with its own energy supply. Closed a $3bn Series F at a $30bn valuation on 3 September 2026 and is reported to be in talks with banks about an IPO.',
-   'Valued at $10bn in October 2025; secondary pricing had reached about $24bn by June, before the round. No filing yet.',
+   'AI data-centre builder that pairs its compute with its own energy supply. Closed a $3bn Series F at a $30bn valuation on 3 September 2026; no filing yet, and a Q4 2026 listing has been floated.',
+   'Valued at $10bn in October 2025; secondary pricing had reached about $24bn by June, before the round. Bankers at Goldman Sachs, Morgan Stanley, JPMorgan and Bank of America have been consulted, and a strategic combination remains an alternative. The window opens once a date exists.',
    '$30bn', 9000000, 500, 0.0790, 150,
-   '2026-12-01T09:00:00Z', '2027-01-08T16:00:00Z', '2027-06-07T16:00:00Z', 'upcoming', 11, 7200000),
+   NULL, NULL, NULL, 'upcoming', 11, 7200000),
 
   ('cohesity-2026', 'Cohesity', 'CHST', 'USD',
-   'Nvidia-backed AI data-security company formed by the 2024 combination with Veritas, targeting a 2026 listing at a valuation its CEO says will rival Rubrik''s $17bn. A fall listing is reported as most likely.',
-   'The combination was valued at about $7bn with around $1.5bn of annual recurring revenue; secondary marks ran near $4.7bn in June.',
+   'Nvidia-backed AI data-security company formed by the 2024 combination with Veritas, targeting a listing at a valuation its CEO says will rival Rubrik''s $17bn. A fall 2026 listing is reported as most likely; no filing yet.',
+   'The combination was valued at about $7bn with around $1.5bn of annual recurring revenue; secondary marks ran near $4.7bn in June. The window opens once a date exists.',
    '$7-17bn', 5000000, 250, 0.0720, 120,
-   '2026-10-27T09:00:00Z', '2026-11-24T16:00:00Z', '2027-03-24T16:00:00Z', 'upcoming', 12, 4000000)
+   NULL, NULL, NULL, 'upcoming', 12, 4000000)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Site content the desk edits without a deploy: the contact page and the fill-ins on the
@@ -938,5 +938,64 @@ BEGIN
       UPDATE clients SET account_number = n WHERE id = r.id;
     END LOOP;
     INSERT INTO data_migrations (name) VALUES ('random-account-numbers');
+  END IF;
+END $do$;
+
+-- The offerings' dates, as the public record stood on 17 October 2026. Four of them have
+-- listed (Cerebras 14 May, SpaceX 12 June, China Resources New Energy 2 July, SK hynix
+-- 10 July) and keep their real listing day as the close of their window. The rest have
+-- no announced date: their window is cleared and they show as upcoming, date to be
+-- announced, until the desk sets one. The summaries say where each one stands. Once.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-real-dates-2026-10-17') THEN
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'Filed confidentially on 1 June 2026 for a Nasdaq listing. The float has slipped from October to the days after the 3 November midterms, per Reuters; no date, price or share count is set.',
+      description = 'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
+      updated_at = now() WHERE slug = 'anthropic-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'London-founded GPU data-centre operator, flagship campus in Narvik. Filed its S-1 on 18 September 2026 to list on the NYSE as NSCL at up to $35bn; the share count and price range are not yet set.',
+      description = 'Contracted backlog is put at about $103bn after the Anthropic deal, with a $3.36bn pre-IPO convertible round and a $1bn Nvidia commitment due in mid-November. Narvik has reported construction delays. The window opens once pricing is scheduled.',
+      updated_at = now() WHERE slug = 'nscale-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'S-1 submitted confidentially around 22 May 2026 and confirmed on 8 June, seeking above $1tn. The company is now reported to be weighing a delay into 2027.',
+      description = 'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. The CFO is reported to favour a 2027 listing, and the company says no date has been set. The window opens once one is.',
+      updated_at = now() WHERE slug = 'openai-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with talks at $165-175bn.',
+      description = 'No S-1 has been filed. The CEO has called 2026 a terrible year to go public and points at 2027. The window opens once a filing and a date exist.',
+      updated_at = now() WHERE slug = 'databricks-2026';
+    UPDATE ipos SET opens_at = '2026-06-01T09:00:00Z', closes_at = '2026-06-12T16:00:00Z', matures_at = '2026-12-09T16:00:00Z', status = 'upcoming',
+      summary = 'The largest IPO in history: priced at $135 on 11 June 2026 and listed on Nasdaq as SPCX the next day, raising about $75bn at a $1.75tn valuation.',
+      description = 'Opened at $150 and closed its first session at $160.95, up 19%, which put the company near $2.1tn. This offering runs 180 days from the listing, to 9 December 2026.',
+      updated_at = now() WHERE slug = 'spacex-2026';
+    UPDATE ipos SET opens_at = '2026-06-22T09:00:00Z', closes_at = '2026-07-02T16:00:00Z', matures_at = '2026-09-30T16:00:00Z', status = 'upcoming',
+      summary = 'Asia''s biggest IPO of 2026 and the largest ever on Shenzhen: the wind and solar arm of China Resources Power, 2.1bn shares at RMB10.11, raising 21.3bn yuan.',
+      description = 'Listed on the Shenzhen main board as 001248 on 2 July 2026. This offering ran 90 days from the listing, to 30 September 2026, and has completed.',
+      updated_at = now() WHERE slug = 'crne-2026';
+    UPDATE ipos SET opens_at = '2026-07-01T09:00:00Z', closes_at = '2026-07-10T16:00:00Z', matures_at = '2026-09-08T16:00:00Z', status = 'completed',
+      summary = 'The largest US listing ever by a non-American company: ADSs priced at $149 on 9 July 2026 and listed on Nasdaq as SKHY on 10 July, raising $26.5bn.',
+      description = 'Opened at $170 and closed the first session at $168.01, up 13%. Ten ADSs make one Seoul-listed share. This offering ran 60 days from the listing, to 8 September 2026, and has completed.',
+      updated_at = now() WHERE slug = 'sk-hynix-2026';
+    UPDATE ipos SET opens_at = '2026-05-05T09:00:00Z', closes_at = '2026-05-14T16:00:00Z', matures_at = '2026-08-12T16:00:00Z', status = 'completed',
+      summary = 'The year''s first blockbuster tech listing: wafer-scale AI inference chips, 2025 revenue $510m and a swing to profit. Priced at $185 on 13 May 2026 and listed on Nasdaq as CBRS on 14 May, raising $5.55bn.',
+      description = 'The range was raised twice before pricing and the book was covered more than twenty times. The stock opened at $385 against the $185 offer. This offering ran 90 days from the listing, to 12 August 2026, and has completed.',
+      updated_at = now() WHERE slug = 'cerebras-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'Las Vegas data-centre operator planning the sector''s biggest listing: up to $10bn raised at around $80bn, with Goldman Sachs and JPMorgan leading. Filed confidentially in August 2026; a listing as soon as November is reported.',
+      description = 'No public S-1 yet. The campuses lease capacity to hyperscalers and AI tenants on long contracts, which is what the valuation is being set on. The window opens once the filing goes public and a date is set.',
+      updated_at = now() WHERE slug = 'switch-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'AI cloud renting GPU capacity to model builders. Reported in October 2026 to be raising up to $4bn in a final private round led by Blackstone and Coatue, with a listing now targeted for 2027.',
+      description = 'A Series E earlier in the year was reported at $5.9bn and secondary marks ran to about $9bn by June. The 2026 timetable has slipped; the window opens once a date exists.',
+      updated_at = now() WHERE slug = 'lambda-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'AI data-centre builder that pairs its compute with its own energy supply. Closed a $3bn Series F at a $30bn valuation on 3 September 2026; no filing yet, and a Q4 2026 listing has been floated.',
+      description = 'Valued at $10bn in October 2025; secondary pricing had reached about $24bn by June, before the round. Bankers at Goldman Sachs, Morgan Stanley, JPMorgan and Bank of America have been consulted, and a strategic combination remains an alternative. The window opens once a date exists.',
+      updated_at = now() WHERE slug = 'crusoe-2026';
+    UPDATE ipos SET opens_at = NULL, closes_at = NULL, matures_at = NULL, status = 'upcoming',
+      summary = 'Nvidia-backed AI data-security company formed by the 2024 combination with Veritas, targeting a listing at a valuation its CEO says will rival Rubrik''s $17bn. A fall 2026 listing is reported as most likely; no filing yet.',
+      description = 'The combination was valued at about $7bn with around $1.5bn of annual recurring revenue; secondary marks ran near $4.7bn in June. The window opens once a date exists.',
+      updated_at = now() WHERE slug = 'cohesity-2026';
+    INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-10-17');
   END IF;
 END $do$;

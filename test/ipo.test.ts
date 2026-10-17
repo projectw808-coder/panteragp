@@ -15,6 +15,9 @@ const deal = (over: Partial<Parameters<typeof effectiveStatus>[0]> = {}) => ({
 describe('an offering knows what it is from its dates', () => {
   test('the timeline decides, so nobody has to remember to click', () => {
     assert.equal(effectiveStatus(deal(), at('2026-09-01T00:00:00Z')), 'upcoming');
+    // Announced but undated: upcoming, date to be announced. Undated and undecided: a draft.
+    assert.equal(effectiveStatus(deal({ status: 'upcoming', opens_at: null, closes_at: null, matures_at: null }), at('2026-09-01T00:00:00Z')), 'upcoming');
+    assert.equal(effectiveStatus(deal({ status: 'draft', opens_at: null, closes_at: null, matures_at: null }), at('2026-09-01T00:00:00Z')), 'draft');
     assert.equal(effectiveStatus(deal(), at('2026-09-15T00:00:00Z')), 'open');
     assert.equal(effectiveStatus(deal(), at('2026-10-01T00:00:00Z')), 'active');
     assert.equal(effectiveStatus(deal(), at('2027-01-01T00:00:00Z')), 'completed');
