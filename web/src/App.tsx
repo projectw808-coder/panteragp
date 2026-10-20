@@ -105,6 +105,8 @@ function Login({ mode, onDone, onMode, onBack }: {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // The desk's registration code: no account without it. Checked by the server.
+  const [code, setCode] = useState('');
   // Trader first, and selected: almost everybody arriving at this form is one, and a
   // switcher whose first option is not the lit one reads as a bug rather than a default.
   const [as, setAs] = useState<'staff' | 'client'>('client');
@@ -120,7 +122,7 @@ function Login({ mode, onDone, onMode, onBack }: {
       if (registering) {
         // Registration signs you straight in — the password was just proven.
         const r = await api<{ token: string }>('/auth/register', {
-          method: 'POST', body: JSON.stringify({ name, email, password, phone: phone.trim() || undefined }),
+          method: 'POST', body: JSON.stringify({ name, email, password, phone: phone.trim() || undefined, code: code.trim() }),
         });
         token.set(r.token);
         location.hash = '/overview';
@@ -281,6 +283,14 @@ function Login({ mode, onDone, onMode, onBack }: {
               <span className="mt-1.5 block font-mono text-[11px] text-mist">At least 8 characters.</span>
             )}
           </label>
+          {registering && (
+            <label className="block">
+              <span className="metric-label mb-1.5 block">Registration code</span>
+              <input className={input} required maxLength={80} autoComplete="off" autoCapitalize="off" spellCheck={false}
+                value={code} onChange={(e) => setCode(e.target.value)} />
+              <span className="mt-1.5 block font-mono text-[11px] text-mist">Given to you by the desk. No account opens without it.</span>
+            </label>
+          )}
 
           {/* A failed sign-in stays on this form and says why, at the top of it and loud
               enough to be seen: the person has just typed a password and is looking at

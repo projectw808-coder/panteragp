@@ -283,11 +283,24 @@ app.post('/clients', { preHandler: auth('crm:write') }, async (req, reply) => {
  * someone can create accounts in a loop. Fine for a demo; before real users, add both —
  * a limiter in front and a confirmation link before the account can trade.
  */
+/**
+ * The registration code: nobody opens an account without it. One code for the desk,
+ * handed out by the desk; set with REGISTER_CODE, compared without regard to case or
+ * surrounding spaces. A wrong or missing code is refused before anything is checked or
+ * written, with the same answer either way.
+ */
+const REGISTER_CODE = (process.env.REGISTER_CODE ?? 'pantera28').trim().toLowerCase();
+const registerCodeMatches = (code: unknown) => typeof code === 'string' && code.trim().toLowerCase() === REGISTER_CODE;
+
 app.post('/auth/register', async (req, reply) => {
+  if (!registerCodeMatches((req.body as any)?.code)) {
+    return reply.code(403).send({ error: 'The registration code is missing or wrong. Ask the desk for it.' });
+  }
   const body = z.object({
     name: z.string().min(1).max(200),
     email: z.string().email().max(320),
     password: z.string().min(8).max(200),
+    code: z.string().max(80),
     // Optional: the desk asks for it eventually, and somebody who gives it at sign-up
     // should not be asked again. Not required — a missing phone is no reason to refuse
     // an account, and the profile form takes it later. An empty string is a missing

@@ -1744,10 +1744,14 @@ await step('a client cannot see another client’s subscription', async () => {
   const deal = await offering();
   await get(`/ipos/${deal.id}/subscribe`, { token: T, method: 'POST', body: { amount: 500 } });
   // A second trader, with their own account, must see the offering but not the position.
+  // No account without the desk's registration code: missing or wrong, the same refusal.
+  assert.equal(await status('/auth/register', { method: 'POST', body: { name: 'Acceptance Bob', email: unique('bob'), password: 'devpassword' } }), 403, 'no code, no account');
+  assert.equal(await status('/auth/register', { method: 'POST', body: { name: 'Acceptance Bob', email: unique('bob'), password: 'devpassword', code: 'pantera' } }), 403, 'a wrong code is refused');
   const other = await get('/auth/register', {
     method: 'POST',
-    body: { name: 'Acceptance Bob', email: unique('bob'), password: 'devpassword' },
+    body: { name: 'Acceptance Bob', email: unique('bob'), password: 'devpassword', code: ' Pantera28 ' },
   });
+  assert.ok(other.token, 'the code, however it is typed, opens the account');
   const seen = await get(`/ipos/${deal.id}`, { token: other.token });
   assert.equal(seen.subscription, null, "another client's position was disclosed");
   assert.equal(await status(`/admin/ipos/${deal.id}/subscriptions`, { token: other.token }), 403);
