@@ -245,13 +245,13 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       <section id="top" className="lp-hero relative overflow-hidden">
         <div className="lp-wrap relative z-10 flex min-h-[520px] flex-col justify-center py-12">
           <div className="max-w-[640px]">
-            <div className="anim-rise" style={{ animationDelay: '60ms' }}><Eyebrow>Powered by algorithmic execution</Eyebrow></div>
+            <div className="anim-rise" style={{ animationDelay: '60ms' }}><Eyebrow>Powered by artificial intelligence</Eyebrow></div>
             <h1 className="anim-rise mt-4 text-[44px] leading-[1.05] font-bold tracking-[-0.02em] sm:text-[58px]" style={{ animationDelay: '160ms' }}>
-              <span className="block text-white">Auto Trading</span>
+              <span className="block text-white">AI Trading</span>
               <span className="block text-[color:var(--lp-ember)]">for Real Opportunities</span>
             </h1>
             <p className="anim-rise mt-5 max-w-[560px] text-[18px] leading-[1.5] text-[color:var(--lp-soft)]" style={{ animationDelay: '260ms' }}>
-              Automated strategies. Diversified portfolios. Global markets.<br className="hidden sm:inline" /> All in one secure platform.
+              AI-driven strategies. Diversified portfolios. Global markets.<br className="hidden sm:inline" /> All in one platform.
             </p>
             <div className="anim-rise mt-9 flex flex-wrap gap-4" style={{ animationDelay: '360ms' }}>
               <button onClick={onRegister} className="lp-btn lp-btn-fill lp-btn-lg">Open Account <ArrowRight size={18} strokeWidth={2.2} aria-hidden /></button>
@@ -266,9 +266,9 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         {/* Four true facts floating over the globe, as on the mockup. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 z-10 hidden lg:block">
           {[
-            { Icon: BarChart3, t: 'Market Scanning', d: `${instruments}+ instruments read every ten seconds`, x: '45%', y: '10%', delay: 0 },
-            { Icon: ShieldCheck, t: 'Risk Controls', d: 'Stops, targets and sizing on every trade', x: '76.5%', y: '22%', delay: 1.2 },
-            { Icon: Settings2, t: 'Automated Strategies', d: 'Grid, mean reversion and trend following', x: '47%', y: '60%', delay: 0.6 },
+            { Icon: BarChart3, t: 'AI Market Analysis', d: `Scanning ${instruments}+ markets in real time`, x: '45%', y: '10%', delay: 0 },
+            { Icon: ShieldCheck, t: 'Risk Optimization', d: 'Dynamic sizing, stops and targets on every trade', x: '76.5%', y: '22%', delay: 1.2 },
+            { Icon: Settings2, t: 'Automated Strategies', d: 'AI-driven models across three strategies', x: '47%', y: '60%', delay: 0.6 },
             { Icon: Globe2, t: 'Global Access', d: 'Crypto, ETFs, Forex, Metals, IPOs', x: '77.5%', y: '61%', delay: 1.8 },
           ].map(({ Icon, t, d, x, y, delay }) => (
             <div key={t} className="lp-float absolute" style={{ left: x, top: y, animationDelay: `${delay}s` }}>
@@ -291,9 +291,9 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           <Reveal>
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div className="max-w-[720px]">
-                <Eyebrow>Live auto trader</Eyebrow>
+                <Eyebrow>Live AI auto trader</Eyebrow>
                 <h2 className="lp-h2 mt-2">Running. Finding Opportunities.</h2>
-                <p className="lp-lead mt-2">Our algorithms read the markets and execute trades automatically, based on live prices and predefined strategies.</p>
+                <p className="lp-lead mt-2">Our AI algorithms analyze the markets and execute trades automatically, based on real-time data and predefined strategies.</p>
               </div>
               <div className="flex flex-wrap items-center gap-4">
                 <span className={`lp-status ${show?.on ? 'is-on' : ''}`}>Auto trader: {show?.configured ? (show.on ? 'running' : 'paused') : 'offline'}</span>
@@ -322,7 +322,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           </Reveal>
           <div className="mt-7 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
             {([
-              { id: 'autotrader-card', Icon: Brain, t: 'Auto Trader', d: 'Rules-based strategies that read markets and execute trades automatically.', art: 'line' as const, to: () => go('autotrader') },
+              { id: 'autotrader-card', Icon: Brain, t: 'Auto Trader', d: 'AI-powered strategies that analyze markets and execute trades automatically.', art: 'line' as const, to: () => go('autotrader') },
               { id: 'portfolios', Icon: Layers, t: 'Portfolios', d: 'Flexible investment solutions for any goal.', art: 'bars' as const, to: onRegister },
               { id: 'staking', Icon: Database, t: 'Staking', d: 'Earn rewards on your digital assets.', art: 'line2' as const, to: onRegister },
               { id: 'ipo-card', Icon: Rocket, t: 'IPO Opportunities', d: 'Fixed-return offerings timed to the year’s listings.', art: 'bars2' as const, to: () => go('ipo') },
@@ -347,14 +347,14 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
           <Reveal>
             <Eyebrow>Platform metrics</Eyebrow>
             <h2 className="lp-h2 mt-2">Built for<br />Your Success.</h2>
-            <p className="lp-lead mt-2 max-w-[440px]">Advanced technology, live market data and rules-based strategies working for you.</p>
+            <p className="lp-lead mt-2 max-w-[440px]">Advanced technology, real market data and AI-driven strategies working for you.</p>
             <a href="/contact" className="lp-btn lp-btn-fill mt-5 inline-flex">Why Pantera GP <ArrowRight size={17} aria-hidden /></a>
           </Reveal>
           <div className="grid grid-cols-2 gap-[14px] lg:grid-cols-4">
             {[
-              [`${instruments}+`, 'Instruments', 'Crypto, ETFs, Forex, Metals'],
-              ['24/7', 'Always Running', 'Strategies and orders work around the clock'],
-              ['3', 'Trading Strategies', 'Grid, mean reversion and trend following'],
+              [`${instruments}+`, 'Global Markets', 'Crypto, ETFs, Forex, Metals'],
+              ['24/7', 'AI Market Analysis', 'Continuous opportunity scanning'],
+              ['AI', 'Advanced Models', 'Proprietary algorithms and risk management'],
               ['100%', 'Audited Records', 'Every change written to an append-only log'],
             ].map(([v, t, d], i) => (
               <Reveal key={t} delay={i * 70}>
@@ -427,7 +427,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             <p className="text-[16px] text-white/85">Join Pantera GP</p>
             <h2 className="lp-h2 mt-1">Your Gateway to Global Markets</h2>
             <p className="lp-lead mt-2 max-w-[640px]">
-              Create your account today and start exploring automated trading, diversified portfolios, staking and fixed-return
+              Create your account today and start exploring AI-driven trading, diversified portfolios, staking and fixed-return
               offerings.
             </p>
             <div className="mt-6 flex flex-wrap gap-4">
