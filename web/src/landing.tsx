@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, BarChart3, Box, Brain, ChartNoAxesCombined, Database, Globe2, Layers, Leaf, Play, Rocket,
-  Settings2, ShieldCheck, Zap,
+  ArrowLeft, ArrowRight, BarChart3, Bot, Box, Brain, ChartLine, ChartNoAxesCombined, Crosshair, Database, Gauge, Globe2,
+  KeyRound, Layers, Leaf, Lock, Newspaper, Play, Plus, Rocket, ScrollText, Settings2, ShieldCheck, SlidersHorizontal,
+  Target, TrendingUp, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import { useApi } from './api.ts';
 
@@ -24,6 +25,7 @@ type FooterView = {
   marks_title?: string; marks?: { id: string; name: string; href?: string; url: string }[];
   notice?: string;
 };
+type Article = { slug: string; title: string; excerpt: string | null; cover_url: string | null; tags: string[] | null; read_minutes: number; published_at: string };
 type Ticker = { instruments: number; quotes: { symbol: string; price: number; change_pct: number; spark: number[] }[] };
 type Showcase = {
   configured: boolean; on?: boolean; since?: string | null;
@@ -161,6 +163,8 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
   const capabilities = footer.capabilities?.length ? footer.capabilities : CAPABILITIES;
   const ticker = usePolled<Ticker>('/public/ticker', 5000);
   const show = usePolled<Showcase>('/public/showcase', 20000);
+  // The three newest Insights pieces, from the same list the /blog page reads.
+  const articles = useApi<{ articles: Article[] }>('/articles').data;
   const [atFoot, setAtFoot] = useState(false);
   const [menu, setMenu] = useState(false);
   const NAV: [string, string][] = [['platform', 'Platform'], ['autotrader', 'Auto Trader'], ['portfolios', 'Portfolios'], ['staking', 'Staking'], ['ipo', 'IPO Opportunities'], ['about', 'About']];
@@ -341,6 +345,82 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </div>
       </section>
 
+      {/* ---------------------------------------------------------- how it works */}
+      <section id="how" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap">
+          <Reveal>
+            <Eyebrow>How it works</Eyebrow>
+            <h2 className="lp-h2 mt-2">From Sign-Up to Your First AI Trade.</h2>
+            <p className="lp-lead mt-2 max-w-[680px]">Four steps, and the AI auto trader takes it from there. You can stop it, change it or trade yourself at any moment.</p>
+          </Reveal>
+          <ol className="lp-steps mt-8 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              { Icon: UserPlus, t: 'Open an account', d: 'Your name, email, a password and the registration code the desk gives you. You land in the terminal signed in.' },
+              { Icon: Wallet, t: 'Fund your account', d: 'Hold balances in any of 168 currencies or a crypto wallet, and see every deposit on your own record.' },
+              { Icon: Bot, t: 'Switch on the AI auto trader', d: 'Choose how much each strategy may deploy and how much it may risk per trade. Or trade yourself in the terminal.' },
+              { Icon: ChartLine, t: 'Track every trade', d: 'Live equity, every fill, fee and exit written to your account, and a kill switch that closes everything at once.' },
+            ]).map(({ Icon, t, d }, i) => (
+              <Reveal key={t} delay={i * 80}>
+                <li className="lp-card lp-step h-full px-[22px] pt-[22px] pb-[24px]">
+                  <div className="flex items-center justify-between">
+                    <span className="lp-step-num">{String(i + 1).padStart(2, '0')}</span>
+                    <Icon size={30} strokeWidth={1.8} className="text-[color:var(--lp-ember)]" aria-hidden />
+                  </div>
+                  <h3 className="mt-5 text-[19px] font-semibold text-white">{t}</h3>
+                  <p className="mt-2 text-[15px] leading-[1.5] text-[color:var(--lp-soft)]">{d}</p>
+                </li>
+              </Reveal>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- the engine */}
+      <section id="engine" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap">
+          <Reveal>
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-end">
+              <div>
+                <Eyebrow>The engine</Eyebrow>
+                <h2 className="lp-h2 mt-2">Your Orders Keep Working<br className="hidden sm:inline" /> After You Close the Tab.</h2>
+              </div>
+              <p className="lp-lead max-w-[560px] lg:justify-self-end">
+                Resting orders live on the server, not in your browser. The engine prices every instrument on each tick and acts the
+                moment a level trades, whether or not anyone is connected.
+              </p>
+            </div>
+          </Reveal>
+          <div className="mt-7 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              { Icon: Crosshair, t: 'Limit and stop', d: 'Set the price you want. The engine watches every tick and fills when the market reaches it.' },
+              { Icon: SlidersHorizontal, t: 'Stop-limit', d: 'The stop arms it, the limit caps what you pay. It fills only if both hold, so a gap never fills you at any price.' },
+              { Icon: TrendingUp, t: 'Trailing stop', d: 'The stop follows the price as it moves your way and never loosens, so profit follows the move.' },
+              { Icon: Target, t: 'Attached exits', d: 'Take-profit and stop-loss ride with the position from the moment it opens. It is never left unprotected.' },
+            ]).map(({ Icon, t, d }, i) => (
+              <Reveal key={t} delay={i * 70}>
+                <article className="lp-card lp-hover h-full px-[22px] py-[22px]">
+                  <Icon size={32} strokeWidth={1.8} className="text-[color:var(--lp-ember)]" aria-hidden />
+                  <h3 className="mt-4 text-[18px] font-semibold text-white">{t}</h3>
+                  <p className="mt-2 text-[15px] leading-[1.5] text-[color:var(--lp-soft)]">{d}</p>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+          <Reveal delay={120}>
+            <div className="lp-card lp-glow mt-[18px] flex flex-wrap items-center gap-6 px-[26px] py-[24px]">
+              <Gauge size={40} strokeWidth={1.7} className="shrink-0 text-[color:var(--lp-ember)]" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[19px] font-semibold text-white">Sized against your risk, not your nerve</h3>
+                <p className="mt-1.5 max-w-[880px] text-[15px] leading-[1.5] text-[color:var(--lp-soft)]">
+                  Give the ticket a stop and the share of your balance you are willing to lose, and it works out the position size for
+                  you, capped by your available margin and rounded down so it never overshoots.
+                </p>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* --------------------------------------------------------- the metrics */}
       <section id="about" className="lp-section scroll-mt-[70px]">
         <div className="lp-wrap grid gap-8 lg:grid-cols-[1fr_2fr] lg:items-center">
@@ -420,6 +500,104 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </div>
       </section>
 
+      {/* ------------------------------------------------------- security & audit */}
+      <section id="security" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap">
+          <Reveal>
+            <Eyebrow>Security &amp; audit</Eyebrow>
+            <h2 className="lp-h2 mt-2">The Database Keeps the Receipts.</h2>
+            <p className="lp-lead mt-2 max-w-[680px]">Every change to an account is written down where nobody can quietly rewrite it.</p>
+          </Reveal>
+          <div className="mt-7 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              { Icon: ScrollText, t: 'Append-only audit log', d: 'Every insert, update and delete is written to a log that cannot be edited or deleted, enforced in the database itself.' },
+              { Icon: KeyRound, t: 'Role-based access', d: 'Each role sees exactly what it is allowed to. Revoking access takes effect on the very next request.' },
+              { Icon: Lock, t: 'Passwords never in the clear', d: 'Hashed with scrypt and a per-account salt, and stripped from the audit log on both sides of every change.' },
+              { Icon: ShieldCheck, t: 'Isolated by construction', d: 'Funds, positions and documents are separated per account at the database level, not by code that could be bypassed.' },
+            ]).map(({ Icon, t, d }, i) => (
+              <Reveal key={t} delay={i * 70}>
+                <article className="lp-card lp-hover h-full px-[22px] py-[22px]">
+                  <Icon size={32} strokeWidth={1.8} className="text-[color:var(--lp-ember)]" aria-hidden />
+                  <h3 className="mt-4 text-[18px] font-semibold text-white">{t}</h3>
+                  <p className="mt-2 text-[15px] leading-[1.5] text-[color:var(--lp-soft)]">{d}</p>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------------- insights */}
+      {!!articles?.articles.length && (
+        <section id="insights" className="lp-section scroll-mt-[70px]">
+          <div className="lp-wrap">
+            <Reveal>
+              <div className="flex flex-wrap items-end justify-between gap-6">
+                <div>
+                  <Eyebrow>Insights</Eyebrow>
+                  <h2 className="lp-h2 mt-2">What the Desk Is Reading.</h2>
+                  <p className="lp-lead mt-2 max-w-[640px]">Market commentary and platform notes from Pantera GP Research.</p>
+                </div>
+                <a href="/blog" className="lp-btn lp-btn-outline">View All Insights <ArrowRight size={17} aria-hidden /></a>
+              </div>
+            </Reveal>
+            <div className="mt-7 grid gap-[18px] md:grid-cols-3">
+              {articles.articles.slice(0, 3).map((a, i) => (
+                <Reveal key={a.slug} delay={i * 70}>
+                  <a href={`/blog/${a.slug}`} className="lp-card lp-hover group flex h-full flex-col overflow-hidden">
+                    <div className="aspect-[16/9] overflow-hidden bg-[color:var(--lp-card-2)]">
+                      {a.cover_url
+                        ? <img src={a.cover_url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                        : <div className="grid h-full place-items-center"><Newspaper size={38} className="text-[color:var(--lp-ember)]" aria-hidden /></div>}
+                    </div>
+                    <div className="flex flex-1 flex-col px-[20px] py-[18px]">
+                      <p className="lp-label">{a.tags?.[0] ?? 'Insight'} · {a.read_minutes} min read</p>
+                      <h3 className="mt-2 text-[18px] leading-snug font-semibold text-white group-hover:text-[color:var(--lp-ember)]">{a.title}</h3>
+                      {a.excerpt && <p className="mt-2 line-clamp-3 text-[14.5px] leading-[1.5] text-[color:var(--lp-soft)]">{a.excerpt}</p>}
+                      <p className="mt-auto pt-4 text-[13px] text-[color:var(--lp-soft)]">{shortDay(a.published_at)}</p>
+                    </div>
+                  </a>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* -------------------------------------------------------------------- faq */}
+      <section id="faq" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap grid gap-8 lg:grid-cols-[1fr_1.6fr]">
+          <Reveal>
+            <Eyebrow>FAQ</Eyebrow>
+            <h2 className="lp-h2 mt-2">Questions, Answered.</h2>
+            <p className="lp-lead mt-2 max-w-[420px]">Anything else, the desk answers from the Support page once you are signed in, or through the contact page.</p>
+            <a href="/contact" className="lp-btn lp-btn-outline mt-5 inline-flex">Contact the Desk <ArrowRight size={17} aria-hidden /></a>
+          </Reveal>
+          <div className="space-y-[10px]">
+            {([
+              ['What is Pantera GP?', 'A trading platform where AI-driven strategies trade for you, alongside a full terminal with live charts, managed portfolios, staking and fixed-return IPO offerings, all on one account.'],
+              ['How does the AI auto trader work?', 'It reads every market around the clock, opens a position when one of its strategies sees a setup, sizes each trade against the risk you set and attaches a stop and a target. You can pause a strategy, change what it may deploy, or switch it off at any time.'],
+              ['Can I lose money?', 'Yes. Trading carries risk, the auto trader can lose, and past results are no guide to future ones. Only trade with money you can afford to lose, and read the risk warning first.'],
+              ['How do I open an account?', 'Choose Open Account and enter your name, email, a password and the registration code the desk gave you. Verification of your identity follows inside the platform.'],
+              ['What can I trade?', `${instruments} instruments across crypto, forex, metals and ETFs, with market, limit, stop, stop-limit and trailing orders.`],
+              ['How do IPO offerings pay?', 'Each offering pays a fixed rate over a set term, credited daily and settled at maturity, whatever the company’s share price does after it lists.'],
+            ] as [string, string][]).map(([q, a], i) => (
+              <Reveal key={q} delay={i * 50}>
+                <details className="lp-card lp-faq group px-[22px] py-[2px]" open={i === 0}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-[16px] text-[17px] font-semibold text-white">
+                    {q}
+                    <Plus size={20} className="shrink-0 text-[color:var(--lp-ember)] transition-transform duration-300 group-open:rotate-45" aria-hidden />
+                  </summary>
+                  <p className="pb-[18px] text-[15px] leading-[1.6] text-[color:var(--lp-soft)]">
+                    {a}{i === 2 && <> <a href="/risk" className="text-[color:var(--lp-ember)] underline underline-offset-2">Read the risk warning.</a></>}
+                  </p>
+                </details>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ------------------------------------------------------------ the close */}
       <section className="lp-cta relative overflow-hidden">
         <div className="lp-wrap relative z-10 py-14">
@@ -450,69 +628,117 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </span>
       </button>
 
-      {/* ----------------------------------------------------------- the footer */}
-      <footer id="footer" className="lp-footer scroll-mt-0">
-        <div className="lp-wrap grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-          <div>
-            {footer.logo_url ? <img src={footer.logo_url} alt="Pantera GP" className="h-8 w-auto" /> : <Wordmark />}
-            <p className="mt-4 max-w-xs text-[14px] leading-relaxed text-[color:var(--lp-soft)]">
-              {footer.text?.trim() || 'A trading desk and a client system, built as one thing. Orders rest with the engine rather than in an open tab, and every fill, decision and document is written down against the account it belongs to.'}
-            </p>
-          </div>
-          {[
-            ['Platform', [['Auto Trader', 'autotrader'], ['Portfolios & Staking', 'platform'], ['IPO Opportunities', 'ipo'], ['About', 'about']]],
-            ['Company', [['Insights', '/blog'], ['Contact', '/contact'], ['Back to top', 'top']]],
-            [footer.column_title?.trim() || 'Legal', footer.links?.length
-              ? footer.links.map((l) => [l.label, l.href])
-              : [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
-          ].map(([heading, links]) => (
-            <div key={heading as string}>
-              <h4 className="text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{heading as string}</h4>
-              <ul className="mt-4 space-y-2">
-                {(links as [string, string][]).map(([label, id]) => (
-                  <li key={id + label}>
-                    {/^(\/|https?:|mailto:)/.test(id)
-                      ? <a href={id} className="text-[14px] text-[color:var(--lp-soft)] transition-colors hover:text-[color:var(--lp-ember)]">{label}</a>
-                      : <button onClick={() => go(id)} className="text-[14px] text-[color:var(--lp-soft)] transition-colors hover:text-[color:var(--lp-ember)]">{label}</button>}
-                  </li>
+      {/* ----------------------------------------------------------- the footer
+          Taken as it stands on pntgp.xyz: the same columns, links, figures, engine strip,
+          logo row, notice and copyright line, all still edited from Settings. */}
+      <footer className="stage lp-livefoot">
+        {/* Footer: columns of real destinations only. Nothing here links to a page that
+              does not exist — a dead "Careers" link is worse than no link. */}
+          <div id="footer" className="scroll-mt-0 border-t border-white/10">
+            <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+              <div>
+                <div className="flex items-center gap-2">
+                  {footer.logo_url
+                    ? <img src={footer.logo_url} alt="Pantera GP" className="h-8 w-auto" />
+                    : <>
+                      <span className="display text-lg text-vellum">Pantera GP</span>
+                      <span className="font-mono text-xs text-ember-ink">///</span>
+                    </>}
+                </div>
+                <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
+                  {footer.text?.trim() || 'A trading desk and a client system, built as one thing. Orders rest with the engine rather than in an open tab, and every fill, decision and document is written down against the account it belongs to.'}
+                </p>
+  
+                {/* Two real figures, not a row of numbers chosen to look substantial. The
+                    instrument count is the list this page is built from; the order types are
+                    the OrderType union in src/trading.ts — market, limit, stop, stop-limit
+                    and trailing stop. Take profit is a field on an order, not a sixth type. */}
+                <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3">
+                  {[[String(instruments), 'instruments'], ['5', 'order types']].map(([n, label]) => (
+                    <div key={label}>
+                      <dt className="font-mono text-lg text-vellum tabular-nums">{n}</dt>
+                      <dd className="mt-0.5 font-mono text-[10px] tracking-[0.16em] text-mist uppercase">{label}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              {[
+                ['Platform', [['Auto trader', 'autotrader'], ['Services', 'platform'], ['The engine', 'engine'], ['How it works', 'how']]],
+                ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
+                [footer.column_title?.trim() || 'Legal', footer.links?.length
+                  ? footer.links.map((l) => [l.label, l.href])
+                  : [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
+              ].map(([heading, links]) => (
+                <div key={heading as string}>
+                  <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
+                  <ul className="mt-4 space-y-2">
+                    {(links as [string, string][]).map(([label, id]) => (
+                      <li key={id}>
+                        {/^(\/|https?:|mailto:)/.test(id)
+                          ? <a href={id} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</a>
+                          : <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</button>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <div>
+                <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">Account</h4>
+                <ul className="mt-4 space-y-2">
+                  <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember-ink">Open an account</button></li>
+                  <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember-ink">Sign in</button></li>
+                </ul>
+                <p className="mt-4 max-w-[22ch] text-xs leading-relaxed text-mist/80">
+                  Name, email and a password. You land in the terminal signed in, with nothing
+                  to configure first.
+                </p>
+              </div>
+            </div>
+  
+            {/* What the engine actually takes, listed once, still enough to be read. */}
+            <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+              <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
+              <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+                {capabilities.map((c) => (
+                  <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-mist">{c}</li>
                 ))}
               </ul>
             </div>
-          ))}
-        </div>
-
-        <div className="lp-wrap border-t border-white/[0.07] py-6">
-          <h4 className="text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
-          <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-            {capabilities.map((c) => <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-[color:var(--lp-soft)]">{c}</li>)}
-          </ul>
-        </div>
-
-        {!!footer.marks?.length && (
-          <div className="lp-wrap border-t border-white/[0.07] py-6">
-            {!!footer.marks_title?.trim() && <h4 className="mb-5 text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{footer.marks_title.trim()}</h4>}
-            <ul className="flex flex-wrap items-center gap-x-10 gap-y-5">
-              {footer.marks.map((m) => {
-                const img = <img src={m.url} alt={m.name} loading="lazy" className="h-7 w-auto opacity-75 transition-opacity duration-200 hover:opacity-100" />;
-                return <li key={m.id}>{m.href ? <a href={m.href} rel={/^https?:/.test(m.href) ? 'noopener' : undefined} title={m.name}>{img}</a> : img}</li>;
-              })}
-            </ul>
-          </div>
-        )}
-
-        {!!footer.notice?.trim() && (
-          <div className="lp-wrap border-t border-white/[0.07] py-6">
-            <div className="max-w-[96ch] space-y-3 text-[12.5px] leading-relaxed text-[color:var(--lp-soft)]">
-              {noticeBlocks(footer.notice).map((b, i) => (b.kind === 'ul'
-                ? <ul key={i} className="list-disc space-y-1 pl-5">{b.lines.map((l, k) => <li key={k}>{l}</li>)}</ul>
-                : <p key={i}>{b.lines.map((l, k) => <span key={k}>{k > 0 && <br />}{l}</span>)}</p>))}
+  
+            {/* The row of company marks the desk put up from Settings; nothing when there are none. */}
+            {!!footer.marks?.length && (
+              <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+                {!!footer.marks_title?.trim() && (
+                  <h4 className="mb-5 font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.marks_title.trim()}</h4>
+                )}
+                <ul className="flex flex-wrap items-center gap-x-10 gap-y-5">
+                  {footer.marks.map((m) => {
+                    const img = <img src={m.url} alt={m.name} loading="lazy" className="h-7 w-auto opacity-75 transition-opacity duration-200 hover:opacity-100" />;
+                    return (
+                      <li key={m.id}>
+                        {m.href ? <a href={m.href} rel={/^https?:/.test(m.href) ? 'noopener' : undefined} title={m.name}>{img}</a> : img}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+  
+            {/* The notice the desk pasted from Settings, in its own shape; nothing when it is empty. */}
+            {!!footer.notice?.trim() && (
+              <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
+                <div className="max-w-[96ch] space-y-3 text-xs leading-relaxed text-mist">
+                  {noticeBlocks(footer.notice).map((b, i) => (b.kind === 'ul'
+                    ? <ul key={i} className="list-disc space-y-1 pl-5">{b.lines.map((l, k) => <li key={k}>{l}</li>)}</ul>
+                    : <p key={i}>{b.lines.map((l, k) => <span key={k}>{k > 0 && <br />}{l}</span>)}</p>))}
+                </div>
+              </div>
+            )}
+  
+            <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
+              <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
             </div>
           </div>
-        )}
-
-        <div className="lp-wrap flex border-t border-white/[0.07] py-6 font-mono text-[11px] text-[color:var(--lp-soft)]">
-          <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
-        </div>
       </footer>
     </div>
   );
