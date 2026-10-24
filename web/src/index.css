@@ -9,7 +9,7 @@
 
 /* Substitutes for the licensed faces: Playfair Display for Ogg Text Light, JetBrains Mono
    for PP Supply Mono. Token names stay the same if the real fonts are ever licensed. */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Figtree:wght@400;500;600;700&display=swap');
 
 @theme {
   /* Ember orange is the ONLY chromatic colour in the system. */
@@ -1166,3 +1166,122 @@ input:-webkit-autofill:active {
 @media (prefers-reduced-motion: reduce) {
   .sim-terminal .st-fade-in { animation: none; }
 }
+
+/* ==========================================================================
+   The landing page, October 2026: built to the client's mockup. Dark throughout,
+   a humanist sans (Segoe UI where the system has it, Figtree otherwise), hairline
+   cards, ember for action and emphasis, green and red only for gains and losses.
+   Everything is scoped under .lp so the product UI keeps its own system.
+   ========================================================================== */
+.landing.lp {
+  /* The coding pack's tokens: bg, surface, accent, text, muted, positive, negative. */
+  --lp-ground: #07090c;
+  --lp-card: #0d1116;
+  --lp-card-2: #12171d;
+  --lp-line: rgba(255, 255, 255, 0.08);
+  --lp-ember: #ff7a12;
+  --lp-soft: #9ca3af;
+  --lp-up: #18c879;
+  --lp-down: #ff4b55;
+  --color-ember-ink: #ff7a12;
+  --scroll-thumb: rgba(255, 255, 255, 0.16);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.3);
+  background: var(--lp-ground);
+  color: #f5f6f7;
+  font-family: 'Segoe UI', 'Figtree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.005em;
+}
+.lp .lp-wrap { width: 100%; max-width: 1300px; margin: 0 auto; padding-left: 40px; padding-right: 40px; }
+@media (max-width: 639px) { .lp .lp-wrap { padding-left: 18px; padding-right: 18px; } }
+
+.lp .lp-bar { background: rgba(11, 11, 14, 0.92); border-bottom: 1px solid var(--lp-line); backdrop-filter: blur(10px); }
+.lp .lp-slashes { color: var(--lp-ember); font-weight: 800; font-style: italic; font-size: 19px; letter-spacing: -0.06em; }
+.lp .lp-navlink { position: relative; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.88); transition: color 0.2s; white-space: nowrap; }
+.lp .lp-navlink:hover { color: var(--lp-ember); }
+
+.lp .lp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 44px; padding: 0 22px; border-radius: 5px; font-size: 14.5px; font-weight: 600;
+  transition: filter 0.2s, background-color 0.2s, border-color 0.2s, color 0.2s; white-space: nowrap;
+}
+.lp .lp-btn-lg { height: 52px; padding: 0 26px; font-size: 16px; }
+.lp .lp-btn-fill { background: var(--lp-ember); color: #140802; }
+.lp .lp-btn-fill:hover { filter: brightness(1.08); }
+.lp .lp-btn-dark { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.22); color: #fff; }
+.lp .lp-btn-dark:hover { border-color: rgba(255, 255, 255, 0.45); }
+.lp .lp-btn-line { background: rgba(10, 10, 12, 0.55); border: 1.5px solid rgba(255, 255, 255, 0.55); color: #fff; }
+.lp .lp-btn-line:hover { border-color: var(--lp-ember); }
+.lp .lp-btn-outline { background: transparent; border: 1.5px solid var(--lp-ember); color: #fff; }
+.lp .lp-btn-outline:hover { background: rgba(255, 120, 23, 0.12); }
+.lp .lp-pill {
+  display: inline-flex; align-items: center; gap: 12px; align-self: flex-start;
+  height: 38px; padding: 0 20px; border-radius: 999px; border: 1.5px solid var(--lp-ember);
+  font-size: 15px; font-weight: 500; color: #fff; background: rgba(11, 11, 14, 0.6); transition: background-color 0.2s;
+}
+.lp .lp-pill:hover { background: rgba(255, 120, 23, 0.14); }
+.lp .lp-round {
+  place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28); color: #fff; transition: border-color 0.2s;
+}
+.lp .lp-round:hover { border-color: var(--lp-ember); }
+
+.lp .lp-hero {
+  background: #050609 url('/landing/hero-globe.webp') right bottom / cover no-repeat;
+  border-bottom: 1px solid rgba(255, 120, 23, 0.25);
+}
+@media (max-width: 1023px) { .lp .lp-hero { background-position: 62% bottom; } }
+.lp .lp-float {
+  display: flex; align-items: flex-start; gap: 14px; width: 232px; padding: 15px 17px;
+  background: rgba(14, 12, 12, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 7px;
+  backdrop-filter: blur(6px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  animation: lp-float 7s ease-in-out infinite;
+}
+@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.lp .lp-strip { background: #0a0a0d; border-bottom: 1px solid var(--lp-line); }
+.lp .lp-strip-row { scrollbar-width: none; scroll-snap-type: x mandatory; }
+.lp .lp-strip-row::-webkit-scrollbar { display: none; }
+.lp .lp-tick {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto; width: 196px; height: 64px; padding: 0 12px;
+  background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: 7px; scroll-snap-align: start;
+}
+
+.lp .lp-section { padding: 34px 0 30px; border-bottom: 1px solid var(--lp-line); }
+.lp .lp-h2 { font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -0.015em; color: #fff; }
+@media (max-width: 639px) { .lp .lp-h2 { font-size: 27px; } }
+.lp .lp-lead { font-size: 16.5px; line-height: 1.5; color: var(--lp-soft); }
+.lp .lp-card { background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: 8px; }
+.lp .lp-label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 255, 255, 0.62); }
+.lp .lp-title {
+  position: relative; padding-left: 13px; font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: #fff;
+}
+.lp .lp-title::before { content: ''; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: var(--lp-ember); }
+.lp .lp-status {
+  display: inline-flex; align-items: center; height: 42px; padding: 0 22px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25); font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--lp-soft);
+}
+.lp .lp-status.is-on { border-color: rgba(47, 191, 99, 0.5); color: var(--lp-up); background: rgba(47, 191, 99, 0.06); }
+.lp .lp-side { display: inline-block; padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+.lp .lp-side.is-long { color: var(--lp-up); background: rgba(47, 191, 99, 0.12); }
+.lp .lp-side.is-short { color: var(--lp-down); background: rgba(255, 77, 79, 0.12); }
+.lp .lp-state {
+  display: inline-block; padding: 5px 13px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.08);
+}
+.lp .lp-state.is-running { color: var(--lp-up); background: rgba(47, 191, 99, 0.12); }
+
+.lp .lp-eco { position: relative; display: flex; flex-direction: column; min-height: 238px; padding: 20px 22px 20px; overflow: hidden; }
+.lp .lp-strip-arrow { position: absolute; top: 50%; transform: translate(-100%, -50%); display: none; }
+.lp .lp-strip-prev { left: 26px; }
+.lp .lp-strip-next { right: 26px; transform: translate(100%, -50%); }
+@media (min-width: 1380px) { .lp .lp-strip-arrow { display: grid; } }
+@media (min-width: 1024px) { .lp .lp-tick { width: calc((100% - 5 * 12px) / 6); } }
+.lp .lp-ipo { background: radial-gradient(60% 90% at 85% 50%, rgba(255, 110, 20, 0.08), transparent 70%); }
+.lp .lp-cta {
+  background: #050609 url('/landing/cta-globe.webp') right center / cover no-repeat;
+  border-bottom: 1px solid var(--lp-line);
+}
+.lp .lp-footer { background: #08080a; }
+@media (prefers-reduced-motion: reduce) { .lp .lp-float { animation: none; } }

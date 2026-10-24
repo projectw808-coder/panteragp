@@ -6718,6 +6718,8 @@ const contactBody = z.object({
   region_hours: z.record(z.string().max(60), z.string().max(60)).optional(),
 });
 const fillsBody = z.record(z.string().max(200), z.string().max(400));
+// The account whose auto trader the landing page shows, by its six-digit number; empty for none.
+const showcaseBody = z.object({ account_number: z.string().trim().regex(/^(\d{6})?$/, 'six digits, or empty for none').optional() });
 const footerBody = z.object({
   text: z.string().max(400).optional(),
   column_title: z.string().max(40).optional(),
@@ -6818,13 +6820,70 @@ app.delete('/admin/site-content/footer/marks/:id', { preHandler: auth('admin') }
   return footerView();
 });
 
+
+// ---------------------------------------------------------------- the landing page's data
+// Read-only and unauthenticated, because the public page has no session. Each one says
+// only what the page shows: prices anyone could see in the terminal, the auto trader's
+// record on the one account the desk has chosen to show. Nothing here names a client or
+// exposes an id.
+
+/** The strip under the hero: price, the day's move and a day of hourly closes per symbol. */
+const LANDING_TICKER = ['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD', 'SPY', 'QQQ', 'SOLUSD', 'XRPUSD', 'GBPUSD', 'XAGUSD'];
+app.get('/public/ticker', async (_req, reply) => {
+  const { rows: [{ n }] } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM instruments');
+  const quotes = LANDING_TICKER.map((symbol) => {
+    const day = candles(symbol, '1H', 25);
+    const price = spot(symbol);
+    const open = day[0]?.open ?? price;
+    return { symbol, price, change_pct: open ? round8(((price - open) / open) * 100) : 0, spark: day.map((c) => c.close) };
+  });
+  return reply.header('cache-control', 'public, max-age=5').send({ instruments: n, quotes });
+});
+
+/**
+ * The auto trader's live record on the account the desk has chosen to show (Settings ->
+ * Site content -> Landing showcase, by account number). The same figures that account's
+ * own Auto trader page shows, cut to what the landing panel draws. Nothing configured, or
+ * an account number that matches nobody, is { configured: false } and the panel says so.
+ */
+app.get('/public/showcase', async (_req, reply) => {
+  reply.header('cache-control', 'public, max-age=20');
+  const cfg = await siteContent<{ account_number?: string }>('showcase');
+  const number = cfg?.account_number?.trim();
+  if (!number) return { configured: false };
+  const { rows: [who] } = await pool.query<{ id: string }>('SELECT id FROM clients WHERE account_number = $1', [number]);
+  if (!who) return { configured: false };
+  const d = await autoDashboard(who.id);
+  const k = d.kpis;
+  // At most sixty points: enough for the line's shape, little enough to send every time.
+  const step = Math.max(1, Math.ceil(d.curve.length / 60));
+  const curve = d.curve.filter((_, i) => i % step === 0 || i === d.curve.length - 1).map((p) => ({ at: p.at, equity: p.equity }));
+  return {
+    configured: true,
+    on: d.on,
+    since: d.since,
+    kpis: {
+      equity: k.equity, allocated: k.allocated, return_pct: k.return_pct, unrealised: k.unrealised,
+      today_net: k.today_net, today_trades: k.today_trades, today_fees: k.today_fees,
+      wins: k.wins, closed: k.closed, win_rate: k.win_rate,
+      profit_factor: k.profit_factor, avg_win_r: k.avg_win_r, avg_loss_r: k.avg_loss_r,
+      max_drawdown: k.max_drawdown, drawdown_at: k.drawdown_at, open: k.open,
+    },
+    curve,
+    trades: d.closed.slice(0, 4).map((t) => ({ closed_at: t.closed_at, symbol: t.symbol, side: t.side, entry: t.entry, exit: t.exit, net: t.net, strategy: t.strategy })),
+    strategies: d.strategies.map((s) => ({ name: s.name, symbols: s.symbols, state: s.state })),
+  };
+});
+
 app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
-  const [contact, terms, privacy, risk, footer] = await Promise.all([
+  const [contact, terms, privacy, risk, footer, showcase] = await Promise.all([
     siteContent<ContactContent>('contact'), siteContent<Fills>('legal:terms'), siteContent<Fills>('legal:privacy'), siteContent<Fills>('legal:risk'), footerView(),
+    siteContent<{ account_number?: string }>('showcase'),
   ]);
   return {
     contact: contact ?? {},
     footer,
+    showcase: showcase ?? {},
     legal: {
       terms: { placeholders: placeholdersOf('terms'), fills: terms ?? {} },
       privacy: { placeholders: placeholdersOf('privacy'), fills: privacy ?? {} },
@@ -6835,7 +6894,7 @@ app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
 
 app.put('/admin/site-content/:key', { preHandler: auth('admin') }, async (req: any, reply) => {
   const key = String(req.params.key);
-  const schema = key === 'contact' ? contactBody : key === 'footer' ? footerBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
+  const schema = key === 'contact' ? contactBody : key === 'footer' ? footerBody : key === 'showcase' ? showcaseBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
   if (!schema) return reply.code(404).send({ error: 'no such section' });
   const body = schema.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });

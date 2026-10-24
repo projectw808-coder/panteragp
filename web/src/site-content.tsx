@@ -25,7 +25,7 @@ type Footer = {
   marks_title?: string; marks?: FooterMark[];
   notice?: string;
 };
-type Content = { contact: Contact; legal: Legal; footer: Footer };
+type Content = { contact: Contact; legal: Legal; footer: Footer; showcase?: { account_number?: string } };
 
 /**
  * The footer: a logo, a paragraph, one column of links and the copyright line, on the
@@ -198,8 +198,12 @@ export function SiteContent() {
   useEffect(() => {
     if (!loaded.data) return;
     setContact(loaded.data.contact);
+    setShowcase(loaded.data.showcase?.account_number ?? '');
     setLegal(loaded.data.legal);
   }, [loaded.data]);
+
+  // The account whose auto trader the landing page shows, by account number.
+  const [showcase, setShowcase] = useState('');
 
   const save = async (key: string, body: unknown) => {
     setBusy(key); setError(null); setSaved(null);
@@ -278,6 +282,31 @@ export function SiteContent() {
             {busy === 'contact' ? 'Saving…' : 'Save contact page'}
           </button>
           {saved === 'contact' && <span className="text-xs text-up">Saved · live now</span>}
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------- landing showcase */}
+      <div className="space-y-3 border-t border-pebble pt-4 dark:border-white/10">
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-sm font-semibold">Landing showcase</h3>
+          <span className="text-xs text-slate-ink">The auto trader panel on the public landing page.</span>
+        </div>
+        <Row label="Account number">
+          <div className="flex-1 space-y-1">
+            <input className={`${input} max-w-[10rem] font-mono`} inputMode="numeric" maxLength={6} placeholder="e.g. 240649"
+              value={showcase} onChange={(e) => setShowcase(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+            <p className="text-xs text-slate-ink">
+              The panel shows this account's live auto trader record: equity, win rate, the curve, the last four trades and the
+              strategies. Use the desk's own demo account, never a client's. It is labelled on the page as the desk's demo
+              account. Empty hides the figures.
+            </p>
+          </div>
+        </Row>
+        <div className="flex items-center gap-3">
+          <button className={btn} disabled={busy === 'showcase'} onClick={() => save('showcase', { account_number: showcase })}>
+            {busy === 'showcase' ? 'Saving…' : 'Save showcase'}
+          </button>
+          {saved === 'showcase' && <span className="text-xs text-up">Saved · live now</span>}
         </div>
       </div>
 

@@ -1,5 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, BarChart3, Box, Brain, ChartNoAxesCombined, Database, Globe2, Layers, Leaf, Play, Rocket,
+  Settings2, ShieldCheck, Zap,
+} from 'lucide-react';
 import { useApi } from './api.ts';
+
+/**
+ * The public front of the site, built to the October 2026 mockup: a night-globe hero
+ * with floating feature cards, a live price strip, the auto trader's record, the
+ * platform's four services, its metrics, the offerings and a closing call to action,
+ * then the footer the desk edits from Settings.
+ *
+ * Every figure on it is live and true. The prices are the platform's own quotes. The
+ * auto trader panel reads the record of the one account the desk chooses in Settings,
+ * labelled as the desk's demo account on this platform's prices. The counts are counts of real things. The previous version is
+ * kept at the git tag pre-redesign-2026-10-24.
+ */
 
 /** The footer as the desk has set it from Settings; anything left out keeps the words here. */
 type FooterView = {
@@ -8,34 +24,53 @@ type FooterView = {
   marks_title?: string; marks?: { id: string; name: string; href?: string; url: string }[];
   notice?: string;
 };
+type Ticker = { instruments: number; quotes: { symbol: string; price: number; change_pct: number; spark: number[] }[] };
+type Showcase = {
+  configured: boolean; on?: boolean; since?: string | null;
+  kpis?: {
+    equity: number; allocated: number; return_pct: number | null; unrealised: number;
+    today_net: number; today_trades: number; today_fees: number;
+    wins: number; closed: number; win_rate: number | null;
+    profit_factor: number | null; avg_win_r: number | null; avg_loss_r: number | null;
+    max_drawdown: number; drawdown_at: string | null; open: number;
+  };
+  curve?: { at: string; equity: number }[];
+  trades?: { closed_at: string; symbol: string; side: string; entry: number; exit: number; net: number; strategy: string | null }[];
+  strategies?: { name: string; symbols: string[]; state: 'running' | 'paused' }[];
+};
+
+const CAPABILITIES = ['MARKET', 'LIMIT', 'STOP', 'STOP-LIMIT', 'TRAILING STOP', 'TAKE PROFIT',
+  'RISK SIZING', 'MULTI-CURRENCY', 'PORTFOLIOS', 'AUDIT LOG', 'KYC REVIEW', 'SETTLEMENT'];
 
 /** The footer notice as the desk pasted it: a blank line ends a paragraph, lines starting with -, * or • make a list. Same rules as the server's noticeBlocks. */
 function noticeBlocks(text: string): { kind: 'p' | 'ul'; lines: string[] }[] {
   return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((b) => b.split('\n').map((l) => l.trim()).filter(Boolean)).filter((lines) => lines.length)
     .map((lines) => (lines.every((l) => /^[-*•]\s+/.test(l)) ? { kind: 'ul', lines: lines.map((l) => l.replace(/^[-*•]\s+/, '')) } : { kind: 'p', lines }));
 }
-import { ShieldCheck } from 'lucide-react';
+
+// ------------------------------------------------------------------ formatting
+const usd = (n: number, digits = 2) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const signed = (n: number) => `${n >= 0 ? '+' : '-'}${usd(n)}`;
+const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
+const price = (p: number) => p.toLocaleString('en-US', { minimumFractionDigits: p < 10 ? 4 : 2, maximumFractionDigits: p < 10 ? 4 : 2 });
+const shortDay = (iso: string | Date) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+/** Re-read a public endpoint every few seconds while the page is open. */
+function usePolled<T>(path: string, everyMs: number) {
+  const q = useApi<T>(path);
+  useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) q.reload(); }, everyMs);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, everyMs]);
+  return q.data;
+}
 
 /**
- * The public front of the site.
- *
- * Visual language follows the reference the client chose (altiuslabs.xyz): a dark centred
- * hero over a warm glow, a sans display face at very tight tracking, square-cornered
- * outline buttons, marquee strips drifting in opposite directions, numbered capability
- * blocks revealed on scroll, and a lavender-white body. The surface tokens for all of that
- * live under `.landing` in index.css, scoped so the product UI keeps its own system.
- *
- * The copy is original: it describes this platform and claims nothing about a fund,
- * investors or assets under management.
- */
-
-/**
- * Reveal a block the first time it is scrolled into view, then stop watching it.
- *
- * The fallback timer matters more than the effect: a hidden or backgrounded tab does not
- * run IntersectionObserver callbacks, and this hides content until one arrives. The
- * reference site shows the failure — its sections render blank when its scroll triggers
- * never fire — and an invisible page is far worse than an unanimated one.
+ * Reveal a block the first time it is scrolled into view, then stop watching it. The
+ * fallback timer matters: a hidden tab never fires IntersectionObserver, and an invisible
+ * page is far worse than an unanimated one.
  */
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -43,234 +78,93 @@ function useReveal<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const show = () => { el.classList.add('shown'); io.disconnect(); clearTimeout(timer); };
-    const io = new IntersectionObserver(([entry]) => { if (entry?.isIntersecting) show(); },
-      { rootMargin: '0px 0px -12% 0px' });
+    const io = new IntersectionObserver(([entry]) => { if (entry?.isIntersecting) show(); }, { rootMargin: '0px 0px -8% 0px' });
     io.observe(el);
     const timer = setTimeout(show, 2500);
     return () => { io.disconnect(); clearTimeout(timer); };
   }, []);
   return ref;
 }
-
-function Reveal({ children, delay = 0, className = '' }: {
-  children: React.ReactNode; delay?: number; className?: string;
-}) {
+function Reveal({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
   const ref = useReveal<HTMLDivElement>();
-  return (
-    <div ref={ref} className={`reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>
-      {children}
-    </div>
-  );
+  return <div ref={ref} className={`reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>{children}</div>;
 }
 
-/** Headings whose lines slide up from behind their own edge, one after another. */
-function MaskedHeading({ lines, className = '', delay = 0 }: {
-  lines: string[]; className?: string; delay?: number;
-}) {
-  const ref = useReveal<HTMLHeadingElement>();
-  return (
-    <h2 ref={ref} className={className}>
-      {lines.map((line, i) => (
-        <span key={line} className="mask">
-          <span style={{ transitionDelay: `${delay + i * 110}ms` }}>{line}</span>
-        </span>
-      ))}
-    </h2>
-  );
-}
-
-/**
- * Count a number up once it is on screen. Eased, so it decelerates into the final value
- * rather than arriving at a constant rate — a linear counter reads as a machine.
- */
-function useCountUp(target: number, duration = 1400) {
-  const [value, setValue] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setValue(target); return; }
-    let raf = 0;
-    const run = () => {
-      const start = performance.now();
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / duration);
-        setValue(Math.round(target * (1 - Math.pow(1 - t, 3))));   // ease-out cubic
-        if (t < 1) raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
-    };
-    const io = new IntersectionObserver(([e]) => { if (e?.isIntersecting) { run(); io.disconnect(); } });
-    io.observe(el);
-    // Same reasoning as useReveal: a hidden tab never fires the observer.
-    const timer = setTimeout(() => { io.disconnect(); run(); }, 2500);
-    return () => { io.disconnect(); clearTimeout(timer); cancelAnimationFrame(raf); };
-  }, [target, duration]);
-  return [value, ref] as const;
-}
-
-function Stat({ value, suffix = '', label }: { value: number; suffix?: string; label: string }) {
-  const [n, ref] = useCountUp(value);
-  return (
-    <div ref={ref} className="px-6 py-8">
-      <div className="display text-[40px] text-ember-ink tabular-nums sm:text-[52px]">
-        {n.toLocaleString()}{suffix}
-      </div>
-      <div className="soft mt-2 font-mono text-[11px] tracking-[0.16em] uppercase">{label}</div>
-    </div>
-  );
-}
-
-/** Small uppercase mono label above a section — the reference's eyebrow. */
-// No onDark any more: ember-as-text is a token that the dark hero redefines for itself.
-const Eyebrow = ({ children }: { children: React.ReactNode }) => (
-  <span className="font-mono text-[11px] tracking-[0.18em] text-ember-ink uppercase">
-    {children}
+// ------------------------------------------------------------------ small parts
+/** The mark: a three-pronged node, drawn rather than imported so it takes the ember. */
+export const LogoMark = ({ size = 28 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
+    <path d="M5 6.5 L16 17 L27 6.5 M16 17 V27.5" stroke="var(--lp-ember)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="5" cy="6.5" r="2.6" fill="var(--lp-ember)" />
+    <circle cx="27" cy="6.5" r="2.6" fill="var(--lp-ember)" />
+    <circle cx="16" cy="27.5" r="2.6" fill="var(--lp-ember)" />
+  </svg>
+);
+const Wordmark = () => (
+  <span className="flex items-center gap-2.5">
+    <LogoMark />
+    <span className="text-[19px] font-semibold tracking-[-0.01em] text-white">Pantera GP</span>
+    <span className="lp-slashes" aria-hidden>///</span>
   </span>
 );
 
-/**
- * Ported from panteraai.co.uk's "Simulation Live" widget — same state machine, layout,
- * motion and copy (joy-auto-trade: src/routes/index.tsx's Dashboard, 2026-09-27), then
- * trimmed to just the chart on this page's request: no crypto-pair trade feed, a calmer
- * walk, and the daily change capped rather than left to wander past a number that would
- * read as a real return. Classes changed from that project's `bg-primary`/`eyebrow`/
- * `signal` Tailwind theme to this one's `.sim-terminal` scope in index.css, because the two
- * projects don't share a Tailwind config — the colours those classes resolve to are the
- * same oklch values either way.
- */
-const SIM_START_VALUE = 184392.64;
-const SIM_DAILY_PCT_CAP = 57;
+const Eyebrow = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[12.5px] font-semibold tracking-[0.2em] text-[color:var(--lp-ember)] uppercase">{children}</p>
+);
 
-function simSeedPoints() {
-  const pts: number[] = [];
-  let v = SIM_START_VALUE * 0.985;
-  for (let i = 0; i < 60; i++) { v += (Math.random() - 0.42) * 90; pts.push(v); }
-  pts[pts.length - 1] = SIM_START_VALUE;
-  return pts;
-}
-
-function SimTerminal() {
-  const [points, setPoints] = useState<number[]>(() => Array.from({ length: 60 }, (_, i) => SIM_START_VALUE * 0.985 + i * 16));
-  const [running, setRunning] = useState(true);
-  const [clock, setClock] = useState('--:--:--');
-  const [stats, setStats] = useState({ wins: 0, total: 0 });
-
-  useEffect(() => { setPoints(simSeedPoints()); }, []);
-
-  useEffect(() => {
-    if (!running) return;
-    let tick = 0;
-    const id = setInterval(() => {
-      tick++;
-      setClock(new Date().toISOString().slice(11, 19));
-      setPoints((p) => {
-        const last = p[p.length - 1]!;
-        const next = last + (Math.random() - 0.46) * 90;
-        return [...p.slice(1), next];
-      });
-      if (tick % 3 === 0) {
-        setStats((s) => ({ wins: s.wins + (Math.random() < 0.68 ? 1 : 0), total: s.total + 1 }));
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
-  const value = points[points.length - 1]!;
-  const rawChange = value - SIM_START_VALUE + 2841.2;
-  const rawPct = (rawChange / SIM_START_VALUE) * 100;
-  const pct = Math.max(-SIM_DAILY_PCT_CAP, Math.min(rawPct, SIM_DAILY_PCT_CAP));
-  const change = (pct / 100) * SIM_START_VALUE;
-  const min = Math.min(...points), max = Math.max(...points);
-  const coords: [number, number][] = points.map((v, i): [number, number] => [(i / (points.length - 1)) * 760, 220 - ((v - min) / (max - min || 1)) * 190]);
-  const line = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  const lastY = coords[coords.length - 1]![1];
-  const winRate = stats.total ? ((stats.wins / stats.total) * 100).toFixed(1) : '68.4';
-  const up = change >= 0;
-
-  const reset = () => { setPoints(simSeedPoints()); setStats({ wins: 0, total: 0 }); setRunning(true); };
-
+/** A day of hourly closes as a small line, green when the day is up and red when it is down. */
+function Spark({ values, up, w = 52, h = 22 }: { values: number[]; up: boolean; w?: number; h?: number }) {
+  const d = useMemo(() => {
+    if (values.length < 2) return '';
+    const lo = Math.min(...values), hi = Math.max(...values), span = hi - lo || 1;
+    return values.map((v, i) => `${i ? 'L' : 'M'}${((i / (values.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - lo) / span) * (h - 4)).toFixed(1)}`).join(' ');
+  }, [values, w, h]);
+  const col = up ? 'var(--lp-up)' : 'var(--lp-down)';
+  const id = `sp-${up ? 'u' : 'd'}`;
   return (
-    <div className="sim-terminal relative mx-auto w-full max-w-none overflow-hidden">
-      <div className="flex h-12 items-center justify-between border-b border-[color:var(--st-border)] px-4 sm:px-6">
-        <div className="flex items-center gap-2 text-xs text-[color:var(--st-muted-foreground)]">
-          <span className={`size-2 rounded-full ${running ? 'bg-[color:var(--st-success)] animate-pulse' : 'bg-[color:var(--st-muted-foreground)]'}`} />
-          {running ? 'DEMO LIVE' : 'DEMO PAUSED'}
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setRunning((r) => !r)} className="border border-[color:var(--st-border)] px-2.5 py-1 font-mono text-[10px] text-[color:var(--st-foreground)] transition-colors hover:border-[color:var(--st-primary)] hover:text-[color:var(--st-primary)]">
-            {running ? '❚❚ PAUSE' : '▶ RUN'}
-          </button>
-          <button onClick={reset} className="border border-[color:var(--st-border)] px-2.5 py-1 font-mono text-[10px] text-[color:var(--st-muted-foreground)] transition-colors hover:border-[color:var(--st-primary)] hover:text-[color:var(--st-primary)]">↺ RESET</button>
-          <span className="hidden font-mono text-[10px] text-[color:var(--st-muted-foreground)] sm:inline">UTC {clock}</span>
-        </div>
-      </div>
-      <div className="p-5 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="st-eyebrow">Portfolio value · demo</p>
-            <p className="mt-2 font-mono text-3xl text-[color:var(--st-foreground)] tabular-nums sm:text-4xl">£{value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-          </div>
-          <div className="text-right">
-            <p className="st-eyebrow">Today</p>
-            <p className={`mt-2 font-mono text-sm tabular-nums ${up ? 'text-[color:var(--st-success)]' : 'text-[color:var(--st-danger)]'}`}>
-              {up ? '+' : '-'}£{Math.abs(change).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}&nbsp; / &nbsp;{up ? '+' : ''}{pct.toFixed(2)}%
-            </p>
-          </div>
-        </div>
-        <div className="relative mt-8 h-48 overflow-hidden border-y border-[color:var(--st-border)]/70 sm:h-64">
-          <div className="st-chart-grid absolute inset-0" />
-          <svg viewBox="0 0 760 240" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
-            <defs>
-              <linearGradient id="sim-terminal-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="var(--st-primary)" stopOpacity=".24" />
-                <stop offset="1" stopColor="var(--st-primary)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={`${line} L760 240 L0 240Z`} fill="url(#sim-terminal-fill)" style={{ transition: 'd 0.9s linear' }} />
-            <path d={line} fill="none" stroke="var(--st-primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.9s linear' }} />
-          </svg>
-          <span className="absolute right-3 bg-[color:var(--st-primary)] px-2 py-1 font-mono text-[10px] text-[color:var(--st-primary-foreground)] transition-all duration-700" style={{ top: `calc(${(lastY / 240) * 100}% - 12px)` }}>
-            £{Math.round(value).toLocaleString('en-US')}
-          </span>
-        </div>
-        <div className="mt-5 grid grid-cols-3 divide-x divide-[color:var(--st-border)] border border-[color:var(--st-border)]">
-          {[['ACTIVE', '3 strategies'], ['WIN RATE', `${winRate}%`], ['TRADES', `${stats.total} executed`]].map(([label, v]) => (
-            <div key={label} className="px-3 py-4 sm:px-5">
-              <p className="st-eyebrow">{label}</p>
-              <p className="mt-2 font-mono text-xs text-[color:var(--st-foreground)] tabular-nums sm:text-sm">{v}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 border border-[color:var(--st-primary)]/30 bg-[color:var(--st-primary)]/5 p-4">
-          <div className="flex gap-3">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[color:var(--st-primary)]" />
-            <p className="text-xs leading-5 text-[color:var(--st-muted-foreground)]">Risk guard active. A demo of the terminal, not a live account.</p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden className="shrink-0">
+      <defs><linearGradient id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor={col} stopOpacity="0.35" /><stop offset="1" stopColor={col} stopOpacity="0" /></linearGradient></defs>
+      {d && <path d={`${d} L${w},${h} L0,${h} Z`} fill={`url(#${id})`} />}
+      {d && <path d={d} stroke={col} strokeWidth="1.6" fill="none" />}
+    </svg>
   );
 }
 
-const MARKETS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'XAGUSD', 'AUDUSD', 'USDCAD'];
-const CAPABILITIES = ['MARKET', 'LIMIT', 'STOP', 'STOP-LIMIT', 'TRAILING STOP', 'TAKE PROFIT',
-  'RISK SIZING', 'MULTI-CURRENCY', 'PORTFOLIOS', 'AUDIT LOG', 'KYC REVIEW', 'SETTLEMENT'];
+/** Round marks for the strip's instruments, drawn so nothing is borrowed from anyone. */
+function Coin({ symbol }: { symbol: string }) {
+  const base = 'grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full';
+  switch (symbol) {
+    case 'BTCUSD': return <span className={`${base} bg-[#f7931a] text-[19px] font-bold text-white`}>₿</span>;
+    case 'ETHUSD': return (
+      <span className={`${base} bg-[#627eea]`}>
+        <svg width="16" height="24" viewBox="0 0 16 24" aria-hidden><path d="M8 0 L16 12 L8 16.5 L0 12 Z" fill="#fff" fillOpacity=".95" /><path d="M8 18 L16 13.5 L8 24 L0 13.5 Z" fill="#fff" fillOpacity=".75" /></svg>
+      </span>);
+    case 'XAUUSD': return (
+      <span className={`${base} bg-[#d79a1e]`}>
+        <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden><path d="M4 7 L7 2 H15 L18 7 Z" fill="#fff6d8" /><path d="M1 14 L4 8.5 H10.5 L10.5 14 Z M11.5 14 V8.5 H18 L21 14 Z" fill="#fde7a8" /></svg>
+      </span>);
+    case 'XAGUSD': return <span className={`${base} bg-[#9aa3ad] text-[13px] font-bold text-white`}>Ag</span>;
+    case 'EURUSD': return <span className={`${base} bg-[#1a6cf0] text-[19px] font-semibold text-white`}>€</span>;
+    case 'GBPUSD': return <span className={`${base} bg-[#2a3f8f] text-[19px] font-semibold text-white`}>£</span>;
+    case 'SPY': return <span className={`${base} bg-white text-[10.5px] font-bold text-[#0b0b0e]`}>S&amp;P</span>;
+    case 'QQQ': return <span className={`${base} bg-[#e3262f] text-[17px] font-bold text-white`}>Q</span>;
+    case 'SOLUSD': return <span className={`${base} bg-gradient-to-br from-[#9945ff] to-[#14f195] text-[15px] font-bold text-white`}>S</span>;
+    case 'XRPUSD': return <span className={`${base} bg-[#23292f] text-[13px] font-bold text-white ring-1 ring-white/20`}>XRP</span>;
+    default: return <span className={`${base} bg-white/10 text-[12px] font-bold text-white`}>{symbol.slice(0, 3)}</span>;
+  }
+}
 
+// ------------------------------------------------------------------ the page
 export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegister: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
   const footer = useApi<FooterView>('/site-content/footer').data ?? {};
-  // The footer's "what the engine takes" list: the desk's own when it has set one.
   const capabilities = footer.capabilities?.length ? footer.capabilities : CAPABILITIES;
-  const glow = useRef<HTMLDivElement>(null);
-  const bar = useRef<HTMLDivElement>(null);
-  // The one arrow on the right edge: down to the footer all the way through the page,
-  // and up to the top once the footer is in view.
+  const ticker = usePolled<Ticker>('/public/ticker', 5000);
+  const show = usePolled<Showcase>('/public/showcase', 20000);
   const [atFoot, setAtFoot] = useState(false);
-  // The section links live in the bar from xl up; below that they fold into a menu
-  // under the bar, opened from a button beside the account button.
   const [menu, setMenu] = useState(false);
-  const SECTIONS: [string, string][] = [['autotrader', 'Auto trader'], ['platform', 'Services'], ['engine', 'The engine'], ['audiences', 'Who it is for'], ['security', 'Security']];
+  const NAV: [string, string][] = [['platform', 'Platform'], ['autotrader', 'Auto Trader'], ['portfolios', 'Portfolios'], ['staking', 'Staking'], ['ipo', 'IPO Opportunities'], ['about', 'About']];
+
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -286,29 +180,17 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
   }, []);
 
   /** Nav links scroll the container, not the window — the page scrolls inside a div. */
-  const go = (id: string) => {
-    const el = scroller.current?.querySelector(`#${id}`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  const go = (id: string) => scroller.current?.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  /**
-   * The arrows' scroll: a long, eased glide rather than the browser's quick smooth scroll,
-   * so the page passes by on the way down and on the way back up. About five and a half
-   * seconds down and four and a half back up, shorter for a shorter trip. A wheel, a touch or a key hands control back at
-   * once; with reduced motion it is a plain jump.
-   */
+  /** The side arrow's slow glide to the footer and back; a wheel, touch or key takes over at once. */
   const glide = (id: string) => {
     const sc = scroller.current;
     const el = sc?.querySelector<HTMLElement>(`#${id}`);
     if (!sc || !el) return;
     const top = Math.min(el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop, sc.scrollHeight - sc.clientHeight);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { sc.scrollTo({ top }); setAtFoot(id === 'footer'); return; }
-    const from = sc.scrollTop;
-    const distance = top - from;
-    // Slow enough to take the page in: about five and a half seconds down the whole page
-    // and four and a half back up.
-    const rate = distance < 0 ? 0.45 : 0.58;
-    const duration = Math.min(distance < 0 ? 4800 : 5600, 700 + Math.abs(distance) * rate);
+    const from = sc.scrollTop, distance = top - from;
+    const duration = Math.min(distance < 0 ? 4800 : 5600, 700 + Math.abs(distance) * (distance < 0 ? 0.45 : 0.58));
     const start = performance.now();
     let frame = 0;
     const stop = () => { cancelAnimationFrame(frame); for (const ev of ['wheel', 'touchstart', 'keydown'] as const) sc.removeEventListener(ev, stop); };
@@ -322,352 +204,164 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     frame = requestAnimationFrame(step);
   };
 
-  // Reading progress, and a slow parallax on the hero glow. Both read the same scroll
-  // position and are written inside one rAF, so scrolling stays on one frame's work.
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const max = el.scrollHeight - el.clientHeight;
-        const pct = max > 0 ? el.scrollTop / max : 0;
-        if (bar.current) bar.current.style.width = `${pct * 100}%`;
-        // The glow drifts at a third of scroll speed, so the hero has depth as it leaves.
-        if (glow.current) glow.current.style.transform = `translateY(${el.scrollTop * 0.32}px)`;
-      });
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
-  }, []);
+  const instruments = ticker?.instruments ?? 100;
 
   return (
-    <div ref={scroller} className="landing h-full overflow-auto">
-      <div ref={bar} className="progress" style={{ width: 0 }} aria-hidden />
-      {/* ---------------------------------------------------------------- hero */}
-      <section id="top" className="stage relative flex min-h-screen flex-col overflow-hidden">
-        <nav className="anim-fade sticky top-0 z-30 flex items-center gap-4 border-b border-white/10 bg-[color:var(--stage)]/85 px-8 py-4 backdrop-blur">
-          <button onClick={() => go('top')} className="flex items-center gap-2">
-            <span className="display text-lg text-vellum">Pantera GP</span>
-            <span className="font-mono text-xs text-ember-ink">///</span>
-          </button>
-          {/* Set like the marks inside the product rather than like small grey body text.
-              Contrast was never the problem — mist reads 7.82:1 on this ground — it was
-              12px at almost no tracking, which looks faint whatever colour it is. */}
-          <div className="ml-10 hidden items-center gap-9 xl:flex">
-            {SECTIONS.map(([id,label]) => (
-              <button key={id} onClick={() => go(id)} className="nav-link focus-ring">
-                {label}
-              </button>
+    <div ref={scroller} className="landing lp h-full overflow-auto">
+      {/* ------------------------------------------------------------ the bar */}
+      <nav className="lp-bar sticky top-0 z-30">
+        <div className="lp-wrap flex h-[70px] items-center gap-6">
+          <button onClick={() => go('top')} aria-label="Pantera GP, back to the top" className="focus-ring rounded"><Wordmark /></button>
+          <div className="ml-12 hidden items-center gap-[30px] xl:flex">
+            {NAV.map(([id, label]) => (
+              <button key={id} onClick={() => go(id)} className="lp-navlink focus-ring">{label}</button>
             ))}
-            {/* A real link, not a scroll: the articles are served as their own pages. */}
-            <a href="/blog" className="nav-link focus-ring">Insights</a>
           </div>
-          <div className="ml-auto flex items-center gap-3 sm:gap-4">
-            <button onClick={onSignIn} className="nav-link focus-ring hidden sm:inline-block">Sign in</button>
-            <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={onSignIn} className="lp-btn lp-btn-dark hidden sm:inline-flex">Sign In</button>
+            <button onClick={onRegister} className="lp-btn lp-btn-fill">Open Account <ArrowRight size={17} strokeWidth={2.2} aria-hidden /></button>
             <button type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-controls="landing-menu" aria-label={menu ? 'Close the menu' : 'Open the menu'}
-              className="focus-ring -mr-2 flex h-11 w-11 items-center justify-center rounded-full text-vellum transition-colors hover:bg-white/10 xl:hidden">
+              className="focus-ring -mr-2 flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 xl:hidden">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
                 {menu ? <path d="M4 4l12 12M16 4L4 16" /> : <path d="M3 5h14M3 10h14M3 15h14" />}
               </svg>
             </button>
           </div>
+        </div>
         {menu && (
-          <div id="landing-menu" className="absolute inset-x-0 top-full z-30 border-b border-white/10 bg-[color:var(--stage)]/95 px-8 py-4 backdrop-blur xl:hidden">
+          <div id="landing-menu" className="absolute inset-x-0 top-full z-30 border-b border-white/10 bg-[#0b0b0e]/95 px-6 py-3 backdrop-blur xl:hidden">
             <ul className="flex flex-col">
-              {SECTIONS.map(([id, label]) => (
-                <li key={id}>
-                  <button onClick={() => { setMenu(false); go(id); }} className="nav-link focus-ring block w-full py-3 text-left">{label}</button>
-                </li>
+              {NAV.map(([id, label]) => (
+                <li key={id}><button onClick={() => { setMenu(false); go(id); }} className="lp-navlink focus-ring block w-full py-3 text-left">{label}</button></li>
               ))}
-              <li><a href="/blog" className="nav-link focus-ring block w-full py-3 text-left">Insights</a></li>
-              <li className="sm:hidden"><button onClick={() => { setMenu(false); onSignIn(); }} className="nav-link focus-ring block w-full py-3 text-left">Sign in</button></li>
+              <li><a href="/blog" className="lp-navlink focus-ring block w-full py-3 text-left">Insights</a></li>
+              <li className="sm:hidden"><button onClick={() => { setMenu(false); onSignIn(); }} className="lp-navlink focus-ring block w-full py-3 text-left">Sign In</button></li>
             </ul>
           </div>
         )}
-        </nav>
+      </nav>
 
-        {/* pointer-events-none so this box's empty space (it's centred text in a wide
-            flex-1 column, not a filled panel) doesn't sit on top of the bars below and
-            swallow their hover — the buttons opt back in below, same as the bars do. */}
-        <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center justify-center px-8 text-center">
-          <div className="anim-rise" style={{ animationDelay: '80ms' }}>
-            <Eyebrow>Automated execution // client system</Eyebrow>
-          </div>
-          {/* Sans, medium weight, −0.045em: the reference's headline is one tight mass. */}
-          <h1 className="display mt-7 text-[42px] text-vellum sm:text-[56px] lg:text-[68px]">
-            <span className="anim-rise block" style={{ animationDelay: '200ms' }}>You set the levels.</span>
-            <span className="anim-rise block" style={{ animationDelay: '330ms' }}>The engine waits.</span>
-          </h1>
-          <p className="anim-rise mt-7 max-w-xl text-base leading-relaxed text-ember-ink/90"
-            style={{ animationDelay: '470ms' }}>
-            Rest an order at a price and close the tab. A settlement engine prices every
-            instrument continuously and fires your limits, stops and trailing exits the moment
-            they trigger — server-side, with the client record and audit trail attached.
-          </p>
-          <div className="pointer-events-auto anim-rise mt-9 flex flex-wrap justify-center gap-3" style={{ animationDelay: '600ms' }}>
-            <button onClick={onRegister} className="btn-line font-mono">Open an account</button>
-            <button onClick={onSignIn} className="btn-fill font-mono">Sign in to the desk</button>
-          </div>
-        </div>
-
-        {/* The arrow that rides along the right edge for the whole page: down to the
-            footer, with its label on its side, until the footer is in view; then it turns
-            round and goes back to the top. Fixed to the viewport, so it is there wherever
-            the page is. Hidden on phones, where it would sit over the text. */}
-        <button onClick={() => glide(atFoot ? 'top' : 'footer')} aria-label={atFoot ? 'Back to the top' : 'Go to the footer'}
-          className={`to-footer anim-rise fixed right-8 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex ${atFoot ? 'to-top' : ''}`}
-          style={{ animationDelay: '900ms' }}>
-          <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-mist uppercase">{atFoot ? 'Top' : 'Footer'}</span>
-          <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-ember-ink">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              {atFoot ? <path d="M8 14V2M3 7l5-5 5 5" /> : <path d="M8 2v12M3 9l5 5 5-5" />}
-            </svg>
-          </span>
-        </button>
-
-        {/* The signature: a warm glow rising from the foot of the hero, with bars growing
-            out of it. Decorative texture, not a section background. The bars themselves
-            take pointer events (their parent's pointer-events-none doesn't stop a child
-            opting back in) so they can light up and rise under the cursor — everything
-            else in here stays inert. */}
-        <div ref={glow} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-80 will-change-transform">
-          <div className="absolute inset-0 bg-[radial-gradient(70%_130%_at_50%_100%,rgba(255,120,23,0.45),transparent_72%)]" />
-          <div className="pointer-events-auto absolute inset-x-0 bottom-0 flex h-full items-end gap-2 px-4">
-            {[26, 54, 38, 72, 48, 88, 60, 96, 66, 82, 44, 64, 34, 58, 30, 70, 40].map((h, i) => (
-              <div key={i} className="anim-grow hero-bar flex-1 bg-[linear-gradient(to_top,rgba(255,120,23,0.6),transparent)]"
-                style={{ height: `${h}%`, animationDelay: `${560 + i * 45}ms` }} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------- the problem */}
-      <section className="mx-auto max-w-[900px] px-8 py-28 text-center">
-        <Reveal>
-          <Eyebrow>The problem</Eyebrow>
-          <MaskedHeading className="display mx-auto mt-6 max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['A position without its', 'counterparty is half a record.']} />
-          <p className="soft mx-auto mt-6 max-w-2xl text-base leading-relaxed">
-            Most desks run execution and relationship as separate stacks. State diverges, the two
-            disagree, and the answer to “why was that withdrawal approved” exists in neither.
-            Reconciliation becomes a job somebody does, instead of a thing the system makes
-            unnecessary.
-          </p>
-        </Reveal>
-      </section>
-
-      {/* ------------------------------------------------------------- stats
-          Every figure here is true of the platform, checkable in the codebase. A
-          marketing number that cannot be verified is the one that gets quoted back. */}
-      <section className="border-y border-black/10">
-        <Reveal>
-          <div className="mx-auto grid max-w-[1100px] grid-cols-2 divide-x divide-black/10 px-4 md:grid-cols-4">
-            <Stat value={101} label="Instruments" />
-            <Stat value={69} label="Crypto pairs" />
-            <Stat value={22} label="ETFs" />
-            <Stat value={168} label="Currencies" />
-          </div>
-        </Reveal>
-      </section>
-
-      {/* ------------------------------------------------------- charting preview
-          The panteraai.co.uk "Simulation Live" chart, trimmed to just the graph. Dark
-          "stage" ground like the other dark sections, so the terminal card doesn't sit on
-          the light canvas it was designed to contrast against. */}
-      <section className="stage border-y border-white/10">
-        <div className="mx-auto max-w-[1100px] px-8 py-20">
-          <Eyebrow>Charting</Eyebrow>
-          <h2 className="display mt-6 max-w-2xl text-[28px] text-vellum sm:text-[34px]">
-            The shape of the real thing.
-          </h2>
-          <div className="mt-8">
-            <SimTerminal />
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------- the auto trader
-          Every claim here is behaviour of the engine in src/server.ts and src/autotrader.ts:
-          three strategies, real orders on the book, risk per trade against the stop, stops
-          and targets attached, the switch and the kill switch. No performance figure and no
-          promise of profit: a record is a record, and the note says so. */}
-      <section id="autotrader" className="stage scroll-mt-20 border-b border-white/10">
-        <div className="mx-auto max-w-[1100px] px-8 py-24">
-          <Reveal>
-            <Eyebrow>Auto trading algorithm // developed in-house</Eyebrow>
-            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
-              lines={['Switch it on.', 'The algorithm does the rest.']} />
-            <p className="mt-6 max-w-2xl text-base leading-relaxed text-mist">
-              Our own auto trader reads every instrument every ten seconds, places a real order on
-              your account when a setup appears, sizes it against your risk, attaches its stop and
-              target, and leaves when its rules say so — around the clock, whether or not you are
-              looking. You keep the switch.
+      {/* ------------------------------------------------------------ the hero */}
+      <section id="top" className="lp-hero relative overflow-hidden">
+        <div className="lp-wrap relative z-10 flex min-h-[520px] flex-col justify-center py-12">
+          <div className="max-w-[640px]">
+            <div className="anim-rise" style={{ animationDelay: '60ms' }}><Eyebrow>Powered by algorithmic execution</Eyebrow></div>
+            <h1 className="anim-rise mt-4 text-[44px] leading-[1.05] font-bold tracking-[-0.02em] sm:text-[58px]" style={{ animationDelay: '160ms' }}>
+              <span className="block text-white">Auto Trading</span>
+              <span className="block text-[color:var(--lp-ember)]">for Real Opportunities</span>
+            </h1>
+            <p className="anim-rise mt-5 max-w-[560px] text-[18px] leading-[1.5] text-[color:var(--lp-soft)]" style={{ animationDelay: '260ms' }}>
+              Automated strategies. Diversified portfolios. Global markets.<br className="hidden sm:inline" /> All in one secure platform.
             </p>
-          </Reveal>
-
-          <div className="mt-12 grid gap-[10px] md:grid-cols-3">
-            {[
-              ['Grid', 'Buys a set step below the recent average and sells a step above, taking each level back to the average. Patient by design: it waits for the price to come back.'],
-              ['Mean reversion', 'Fades a stretch. When price runs more than one and a half standard deviations from its average, it takes the other side and exits at the average.'],
-              ['Trend follower', 'A moving-average crossover: long while the fast average sits above the slow one, short while it sits below, out when they cross back.'],
-            ].map(([title, body], i) => (
-              <Reveal key={title} delay={i * 80}>
-                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-mono text-xs text-ember-ink">{String(i + 1).padStart(2, '0')}</span>
-                    <h3 className="display text-[22px] text-vellum">{title}</h3>
-                  </div>
-                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <div className="mt-[10px] grid gap-[10px] md:grid-cols-2">
-            {[
-              ['Risk before anything else', 'One percent of the bot\'s equity per trade by default, measured against the stop. Every entry carries its stop and target from the first fill, a loser is cut at half its risk, and the day limits halt new entries when they are reached.'],
-              ['Your hand stays on the switch', 'Pause one strategy, change what it may deploy, or switch the trader off; open positions keep their stops and targets. The kill switch closes everything, cancels everything and stops. Every use of it is on your record.'],
-            ].map(([title, body], i) => (
-              <Reveal key={title} delay={240 + i * 80}>
-                <div className="h-full border border-white/10 p-8">
-                  <h3 className="display text-[22px] text-vellum">{title}</h3>
-                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <Reveal delay={400}>
-            <div className="mt-10 flex flex-wrap items-center justify-between gap-6">
-              <p className="max-w-3xl font-mono text-xs leading-relaxed text-mist">
-                <span className="text-ember-ink">NOTE //</span> a rules-based engine, not a promise. It can
-                lose, it can lose several times in a row, and a record of past results is no guide to the
-                next one. Read the risk warning before you switch it on.
-              </p>
-              <button onClick={onRegister} className="btn-fill font-mono">Open an account</button>
+            <div className="anim-rise mt-9 flex flex-wrap gap-4" style={{ animationDelay: '360ms' }}>
+              <button onClick={onRegister} className="lp-btn lp-btn-fill lp-btn-lg">Open Account <ArrowRight size={18} strokeWidth={2.2} aria-hidden /></button>
+              <button onClick={() => go('autotrader')} className="lp-btn lp-btn-line lp-btn-lg">
+                <span className="grid h-[26px] w-[26px] place-items-center rounded-full bg-[color:var(--lp-ember)]"><Play size={12} fill="#0b0b0e" stroke="none" aria-hidden /></span>
+                See How It Works
+              </button>
             </div>
-          </Reveal>
+          </div>
         </div>
-      </section>
 
-      {/* -------------------------------------------------- the other services, numbered */}
-      <section id="platform" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 pt-24 pb-28">
-        <Reveal>
-          <Eyebrow>Our services</Eyebrow>
-          <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['Everything else the desk', 'does for you.']} />
-        </Reveal>
-
-        <div className="mt-14 divide-y divide-black/10 border-y border-black/10">
+        {/* Four true facts floating over the globe, as on the mockup. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-10 hidden lg:block">
           {[
-            ['01', 'The trading terminal.',
-              'Live charts with drawing tools and indicators, every order type — market, limit, stop, stop-limit, trailing — with take-profit and stop-loss attached, and position sizing against the risk you set.'],
-            ['02', 'Offerings.',
-              'A shelf of fixed-return offerings, each with its rate, term, minimum and allocation shown up front. Subscribe through a window, accrue daily, and settle at maturity.'],
-            ['03', 'Portfolios and staking.',
-              'Managed portfolios that accrue interest every day, and staking products on ETH, BTC, SOL and the stablecoins — flexible, or locked for a higher rate.'],
-            ['04', 'Wallets and currencies.',
-              'Balances in 168 currencies and crypto wallets side by side, with exchange between them at the desk\'s rate, and a connected MetaMask read in your own browser.'],
-            ['05', 'The desk behind it.',
-              'A named team on your account: support from the Support page, document review for verification, and a weekly update written by Pantera GP Research.'],
-          ].map(([n, title, body], i) => (
-            <Reveal key={n} delay={i * 90}>
-              <div className="row-rule grid gap-5 py-10 transition-colors duration-300 hover:bg-black/[0.03] md:grid-cols-[80px_1fr] md:gap-12">
-                <span className="font-mono text-sm text-ember-ink">{n}</span>
-                <div>
-                  <h3 className="display flex items-center gap-3 text-[26px] sm:text-[32px]">
-                    {title}
-                    <span className="row-arrow font-mono text-lg text-ember-ink" aria-hidden>→</span>
-                  </h3>
-                  <p className="soft mt-4 max-w-2xl text-base leading-relaxed">{body}</p>
-                </div>
+            { Icon: BarChart3, t: 'Market Scanning', d: `${instruments}+ instruments read every ten seconds`, x: '45%', y: '10%', delay: 0 },
+            { Icon: ShieldCheck, t: 'Risk Controls', d: 'Stops, targets and sizing on every trade', x: '76.5%', y: '22%', delay: 1.2 },
+            { Icon: Settings2, t: 'Automated Strategies', d: 'Grid, mean reversion and trend following', x: '47%', y: '60%', delay: 0.6 },
+            { Icon: Globe2, t: 'Global Access', d: 'Crypto, ETFs, Forex, Metals, IPOs', x: '77.5%', y: '61%', delay: 1.8 },
+          ].map(({ Icon, t, d, x, y, delay }) => (
+            <div key={t} className="lp-float absolute" style={{ left: x, top: y, animationDelay: `${delay}s` }}>
+              <Icon size={30} strokeWidth={2.2} className="shrink-0 text-[color:var(--lp-ember)]" />
+              <div>
+                <p className="text-[15px] font-semibold text-white">{t}</p>
+                <p className="mt-0.5 max-w-[190px] text-[13px] leading-snug text-[color:var(--lp-soft)]">{d}</p>
               </div>
-            </Reveal>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* --------------------------------------------------------- the engine
-          Every claim in this section is behaviour that exists: see settle() and
-          startTicker() in src/server.ts. It describes order automation, not a
-          strategy engine; the auto trader has its own section above. */}
-      <section id="engine" className="stage scroll-mt-20 border-t border-white/10">
-        <div className="mx-auto max-w-[1100px] px-8 py-24">
+      {/* ------------------------------------------------------- the price strip */}
+      <PriceStrip quotes={ticker?.quotes ?? []} />
+
+      {/* ------------------------------------------------------ the auto trader */}
+      <section id="autotrader" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap">
           <Reveal>
-            <Eyebrow>The engine</Eyebrow>
-            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
-              lines={['Your orders keep working', 'after you close the tab.']} />
-            <p className="mt-6 max-w-2xl text-base leading-relaxed text-mist">
-              Resting orders live on the server, not in your browser. A settlement pass prices
-              every instrument on each tick and acts the moment a level trades — whether or not
-              anyone is connected.
-            </p>
+            <div className="flex flex-wrap items-end justify-between gap-6">
+              <div className="max-w-[720px]">
+                <Eyebrow>Live auto trader</Eyebrow>
+                <h2 className="lp-h2 mt-2">Running. Finding Opportunities.</h2>
+                <p className="lp-lead mt-2">Our algorithms read the markets and execute trades automatically, based on live prices and predefined strategies.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <span className={`lp-status ${show?.on ? 'is-on' : ''}`}>Auto trader: {show?.configured ? (show.on ? 'running' : 'paused') : 'offline'}</span>
+                <button onClick={onSignIn} className="lp-btn lp-btn-outline">View Auto Trader <ArrowRight size={17} aria-hidden /></button>
+              </div>
+            </div>
           </Reveal>
+          <AutoPanel show={show} />
+        </div>
+      </section>
 
-          <div className="mt-12 grid gap-[10px] md:grid-cols-2">
-            {[
-              ['Limit and stop', 'Set the price you want. The engine watches every tick and fills when the market reaches it — no manual monitoring, no missed level while you were away.'],
-              ['Stop-limit', 'Two conditions, one order: the stop arms it, the limit caps what you will pay. It fills only if both hold, so a gap does not fill you at any price.'],
-              ['Trailing stop', 'The stop ratchets behind the price as it moves your way and never loosens. Profit follows the move up; the exit stays where it was if the move reverses.'],
-              ['Attached exits', 'Take-profit and stop-loss ride with the position from the moment it opens. Whichever trades first closes it, so a position is never left unprotected.'],
-            ].map(([title, body], i) => (
-              <Reveal key={title} delay={i * 80}>
-                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-mono text-xs text-ember-ink">{String(i + 1).padStart(2, '0')}</span>
-                    <h3 className="display text-[22px] text-vellum">{title}</h3>
-                  </div>
-                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <Reveal delay={120}>
-            <div className="mt-[10px] border border-white/10 p-8">
-              <h3 className="display text-[22px] text-vellum">Sized against your risk, not your nerve</h3>
-              <p className="mt-4 max-w-3xl text-base leading-relaxed text-mist">
-                Give the ticket a stop and the percentage of the balance you are willing to lose,
-                and it works out the position size for you — capped by your available margin, and
-                rounded down so it never overshoots. The arithmetic is done before the order
-                exists rather than after the loss does.
+      {/* ------------------------------------------------------- the ecosystem */}
+      <section id="platform" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap">
+          <Reveal>
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-end">
+              <div>
+                <Eyebrow>A complete investment ecosystem</Eyebrow>
+                <h2 className="lp-h2 mt-2">More Opportunities. One Platform.</h2>
+              </div>
+              <p className="lp-lead max-w-[560px] lg:justify-self-end">
+                From automated trading to diversified portfolios, staking rewards and fixed-return offerings — Pantera GP gives
+                you the tools to take control of your financial future.
               </p>
             </div>
           </Reveal>
-
-          <Reveal delay={160}>
-            <p className="mt-8 max-w-3xl font-mono text-xs leading-relaxed text-mist">
-              <span className="text-ember-ink">NOTE //</span> this automates the orders you place. It
-              is not a strategy engine and does not trade on your behalf — nothing here opens a
-              position you did not ask for.
-            </p>
-          </Reveal>
+          <div className="mt-7 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              { id: 'autotrader-card', Icon: Brain, t: 'Auto Trader', d: 'Rules-based strategies that read markets and execute trades automatically.', art: 'line' as const, to: () => go('autotrader') },
+              { id: 'portfolios', Icon: Layers, t: 'Portfolios', d: 'Flexible investment solutions for any goal.', art: 'bars' as const, to: onRegister },
+              { id: 'staking', Icon: Database, t: 'Staking', d: 'Earn rewards on your digital assets.', art: 'line2' as const, to: onRegister },
+              { id: 'ipo-card', Icon: Rocket, t: 'IPO Opportunities', d: 'Fixed-return offerings timed to the year’s listings.', art: 'bars2' as const, to: () => go('ipo') },
+            ]).map((c, i) => (
+              <Reveal key={c.t} delay={i * 70}>
+                <article id={c.id} className="lp-card lp-eco scroll-mt-[90px]">
+                  <EcoArt kind={c.art} />
+                  <c.Icon size={38} strokeWidth={1.9} className="relative text-[color:var(--lp-ember)]" />
+                  <h3 className="relative mt-4 text-[21px] font-semibold text-white">{c.t}</h3>
+                  <p className="relative mt-1.5 max-w-[230px] text-[15px] leading-[1.45] text-[color:var(--lp-soft)]">{c.d}</p>
+                  <button onClick={c.to} className="lp-pill relative mt-auto">Learn more <ArrowRight size={16} aria-hidden /></button>
+                </article>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ------------------------------------------------------------ audiences */}
-      <section id="audiences" className="scroll-mt-20 border-t border-black/10 bg-black/[0.02]">
-        <div className="mx-auto max-w-[1100px] px-8 py-24">
+      {/* --------------------------------------------------------- the metrics */}
+      <section id="about" className="lp-section scroll-mt-[70px]">
+        <div className="lp-wrap grid gap-8 lg:grid-cols-[1fr_2fr] lg:items-center">
           <Reveal>
-            <Eyebrow>Who it is for</Eyebrow>
-            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
-              lines={['Three jobs, one screen each.']} />
+            <Eyebrow>Platform metrics</Eyebrow>
+            <h2 className="lp-h2 mt-2">Built for<br />Your Success.</h2>
+            <p className="lp-lead mt-2 max-w-[440px]">Advanced technology, live market data and rules-based strategies working for you.</p>
+            <a href="/contact" className="lp-btn lp-btn-fill mt-5 inline-flex">Why Pantera GP <ArrowRight size={17} aria-hidden /></a>
           </Reveal>
-          <div className="mt-12 grid gap-[10px] md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-[14px] lg:grid-cols-4">
             {[
-              ['Traders', 'A terminal with live charts, drawing tools, indicators and every order type, plus their own balances, wallets, portfolios and documents in the same place they trade.'],
-              ['The desk', 'Sales and support open one client record and see holdings, open positions, funding requests, tickets and the whole timeline — without a second system to reconcile against.'],
-              ['Compliance', 'KYC review with document uploads, withdrawal thresholds that flag automatically, and an append-only audit log that answers who changed what, and when.'],
-            ].map(([title, body], i) => (
-              <Reveal key={title} delay={i * 90}>
-                <div className="h-full border border-black/10 bg-[color:var(--canvas)] p-8 transition-colors duration-300 hover:border-ember">
-                  <h3 className="display text-[24px]">{title}</h3>
-                  <p className="soft mt-4 text-base leading-relaxed">{body}</p>
+              [`${instruments}+`, 'Instruments', 'Crypto, ETFs, Forex, Metals'],
+              ['24/7', 'Always Running', 'Strategies and orders work around the clock'],
+              ['3', 'Trading Strategies', 'Grid, mean reversion and trend following'],
+              ['100%', 'Audited Records', 'Every change written to an append-only log'],
+            ].map(([v, t, d], i) => (
+              <Reveal key={t} delay={i * 70}>
+                <div className="lp-card flex h-full flex-col items-center px-4 py-7 text-center">
+                  <p className="text-[38px] leading-none font-bold text-[color:var(--lp-ember)]">{v}</p>
+                  <p className="mt-3 text-[17.5px] font-semibold text-white">{t}</p>
+                  <p className="mt-2 text-[14.5px] leading-snug text-[color:var(--lp-soft)]">{d}</p>
                 </div>
               </Reveal>
             ))}
@@ -675,184 +369,323 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
         </div>
       </section>
 
-      {/* ----------------------------------------------------------- how it works */}
-      <section id="how" className="mx-auto max-w-[1100px] scroll-mt-20 px-8 py-24">
-        <Reveal>
-          <Eyebrow>How it works</Eyebrow>
-          <MaskedHeading className="display mt-6 max-w-3xl text-[34px] sm:text-[44px]"
-            lines={['From sign-up to first fill,', 'in about a minute.']} />
-        </Reveal>
-        <div className="mt-12 grid gap-10 md:grid-cols-3">
+      {/* ------------------------------------------------------------ the sectors
+          Generic sectors, as the coding pack requires: no company names, no return
+          figures, an illustrative label and an inquiry action rather than a purchase. */}
+      <section id="ipo" className="lp-section lp-ipo scroll-mt-[70px]">
+        <div className="lp-wrap">
+          <Reveal>
+            <div className="flex flex-wrap items-end justify-between gap-6">
+              <div className="max-w-[760px]">
+                <Eyebrow>Exclusive IPO opportunities</Eyebrow>
+                <h2 className="lp-h2 mt-2">Access Tomorrow’s Leaders Today.</h2>
+                <p className="lp-lead mt-2">
+                  Fixed-return offerings timed to the year’s most watched listings, across the sectors shaping the next decade.
+                </p>
+              </div>
+              <button onClick={onRegister} className="lp-btn lp-btn-outline">View IPO Opportunities <ArrowRight size={17} aria-hidden /></button>
+            </div>
+          </Reveal>
+          <div className="mt-7 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              { Icon: Box, t: 'Technology Sector', d: 'AI infrastructure, chips and cloud platforms.' },
+              { Icon: Leaf, t: 'Healthcare Sector', d: 'Next-generation medical technologies.' },
+              { Icon: ChartNoAxesCombined, t: 'Financial Services', d: 'Modern financial infrastructure and global payment solutions.' },
+              { Icon: Zap, t: 'Energy Sector', d: 'Clean energy and sustainable technologies.' },
+            ]).map(({ Icon, t, d }, i) => (
+              <Reveal key={t} delay={i * 70}>
+                <article className="lp-card relative flex h-full flex-col px-[20px] pt-[18px] pb-[18px]">
+                  <span className="lp-state absolute top-[14px] right-[14px]">ILLUSTRATIVE</span>
+                  <div className="flex items-start gap-4">
+                    <Icon size={40} strokeWidth={1.6} className="mt-1 shrink-0 text-[color:var(--lp-ember)]" />
+                    <div className="min-w-0 pt-7">
+                      <h3 className="text-[17px] font-semibold text-white">{t}</h3>
+                      <p className="mt-1 text-[14px] leading-snug text-[color:var(--lp-soft)]">{d}</p>
+                    </div>
+                  </div>
+                  <div className="mt-auto flex items-center justify-between gap-4 pt-5">
+                    <button onClick={onRegister} className="text-[15px] font-medium text-white transition-colors hover:text-[color:var(--lp-ember)]">Explore Opportunities</button>
+                    <button onClick={onRegister} aria-label={`Explore ${t} opportunities`} className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full bg-[color:var(--lp-ember)] text-[#0b0b0e] transition-transform hover:scale-105">
+                      <ArrowRight size={18} strokeWidth={2.4} aria-hidden />
+                    </button>
+                  </div>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+          <p className="mt-4 text-[12.5px] text-[color:var(--lp-soft)]">
+            Illustrative sectors; availability subject to verification. Offerings carry risk, including the loss of what you put in.
+            Read the <a href="/risk" className="underline underline-offset-2 hover:text-white">risk warning</a> before you subscribe.
+          </p>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ the close */}
+      <section className="lp-cta relative overflow-hidden">
+        <div className="lp-wrap relative z-10 py-14">
+          <Reveal>
+            <p className="text-[16px] text-white/85">Join Pantera GP</p>
+            <h2 className="lp-h2 mt-1">Your Gateway to Global Markets</h2>
+            <p className="lp-lead mt-2 max-w-[640px]">
+              Create your account today and start exploring automated trading, diversified portfolios, staking and fixed-return
+              offerings.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-4">
+              <button onClick={onRegister} className="lp-btn lp-btn-fill">Open Account <ArrowRight size={17} aria-hidden /></button>
+              <button onClick={onSignIn} className="lp-btn lp-btn-outline">View Platform <ArrowRight size={17} aria-hidden /></button>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* The arrow riding the right edge: down to the footer, then back up. */}
+      <button onClick={() => glide(atFoot ? 'top' : 'footer')} aria-label={atFoot ? 'Back to the top' : 'Go to the footer'}
+        className={`to-footer anim-rise fixed right-6 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center gap-4 md:flex ${atFoot ? 'to-top' : ''}`}
+        style={{ animationDelay: '900ms' }}>
+        <span className="to-footer-label font-mono text-[11px] tracking-[0.22em] text-white/60 uppercase">{atFoot ? 'Top' : 'Footer'}</span>
+        <span className="to-footer-ring flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-[color:var(--lp-ember)]">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {atFoot ? <path d="M8 14V2M3 7l5-5 5 5" /> : <path d="M8 2v12M3 9l5 5 5-5" />}
+          </svg>
+        </span>
+      </button>
+
+      {/* ----------------------------------------------------------- the footer */}
+      <footer id="footer" className="lp-footer scroll-mt-0">
+        <div className="lp-wrap grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div>
+            {footer.logo_url ? <img src={footer.logo_url} alt="Pantera GP" className="h-8 w-auto" /> : <Wordmark />}
+            <p className="mt-4 max-w-xs text-[14px] leading-relaxed text-[color:var(--lp-soft)]">
+              {footer.text?.trim() || 'A trading desk and a client system, built as one thing. Orders rest with the engine rather than in an open tab, and every fill, decision and document is written down against the account it belongs to.'}
+            </p>
+          </div>
           {[
-            ['Open an account', 'Name, email, password. You land in the terminal signed in, on a paper account, with nothing to configure first.'],
-            ['Fund and size a position', 'Balances arrive in any of 168 currencies, or a crypto wallet. Set a stop and the ticket sizes the position against your risk.'],
-            ['Place the order', 'Market, limit, stop, stop-limit or trailing. Resting orders are filled by a settlement engine that runs whether or not your screen is open.'],
-          ].map(([title, body], i) => (
-            <Reveal key={title} delay={i * 90}>
-              <div className="border-t border-ember pt-6">
-                <span className="font-mono text-xs text-ember-ink">STEP {String(i + 1).padStart(2, '0')}</span>
-                <h3 className="display mt-3 text-[24px]">{title}</h3>
-                <p className="soft mt-3 text-base leading-relaxed">{body}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      {/* -------------------------------------------------------------- security */}
-      <section id="security" className="stage scroll-mt-20">
-        <div className="mx-auto max-w-[1100px] px-8 py-24">
-          <Reveal>
-            <Eyebrow>Security &amp; audit</Eyebrow>
-            <MaskedHeading className="display mt-6 max-w-3xl text-[34px] text-vellum sm:text-[44px]"
-              lines={['The database keeps', 'the receipts.']} />
-          </Reveal>
-          <div className="mt-12 grid gap-[10px] md:grid-cols-2">
-            {[
-              ['Append-only audit log', 'A trigger on every mutable table writes each insert, update and delete to a log that cannot be edited or deleted — enforced in the database, not in application code that could be bypassed.'],
-              ['Role-based access', 'Sales, support, compliance and admin each see exactly what their role permits. Roles are read from the row on every request, so revoking access takes effect immediately rather than when a token expires.'],
-              ['Passwords never in the clear', 'Hashed with scrypt and a per-account salt. The audit log strips the hash from both sides of every diff, so credentials never reach it.'],
-              ['Isolated by construction', 'Client funds, positions and documents are separated at the database level rather than by application code that could be bypassed. Each role reaches only what its permission allows.'],
-            ].map(([title, body], i) => (
-              <Reveal key={title} delay={i * 80}>
-                <div className="h-full border border-white/10 p-8 transition-colors duration-300 hover:border-ember">
-                  <h3 className="display text-[22px] text-vellum">{title}</h3>
-                  <p className="mt-4 text-base leading-relaxed text-mist">{body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------- closing */}
-      <section className="stage relative overflow-hidden border-t border-white/10">
-        <Reveal>
-          <div className="mx-auto max-w-[860px] px-8 py-28 text-center">
-            <Eyebrow>Paper by default</Eyebrow>
-            <h2 className="display mt-6 text-[34px] text-vellum sm:text-[44px]">
-              Open an account and place your first order
-            </h2>
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-mist">
-              Name, email, password, and you are in the terminal — charts, the full order
-              book of instruments, and a client record that starts as yours from the first
-              login.
-            </p>
-            <div className="mt-10 flex flex-wrap justify-center gap-3">
-              <button onClick={onRegister} className="btn-line font-mono">Open an account</button>
-              <button onClick={onSignIn} className="btn-fill font-mono">Sign in</button>
-            </div>
-          </div>
-        </Reveal>
-
-        {/* Footer: columns of real destinations only. Nothing here links to a page that
-            does not exist — a dead "Careers" link is worse than no link. */}
-        <div id="footer" className="scroll-mt-0 border-t border-white/10">
-          <div className="mx-auto grid max-w-[1100px] gap-10 px-8 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-            <div>
-              <div className="flex items-center gap-2">
-                {footer.logo_url
-                  ? <img src={footer.logo_url} alt="Pantera GP" className="h-8 w-auto" />
-                  : <>
-                    <span className="display text-lg text-vellum">Pantera GP</span>
-                    <span className="font-mono text-xs text-ember-ink">///</span>
-                  </>}
-              </div>
-              <p className="mt-4 max-w-xs text-sm leading-relaxed text-mist">
-                {footer.text?.trim() || 'A trading desk and a client system, built as one thing. Orders rest with the engine rather than in an open tab, and every fill, decision and document is written down against the account it belongs to.'}
-              </p>
-
-              {/* Two real figures, not a row of numbers chosen to look substantial. The
-                  instrument count is the list this page is built from; the order types are
-                  the OrderType union in src/trading.ts — market, limit, stop, stop-limit
-                  and trailing stop. Take profit is a field on an order, not a sixth type. */}
-              <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3">
-                {[[String(MARKETS.length), 'instruments'], ['5', 'order types']].map(([n, label]) => (
-                  <div key={label}>
-                    <dt className="font-mono text-lg text-vellum tabular-nums">{n}</dt>
-                    <dd className="mt-0.5 font-mono text-[10px] tracking-[0.16em] text-mist uppercase">{label}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            {[
-              ['Platform', [['Auto trader', 'autotrader'], ['Services', 'platform'], ['The engine', 'engine'], ['How it works', 'how']]],
-              ['Trust', [['Security & audit', 'security'], ['Insights', '/blog'], ['Back to top', 'top']]],
-              [footer.column_title?.trim() || 'Legal', footer.links?.length
-                ? footer.links.map((l) => [l.label, l.href])
-                : [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
-            ].map(([heading, links]) => (
-              <div key={heading as string}>
-                <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{heading as string}</h4>
-                <ul className="mt-4 space-y-2">
-                  {(links as [string, string][]).map(([label, id]) => (
-                    <li key={id}>
-                      {/^(\/|https?:|mailto:)/.test(id)
-                        ? <a href={id} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</a>
-                        : <button onClick={() => go(id)} className="text-sm text-mist transition-colors hover:text-ember-ink">{label}</button>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            <div>
-              <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">Account</h4>
+            ['Platform', [['Auto Trader', 'autotrader'], ['Portfolios & Staking', 'platform'], ['IPO Opportunities', 'ipo'], ['About', 'about']]],
+            ['Company', [['Insights', '/blog'], ['Contact', '/contact'], ['Back to top', 'top']]],
+            [footer.column_title?.trim() || 'Legal', footer.links?.length
+              ? footer.links.map((l) => [l.label, l.href])
+              : [['Terms of Service', '/terms'], ['Privacy Policy', '/privacy'], ['Risk warning', '/risk'], ['Contact', '/contact']]],
+          ].map(([heading, links]) => (
+            <div key={heading as string}>
+              <h4 className="text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{heading as string}</h4>
               <ul className="mt-4 space-y-2">
-                <li><button onClick={onRegister} className="text-sm text-mist transition-colors hover:text-ember-ink">Open an account</button></li>
-                <li><button onClick={onSignIn} className="text-sm text-mist transition-colors hover:text-ember-ink">Sign in</button></li>
+                {(links as [string, string][]).map(([label, id]) => (
+                  <li key={id + label}>
+                    {/^(\/|https?:|mailto:)/.test(id)
+                      ? <a href={id} className="text-[14px] text-[color:var(--lp-soft)] transition-colors hover:text-[color:var(--lp-ember)]">{label}</a>
+                      : <button onClick={() => go(id)} className="text-[14px] text-[color:var(--lp-soft)] transition-colors hover:text-[color:var(--lp-ember)]">{label}</button>}
+                  </li>
+                ))}
               </ul>
-              <p className="mt-4 max-w-[22ch] text-xs leading-relaxed text-mist/80">
-                Name, email and a password. You land in the terminal signed in, with nothing
-                to configure first.
-              </p>
             </div>
-          </div>
+          ))}
+        </div>
 
-          {/* What the engine actually takes, listed once, still enough to be read. */}
-          <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
-            <h4 className="font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
-            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-              {capabilities.map((c) => (
-                <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-mist">{c}</li>
-              ))}
+        <div className="lp-wrap border-t border-white/[0.07] py-6">
+          <h4 className="text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{footer.capabilities_title?.trim() || 'What the engine takes'}</h4>
+          <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            {capabilities.map((c) => <li key={c} className="font-mono text-[11px] tracking-[0.12em] text-[color:var(--lp-soft)]">{c}</li>)}
+          </ul>
+        </div>
+
+        {!!footer.marks?.length && (
+          <div className="lp-wrap border-t border-white/[0.07] py-6">
+            {!!footer.marks_title?.trim() && <h4 className="mb-5 text-[12px] font-semibold tracking-[0.16em] text-white uppercase">{footer.marks_title.trim()}</h4>}
+            <ul className="flex flex-wrap items-center gap-x-10 gap-y-5">
+              {footer.marks.map((m) => {
+                const img = <img src={m.url} alt={m.name} loading="lazy" className="h-7 w-auto opacity-75 transition-opacity duration-200 hover:opacity-100" />;
+                return <li key={m.id}>{m.href ? <a href={m.href} rel={/^https?:/.test(m.href) ? 'noopener' : undefined} title={m.name}>{img}</a> : img}</li>;
+              })}
             </ul>
           </div>
+        )}
 
-          {/* The row of company marks the desk put up from Settings; nothing when there are none. */}
-          {!!footer.marks?.length && (
-            <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
-              {!!footer.marks_title?.trim() && (
-                <h4 className="mb-5 font-mono text-[11px] tracking-[0.16em] text-vellum uppercase">{footer.marks_title.trim()}</h4>
-              )}
-              <ul className="flex flex-wrap items-center gap-x-10 gap-y-5">
-                {footer.marks.map((m) => {
-                  const img = <img src={m.url} alt={m.name} loading="lazy" className="h-7 w-auto opacity-75 transition-opacity duration-200 hover:opacity-100" />;
-                  return (
-                    <li key={m.id}>
-                      {m.href ? <a href={m.href} rel={/^https?:/.test(m.href) ? 'noopener' : undefined} title={m.name}>{img}</a> : img}
-                    </li>
-                  );
-                })}
-              </ul>
+        {!!footer.notice?.trim() && (
+          <div className="lp-wrap border-t border-white/[0.07] py-6">
+            <div className="max-w-[96ch] space-y-3 text-[12.5px] leading-relaxed text-[color:var(--lp-soft)]">
+              {noticeBlocks(footer.notice).map((b, i) => (b.kind === 'ul'
+                ? <ul key={i} className="list-disc space-y-1 pl-5">{b.lines.map((l, k) => <li key={k}>{l}</li>)}</ul>
+                : <p key={i}>{b.lines.map((l, k) => <span key={k}>{k > 0 && <br />}{l}</span>)}</p>))}
             </div>
-          )}
-
-          {/* The notice the desk pasted from Settings, in its own shape; nothing when it is empty. */}
-          {!!footer.notice?.trim() && (
-            <div className="mx-auto max-w-[1100px] border-t border-white/10 px-8 py-6">
-              <div className="max-w-[96ch] space-y-3 text-xs leading-relaxed text-mist">
-                {noticeBlocks(footer.notice).map((b, i) => (b.kind === 'ul'
-                  ? <ul key={i} className="list-disc space-y-1 pl-5">{b.lines.map((l, k) => <li key={k}>{l}</li>)}</ul>
-                  : <p key={i}>{b.lines.map((l, k) => <span key={k}>{k > 0 && <br />}{l}</span>)}</p>))}
-              </div>
-            </div>
-          )}
-
-          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-8 py-6 font-mono text-[11px] text-mist/85">
-            <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
           </div>
+        )}
+
+        <div className="lp-wrap flex border-t border-white/[0.07] py-6 font-mono text-[11px] text-[color:var(--lp-soft)]">
+          <span className="ml-auto">{footer.line?.trim() || `© ${new Date().getFullYear()} Pantera GP`}</span>
         </div>
-      </section>
+      </footer>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ sections
+/** The strip of live prices under the hero, scrolled a card at a time by its arrows. */
+function PriceStrip({ quotes }: { quotes: Ticker['quotes'] }) {
+  const row = useRef<HTMLDivElement>(null);
+  const move = (dir: 1 | -1) => row.current?.scrollBy({ left: dir * 220, behavior: 'smooth' });
+  return (
+    <section className="lp-strip" aria-label="Live prices">
+      {/* The arrows sit in the side margins, as on the mockup, so the six cards take the full width. */}
+      <div className="lp-wrap relative py-[13px]">
+        <button onClick={() => move(-1)} aria-label="Earlier prices" className="lp-round lp-strip-arrow lp-strip-prev"><ArrowLeft size={18} aria-hidden /></button>
+        <div ref={row} className="lp-strip-row flex gap-[12px] overflow-x-auto">
+          {(quotes.length ? quotes : Array.from({ length: 6 }, () => null)).map((q, i) => (
+            <div key={q?.symbol ?? i} className="lp-tick">
+              {q ? <>
+                <Coin symbol={q.symbol} />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium tracking-[0.02em] text-[color:var(--lp-soft)]">{q.symbol}</p>
+                  <p className="text-[16px] font-semibold text-white tabular-nums">{price(q.price)}</p>
+                </div>
+                <div className="ml-auto flex flex-col items-end gap-0.5">
+                  <Spark values={q.spark} up={q.change_pct >= 0} />
+                  <span className={`text-[12.5px] font-medium tabular-nums ${q.change_pct >= 0 ? 'text-[color:var(--lp-up)]' : 'text-[color:var(--lp-down)]'}`}>
+                    {q.change_pct >= 0 ? '+' : ''}{q.change_pct.toFixed(2)}%
+                  </span>
+                </div>
+              </> : <span className="h-[38px] w-full animate-pulse rounded bg-white/5" />}
+            </div>
+          ))}
+        </div>
+        <button onClick={() => move(1)} aria-label="Later prices" className="lp-round lp-strip-arrow lp-strip-next"><ArrowRight size={18} aria-hidden /></button>
+      </div>
+      <p className="lp-wrap -mt-2 pb-2 text-right font-mono text-[10px] tracking-[0.14em] text-white/40 uppercase">Prices quoted on this platform · updated every five seconds</p>
+    </section>
+  );
+}
+
+/** The auto trader's live record on the desk's showcase account. */
+function AutoPanel({ show }: { show: Showcase | null }) {
+  const k = show?.kpis;
+  const none = !show?.configured || !k;
+  const dash = '—';
+  const curve = show?.curve ?? [];
+  const stat = (label: string, value: React.ReactNode, sub: React.ReactNode, tone = 'text-white') => (
+    <div className="lp-card px-[22px] py-[18px]">
+      <p className="lp-label">{label}</p>
+      <p className={`mt-2.5 text-[25px] leading-none font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className="mt-2.5 text-[13.5px] text-[color:var(--lp-soft)]">{sub}</p>
+    </div>
+  );
+  return (
+    <>
+      <div className="mt-6 grid gap-[10px] lg:grid-cols-[1fr_1fr_1fr_1.3fr]">
+        <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:col-span-3">
+          {stat('Bot equity', none ? dash : usd(k.equity), none ? 'no showcase account set' : k.return_pct === null ? 'since start' : `${k.return_pct >= 0 ? '+' : ''}${(k.return_pct * 100).toFixed(2)}% since start`)}
+          {stat('Today', none ? dash : signed(k.today_net), none ? dash : `${k.today_trades} closed · fees ${usd(k.today_fees)}`, none ? 'text-white' : k.today_net >= 0 ? 'text-[color:var(--lp-up)]' : 'text-[color:var(--lp-down)]')}
+          {stat('Win rate', none || k.win_rate === null ? dash : pct(k.win_rate), none ? dash : `${k.wins} of ${k.closed} closed`)}
+          {stat('Profit factor', none || k.profit_factor === null ? dash : k.profit_factor.toFixed(2), none ? dash : `avg win ${k.avg_win_r?.toFixed(1) ?? '0'}R · avg loss ${k.avg_loss_r?.toFixed(1) ?? '0'}R`)}
+          {stat('Max drawdown', none ? dash : k.max_drawdown ? `-${pct(k.max_drawdown, 1)}` : '0%', none ? dash : k.drawdown_at ? shortDay(k.drawdown_at) : 'no drawdown yet', none || !k.max_drawdown ? 'text-white' : 'text-[color:var(--lp-down)]')}
+          {stat('Open', none ? dash : String(k.open), none ? dash : `${signed(k.unrealised)} unrealised`, none || !k.open ? 'text-white' : 'text-[color:var(--lp-ember)]')}
+        </div>
+        <div className="lp-card flex min-h-[230px] flex-col px-[22px] pt-[18px] pb-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="lp-label">Bot equity{show?.since ? ` · since ${shortDay(show.since)}` : ''}</p>
+            {curve.length > 1 && <p className="font-mono text-[11.5px] text-[color:var(--lp-soft)] tabular-nums">{usd(curve[0]!.equity)} → {usd(curve[curve.length - 1]!.equity)}</p>}
+          </div>
+          <EquityChart curve={curve} />
+          <p className="mt-1 text-[12px] text-[color:var(--lp-soft)]">Realised plus unrealised, after commissions. Every point is a trade that closed.</p>
+        </div>
+      </div>
+
+      <div className="mt-[10px] grid gap-[10px] lg:grid-cols-[1.85fr_1fr]">
+        <div className="lp-card overflow-x-auto px-[22px] py-[18px]">
+          <p className="lp-title">Recent trades</p>
+          <table className="mt-3 w-full min-w-[560px] text-left">
+            <thead>
+              <tr className="lp-label">{['Time', 'Instrument', 'Side', 'Entry', 'Exit', 'P&L', 'Strategy'].map((h) => <th key={h} className="pb-2 font-medium">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {(show?.trades ?? []).map((t, i) => (
+                <tr key={i} className="border-t border-white/[0.06] text-[15px]">
+                  <td className="py-[9px] text-[color:var(--lp-soft)] tabular-nums">{clock(t.closed_at)}</td>
+                  <td className="font-semibold text-white">{t.symbol}</td>
+                  <td><span className={`lp-side ${t.side === 'long' ? 'is-long' : 'is-short'}`}>{t.side === 'long' ? 'LONG' : 'SHORT'}</span></td>
+                  <td className="text-[color:var(--lp-soft)] tabular-nums">{price(t.entry)}</td>
+                  <td className="text-[color:var(--lp-soft)] tabular-nums">{price(t.exit)}</td>
+                  <td className={`font-semibold tabular-nums ${t.net >= 0 ? 'text-[color:var(--lp-up)]' : 'text-[color:var(--lp-down)]'}`}>{signed(t.net)}</td>
+                  <td className="text-[color:var(--lp-soft)]">{t.strategy ?? '—'}</td>
+                </tr>
+              ))}
+              {!show?.trades?.length && <tr><td colSpan={7} className="border-t border-white/[0.06] py-6 text-[14px] text-[color:var(--lp-soft)]">No closed trades to show yet.</td></tr>}
+            </tbody>
+          </table>
+          <p className="mt-3 text-[11.5px] text-[color:var(--lp-soft)]">Live from the desk’s demo account, on prices this platform quotes.</p>
+        </div>
+        <div className="lp-card px-[22px] py-[18px]">
+          <p className="lp-title">Active strategies</p>
+          <p className="mt-2 text-[14px] text-[color:var(--lp-soft)]">Allocation is what each one may deploy.</p>
+          <ul className="mt-3 space-y-4">
+            {(show?.strategies ?? []).map((s) => (
+              <li key={s.name} className="flex items-center gap-4">
+                <span className={`h-[14px] w-[14px] shrink-0 rounded-full ${s.state === 'running' ? 'bg-[#5cc8b4]' : 'bg-white/35'}`} aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[16px] font-medium text-white">{s.name}</p>
+                  <p className="truncate text-[13.5px] text-[color:var(--lp-soft)]">{s.symbols.join(' · ')}</p>
+                </div>
+                <span className={`lp-state ${s.state === 'running' ? 'is-running' : ''}`}>{s.state === 'running' ? 'RUNNING' : 'PAUSED'}</span>
+              </li>
+            ))}
+            {!show?.strategies?.length && <li className="text-[14px] text-[color:var(--lp-soft)]">No strategies to show yet.</li>}
+          </ul>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** The showcase account's equity since its record began: an ember line over a glow, a dot per trade. */
+function EquityChart({ curve }: { curve: { at: string; equity: number }[] }) {
+  const W = 560, H = 150;
+  const geo = useMemo(() => {
+    if (curve.length < 2) return null;
+    const t0 = new Date(curve[0]!.at).getTime(), t1 = new Date(curve[curve.length - 1]!.at).getTime() || t0 + 1;
+    const vs = curve.map((p) => p.equity); const lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
+    const pts = curve.map((p) => ({ x: ((new Date(p.at).getTime() - t0) / Math.max(1, t1 - t0)) * W, y: H - 10 - ((p.equity - lo) / span) * (H - 24) }));
+    const ticks = [0, 1 / 3, 2 / 3, 1].map((f) => ({ x: f * W, label: shortDay(new Date(t0 + f * (t1 - t0))) }));
+    return { pts, ticks };
+  }, [curve]);
+  if (!geo) return <div className="grid flex-1 place-items-center text-[14px] text-[color:var(--lp-soft)]">The curve appears once trades close.</div>;
+  const line = geo.pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const dots = geo.pts.filter((_, i) => i % Math.max(1, Math.floor(geo.pts.length / 14)) === 0 || i === geo.pts.length - 1);
+  return (
+    <div className="mt-2 flex-1">
+      <svg viewBox={`0 0 ${W} ${H + 20}`} className="h-full w-full" preserveAspectRatio="none" aria-label="Bot equity over time">
+        <defs><linearGradient id="eq-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff7817" stopOpacity="0.35" /><stop offset="1" stopColor="#ff7817" stopOpacity="0" /></linearGradient></defs>
+        {[0.25, 0.5, 0.75].map((f) => <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="rgba(255,255,255,0.06)" />)}
+        <path d={`${line} L${W},${H} L0,${H} Z`} fill="url(#eq-fill)" />
+        <path d={line} fill="none" stroke="#ff7817" strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+        {dots.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2.6" fill="#ff7817" />)}
+        <circle cx={geo.pts[geo.pts.length - 1]!.x} cy={geo.pts[geo.pts.length - 1]!.y} r="4.5" fill="#ffb26b" />
+        {geo.ticks.map((t, i) => <text key={i} x={t.x} y={H + 16} fill="rgba(255,255,255,0.55)" fontSize="12" textAnchor={i === 0 ? 'start' : i === 3 ? 'end' : 'middle'}>{t.label}</text>)}
+      </svg>
+    </div>
+  );
+}
+
+/** The faint ember charts in the corner of each service card. */
+function EcoArt({ kind }: { kind: 'line' | 'bars' | 'line2' | 'bars2' }) {
+  const bars = (n: number) => Array.from({ length: n }, (_, i) => {
+    const h = 6 + Math.pow(i / (n - 1), 2.1) * 88;
+    return <rect key={i} x={30 + i * 22} y={110 - h} width="13" height={h} rx="1" fill="url(#eco-bar)" />;
+  });
+  return (
+    <svg viewBox="0 0 280 120" className="pointer-events-none absolute right-0 bottom-[38px] h-[104px] w-[90%]" aria-hidden>
+      <defs>
+        <linearGradient id="eco-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff7817" stopOpacity="0.95" /><stop offset="1" stopColor="#ff7817" stopOpacity="0.15" /></linearGradient>
+        <linearGradient id="eco-glow" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff7817" stopOpacity="0.3" /><stop offset="1" stopColor="#ff7817" stopOpacity="0" /></linearGradient>
+      </defs>
+      {kind === 'bars' && bars(11)}
+      {kind === 'bars2' && bars(12)}
+      {(kind === 'line' || kind === 'line2') && (() => {
+        const ys = kind === 'line' ? [108, 104, 106, 100, 102, 97, 99, 92, 95, 86, 80, 70, 56, 36, 18] : [110, 106, 108, 101, 97, 99, 90, 82, 92, 80, 70, 62, 48, 30, 8];
+        const d = ys.map((y, i) => `${i ? 'L' : 'M'}${(i / (ys.length - 1)) * 270},${y}`).join(' ');
+        return <>
+          <path d={`${d} L270,120 L0,120 Z`} fill="url(#eco-glow)" />
+          <path d={d} fill="none" stroke="#ff7817" strokeWidth="2" style={{ filter: 'drop-shadow(0 0 4px rgba(255,120,23,.8))' }} />
+          <circle cx="270" cy={ys[ys.length - 1]} r="3.5" fill="#ffb26b" />
+        </>;
+      })()}
+    </svg>
   );
 }
