@@ -477,7 +477,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
-          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-5xl"><SupportPanel /></div>)
+          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-[1300px]"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading
             ? <div className="mx-auto max-w-[1200px]"><PortfoliosPanel /></div>
             : <Denied />)

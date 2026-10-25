@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, ChartCandlestick, ChevronRight, CircleCheck, Headset, MessageCircle, MessagesSquare, Plus, Reply, Send,
+  ShieldCheck, User, Wallet as WalletIcon, Wrench,
+} from 'lucide-react';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { StatTile } from './x-shell.tsx';
 
 type Ticket = {
   id: string; subject: string; category: string; status: string; priority: string;
@@ -48,6 +53,20 @@ const Badge = ({ status }: { status: string }) =>
 
 // ------------------------------------------------------------------ client
 
+const CATEGORY_ICON: Record<string, typeof User> = {
+  account: User, funding: WalletIcon, trading: ChartCandlestick, kyc: ShieldCheck, technical: Wrench, other: MessageCircle,
+};
+
+/** The client's words for where a thread stands — whose turn it is, not the desk's status. */
+const CLIENT_STATUS: Record<string, { label: string; badge: string }> = {
+  open: { label: 'With us', badge: 'is-locked' },
+  pending: { label: 'Your reply', badge: 'is-warn' },
+  resolved: { label: 'Answered', badge: '' },
+  closed: { label: 'Closed', badge: 'is-muted' },
+};
+
+const VIEWS = [['all', 'All'], ['live', 'Open'], ['yours', 'Waiting on you'], ['done', 'Answered']] as const;
+
 /**
  * Support, as the client sees it.
  *
@@ -61,6 +80,7 @@ export function SupportPanel() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [about, setAbout] = useState<string>('other');
+  const [view, setView] = useState<(typeof VIEWS)[number][0]>('all');
 
   if (openId) {
     return <TicketThread id={openId} staff={false} onBack={() => { setOpenId(null); tickets.reload(); }} />;
@@ -70,154 +90,122 @@ export function SupportPanel() {
   const live = rows.filter((t) => t.status === 'open' || t.status === 'pending');
   const yours = rows.filter((t) => t.status === 'pending');
   const done = rows.filter((t) => t.status === 'resolved' || t.status === 'closed');
+  const shown = view === 'live' ? live : view === 'yours' ? yours : view === 'done' ? done : rows;
+  const count = { all: rows.length, live: live.length, yours: yours.length, done: done.length };
 
-  const raise = (category: string) => { setAbout(category); setAdding(true); };
+  const raise = (category: string) => { setAbout(category); setAdding(true); scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Support</PageTitle>
-        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : 'New ticket'}
+        <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />The desk answers in the thread</span>
+        <button className={`${btn} ml-auto inline-flex items-center gap-2`} onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : <><Plus size={16} aria-hidden />New ticket</>}
         </button>
       </div>
 
-      <Turn live={live.length} yours={yours.length} done={done.length} />
-
-      {adding && (
-        <NewTicket about={about} onDone={() => { setAdding(false); tickets.reload(); }} />
-      )}
-
-      {rows.length === 0 && !adding ? (
-        <div className={`${card} py-10 text-center`}>
-          <p className="text-sm font-medium text-obsidian dark:text-vellum">Nothing open</p>
-          <p className="mx-auto mt-2 max-w-md text-xs text-slate-ink">
-            Anything at all — a deposit that has not arrived, a document that will not
-            upload, a question about a rate. It reaches the desk straight away.
-          </p>
-        </div>
-      ) : (
-        <div className={`${card} space-y-3`}>
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="section-title">Your threads</h2>
-            <span className="ml-auto text-xs text-slate-ink">most recently answered first</span>
-          </div>
-
-          <ul className="space-y-2">
-            {rows.map((t) => (
-              <li key={t.id}>
-                {/* The one waiting on you is lifted out of the list rather than told apart
-                    by a status word: "pending" is the desk's word for it and means nothing
-                    to the person it is waiting on. */}
-                <button onClick={() => setOpenId(t.id)}
-                  className={`lift focus-ring block w-full rounded-lg p-4 text-left transition-colors ${
-                    t.status === 'pending'
-                      ? 'border border-ember/45 bg-ember/[0.06]'
-                      : 'border border-pebble bg-bone/50 hover:border-ember/60 dark:border-white/10 dark:bg-white/5'}`}>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[10px] tracking-wide uppercase ${
-                      t.status === 'pending'
-                        ? 'bg-ember/15 text-ember-ink'
-                        : 'bg-bone text-slate-ink dark:bg-white/5'}`} aria-hidden>
-                      {t.category.slice(0, 3)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">{t.subject}</span>
-                      <span className={`block text-xs text-slate-ink ${mono}`}>
-                        {t.messages} message{t.messages === 1 ? '' : 's'} · {when(t.last_message_at ?? t.created_at)}
-                      </span>
-                    </span>
-                    <span className="ml-auto flex items-center gap-3">
-                      {/* Whose turn it is, said in words. */}
-                      <span className={`hidden text-xs sm:inline ${
-                        t.status === 'pending' ? 'text-ember-ink' : 'text-slate-ink'}`}>
-                        {t.status === 'open' ? 'With us'
-                          : t.status === 'pending' ? 'Waiting on you'
-                          : ''}
-                      </span>
-                      <Badge status={t.status} />
-                    </span>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {!adding && <Shelf onPick={raise} />}
-    </div>
-  );
-}
-
-/**
- * Whose turn it is, as one ring.
- *
- * The three figures were a flat strip, which said what the numbers were and nothing about
- * how they relate. They are one quantity split two ways — the live threads, and which of
- * them the reader is holding up — so they are drawn that way: one ring, an ember arc for
- * yours and a grey one for ours. Answered sits beside it as a count, because it is a
- * different thing and does not belong in the same circle.
- */
-function Turn({ live, yours, done }: { live: number; yours: number; done: number }) {
-  const C = 163.36;                       // 2πr at r = 26
-  const mine = live - yours;
-  const share = live ? mine / live : 0;
-
-  return (
-    <div className={`${card} flex flex-wrap items-center gap-6`}>
-      <span className="relative h-[62px] w-[62px] shrink-0" aria-hidden>
-        <svg width="62" height="62" viewBox="0 0 62 62">
-          <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5"
-            className="stroke-slate-ink/20" />
-          {live > 0 && (
-            <>
-              <circle cx="31" cy="31" r="26" fill="none" strokeWidth="5" stroke="currentColor"
-                className="text-slate-ink" transform="rotate(-90 31 31)"
-                strokeDasharray={C} strokeDashoffset={C * (1 - share)} />
-              <circle className="ring-draw text-ember" cx="31" cy="31" r="26" fill="none" strokeWidth="5"
-                stroke="currentColor" transform={`rotate(${share * 360 - 90} 31 31)`}
-                strokeDasharray={C} strokeDashoffset={C * share} />
-            </>
-          )}
-        </svg>
-        <span className="absolute inset-0 grid place-items-center font-mono text-sm font-medium tabular-nums">
-          {live}
-        </span>
-      </span>
-
-      <div className="min-w-0 flex-1">
-        <h2 className="section-title">Open threads</h2>
-        <p className="mt-2 max-w-md text-xs text-slate-ink">
-          {live === 0
-            ? 'Nothing open. Raise a ticket for anything that needs looking at — we answer in the thread and you get a notification when we do.'
-            : yours === 0
-              ? 'All of them are with us. You will get a notification when we answer.'
-              : `${yours === live ? 'All' : yours} of them ${yours === 1 ? 'is' : 'are'} back with you — we have answered and are waiting on your reply.`}
-        </p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Open threads" Icon={MessagesSquare} value={live.length}
+          note={live.length ? 'Not finished yet' : 'Nothing open right now'} />
+        <StatTile label="Waiting on you" Icon={Reply} value={yours.length} tone={yours.length ? 'text-ember-ink' : ''}
+          note={yours.length ? 'We answered — your reply moves it on' : 'Nothing needs your reply'} />
+        <StatTile label="With us" Icon={Headset} value={live.length - yours.length}
+          note={live.length - yours.length ? 'You get a notification when we answer' : 'Nothing waiting on the desk'} />
+        <StatTile label="Answered" Icon={CircleCheck} value={done.length} tone={done.length ? 'text-up' : ''}
+          note={`${rows.length} thread${rows.length === 1 ? '' : 's'} in all`} />
       </div>
 
-      <dl className="w-full space-y-2.5 sm:w-56">
-        <Split tone="bg-slate-ink" label="With us" n={mine} />
-        <Split tone="bg-ember" label="Waiting on you" n={yours} ember={yours > 0} />
-        <Split tone="bg-slate-ink/20" label="Answered" n={done} quiet />
-      </dl>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          {adding && <NewTicket about={about} onDone={() => { setAdding(false); tickets.reload(); }} />}
+
+          <div className="x-card x-holo space-y-4 p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="section-title">Your threads</h2>
+              <span className="text-xs text-slate-ink">most recently answered first</span>
+              <div className="x-qgroups ml-auto w-full sm:w-auto" role="tablist">
+                {VIEWS.map(([k, label]) => (
+                  <button key={k} type="button" role="tab" aria-selected={view === k} className={`!px-3 whitespace-nowrap ${view === k ? 'is-on' : ''}`}
+                    onClick={() => setView(k)}>{label}{count[k] ? ` · ${count[k]}` : ''}</button>
+                ))}
+              </div>
+            </div>
+
+            {!tickets.data && <div className="skeleton h-24 rounded-lg" />}
+
+            {tickets.data && shown.length === 0 && (
+              <div className="grid place-items-center gap-2 py-10 text-center">
+                <span className="x-drop-icon" aria-hidden><MessagesSquare size={24} /></span>
+                <p className="text-[15px] font-semibold">{rows.length ? 'Nothing here' : 'No threads yet'}</p>
+                <p className="max-w-sm text-xs text-slate-ink">
+                  Anything at all — a deposit that has not arrived, a document that will not
+                  upload, a question about a rate. It reaches the desk straight away.
+                </p>
+                {!adding && <button type="button" className="x-btn-sm mt-2" onClick={() => setAdding(true)}>Raise a ticket</button>}
+              </div>
+            )}
+
+            <ul className="space-y-2">
+              {shown.map((t) => {
+                const Icon = CATEGORY_ICON[t.category] ?? MessageCircle;
+                const st = CLIENT_STATUS[t.status] ?? { label: t.status, badge: 'is-muted' };
+                return (
+                  <li key={t.id}>
+                    {/* The one waiting on you is lifted out of the list rather than told apart
+                        by a status word: "pending" is the desk's word for it and means nothing
+                        to the person it is waiting on. */}
+                    <button type="button" onClick={() => setOpenId(t.id)}
+                      className={`x-wallet-row lift focus-ring w-full text-left ${t.status === 'pending' ? '!border-ember/60 !bg-ember/[0.07]' : ''}`}>
+                      <span className="x-chip" aria-hidden><Icon size={17} strokeWidth={1.9} /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-semibold">{t.subject}</span>
+                        <span className="block text-xs text-slate-ink">
+                          {ABOUT[t.category]?.name ?? t.category} · {t.messages} message{t.messages === 1 ? '' : 's'} · {ago(t.last_message_at ?? t.created_at)}
+                        </span>
+                      </span>
+                      <span className={`x-badge ${st.badge}`}>{st.label}</span>
+                      <ChevronRight size={16} className="text-mist" aria-hidden />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <Shelf onPick={raise} />
+          <div className="x-card x-holo space-y-4 p-5">
+            <h2 className="section-title">How support works</h2>
+            <ol className="space-y-4">
+              {([
+                ['Raise a ticket', 'Pick what it is about and say what happened. It reaches the desk straight away.'],
+                ['We answer in the thread', 'You get a notification on the bell as soon as the desk replies.'],
+                ['Reply or let it close', 'Answer in the same thread until it is sorted — the history stays here.'],
+              ] as const).map(([t, d], i) => (
+                <li key={t} className="flex gap-3">
+                  <span className="x-step" aria-hidden>{i + 1}</span>
+                  <span><span className="block text-[15px] font-semibold">{t}</span><span className="block text-xs text-slate-ink">{d}</span></span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-const Split = ({ tone, label, n, ember, quiet }: {
-  tone: string; label: string; n: number; ember?: boolean; quiet?: boolean;
-}) => (
-  <div className="flex items-center gap-2.5">
-    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone}`} aria-hidden />
-    <dt className={`text-sm ${quiet ? 'text-slate-ink' : 'font-medium'}`}>{label}</dt>
-    <dd className={`ml-auto font-mono text-base font-medium tabular-nums ${
-      ember ? 'text-ember-ink' : quiet ? 'text-slate-ink' : ''}`}>
-      {n}
-    </dd>
-  </div>
-);
+/** How long ago, as a person reads it; a date once it is more than a week old. */
+function ago(iso: string): string {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 /**
  * What a ticket can be about, and what belongs in each.
@@ -228,29 +216,28 @@ const Split = ({ tone, label, n, ember, quiet }: {
  */
 function Shelf({ onPick }: { onPick: (category: string) => void }) {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-baseline gap-3">
+    <div className="x-card space-y-3 p-5">
+      <div>
         <h2 className="section-title">What we can help with</h2>
-        <span className="text-xs text-slate-ink">
-          anything that does not fit goes under the last one
-        </span>
+        <p className="mt-1 text-xs text-slate-ink">Pick one to start a ticket. Anything that does not fit goes under the last.</p>
       </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {CATEGORIES.map((c) => (
-          <button key={c} type="button" onClick={() => onPick(c)}
-            className={`${card} tile lift grain focus-ring text-left`}>
-            <span className="tile-corner" aria-hidden />
-            <span className="flex items-center gap-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[10px] tracking-wide text-ember-ink uppercase" aria-hidden>
-                {c.slice(0, 3)}
-              </span>
-              <span className="block truncate text-sm font-medium">{ABOUT[c].name}</span>
-            </span>
-            <span className="mt-2 block text-xs text-slate-ink">{ABOUT[c].note}</span>
-          </button>
-        ))}
-      </div>
+      <ul className="space-y-1.5">
+        {CATEGORIES.map((c) => {
+          const Icon = CATEGORY_ICON[c] ?? MessageCircle;
+          return (
+            <li key={c}>
+              <button type="button" onClick={() => onPick(c)} className="x-help-row focus-ring">
+                <span className="x-chip" aria-hidden><Icon size={17} strokeWidth={1.9} /></span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block text-[14px] font-semibold">{ABOUT[c].name}</span>
+                  <span className="block text-xs text-slate-ink">{ABOUT[c].note}</span>
+                </span>
+                <ArrowRight size={15} className="x-help-go" aria-hidden />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -258,38 +245,45 @@ function Shelf({ onPick }: { onPick: (category: string) => void }) {
 function NewTicket({ about, onDone }: { about: string; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [category, setCategory] = useState(about);
+  useEffect(() => setCategory(about), [about]);
 
   return (
-    <form className={`${card} space-y-4`} onSubmit={async (e) => {
+    <form className="x-card x-holo space-y-4 p-5" onSubmit={async (e) => {
       e.preventDefault();
       const f = new FormData(e.currentTarget);
       setBusy(true);
       setError(null);
       try {
         await api('/tickets', { method: 'POST', body: JSON.stringify({
-          subject: f.get('subject'), category: f.get('category'), body: f.get('body') }) });
+          subject: f.get('subject'), category, body: f.get('body') }) });
         onDone();
       } catch (err) {
         setError((err as Error).message);
       } finally { setBusy(false); }
     }}>
-      <h3 className="section-title">New ticket</h3>
-
-      <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-        <label className="block">
-          <span className="metric-label">Subject</span>
-          <input name="subject" required maxLength={200} placeholder="What is the problem?"
-            className={`${field} mt-1 w-full`} />
-        </label>
-        <label className="block">
-          <span className="metric-label">About</span>
-          {/* Keyed on the picked category so choosing another tile from the shelf while the
-              form is open moves the select with it — a defaultValue alone would not. */}
-          <select key={about} name="category" className={`${field} mt-1 w-full`} defaultValue={about}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{ABOUT[c].name}</option>)}
-          </select>
-        </label>
+      <div>
+        <h3 className="section-title">New ticket</h3>
+        <p className="mt-1 text-xs text-slate-ink">What it is about</p>
       </div>
+      {/* The categories as buttons rather than a dropdown: six choices fit on one glance. */}
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="What it is about">
+        {CATEGORIES.map((c) => {
+          const Icon = CATEGORY_ICON[c] ?? MessageCircle;
+          return (
+            <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
+              className={`x-btn-sm inline-flex items-center gap-1.5 ${category === c ? 'is-on' : ''}`}>
+              <Icon size={14} aria-hidden />{ABOUT[c].name}
+            </button>
+          );
+        })}
+      </div>
+
+      <label className="block">
+        <span className="metric-label">Subject</span>
+        <input name="subject" required maxLength={200} placeholder="What is the problem?"
+          className={`${field} mt-1 w-full`} />
+      </label>
 
       <label className="block">
         <span className="metric-label">What happened</span>
@@ -299,8 +293,8 @@ function NewTicket({ about, onDone }: { about: string; onDone: () => void }) {
       </label>
 
       {error && <p role="alert" className={alertBox}>{error}</p>}
-      <div className="flex flex-wrap items-center gap-3 border-t border-pebble pt-4 dark:border-white/10">
-        <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Raise ticket'}</button>
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
+        <button className={`${btn} inline-flex items-center gap-2`} disabled={busy}><Send size={15} aria-hidden />{busy ? 'Sending…' : 'Raise ticket'}</button>
         <span className="text-xs text-slate-ink">It reaches the desk straight away.</span>
       </div>
     </form>
@@ -484,19 +478,28 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
     thread.reload();
   };
 
-  if (!t) return <p className="text-sm text-slate-ink">Loading…</p>;
+  if (!t) return <div className="skeleton h-40 rounded-lg" />;
+
+  const Icon = CATEGORY_ICON[t.category] ?? MessageCircle;
+  const st = staff ? null : CLIENT_STATUS[t.status];
 
   return (
-    <div className="space-y-3">
-      <button onClick={onBack} className="text-xs text-slate-ink hover:text-obsidian dark:hover:text-vellum">
-        ← back
+    <div className="stagger space-y-4">
+      <button type="button" onClick={onBack} className="x-btn-sm inline-flex items-center gap-1.5">
+        <ArrowLeft size={14} aria-hidden />{staff ? 'Back to the queue' : 'All threads'}
       </button>
 
-      <div className="flex flex-wrap items-baseline gap-2">
-        <h3 className="font-medium">{t.subject}</h3>
-        <Badge status={t.status} />
-        <span className="text-xs text-slate-ink">{t.category}</span>
-        {staff && <span className="text-xs text-slate-ink">· {t.client_name}</span>}
+      <div className="x-card x-holo flex flex-wrap items-center gap-3 p-5">
+        <span className="x-chip" aria-hidden><Icon size={18} strokeWidth={1.9} /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[18px] font-semibold">{t.subject}</h2>
+          <p className="text-xs text-slate-ink">
+            {ABOUT[t.category]?.name ?? t.category}
+            {staff && <> · {t.client_name}</>}
+            {' · '}opened {new Date(t.created_at).toLocaleDateString()} · {t.messages.length} message{t.messages.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        {st ? <span className={`x-badge ${st.badge}`}>{st.label}</span> : <Badge status={t.status} />}
       </div>
 
       {staff && canReply && (
@@ -515,41 +518,44 @@ function TicketThread({ id, staff, canReply = true, onBack }: {
         </div>
       )}
 
-      <ol className="space-y-2">
-        {t.messages.map((m) => (
-          <li key={m.id}
-            className={`rounded-md p-2 text-sm ${m.internal
-              ? 'border border-dashed border-ember bg-bone dark:bg-white/10'
-              : m.author_kind === 'staff'
-                ? 'bg-bone dark:bg-white/10'
-                : 'bg-vellum dark:bg-onyx'}`}>
-            <p className="text-xs text-slate-ink">
-              {m.internal && <span className="font-medium text-obsidian dark:text-vellum">internal note · </span>}
-              {m.author_name ?? m.author_kind} · {when(m.created_at)}
-            </p>
-            <p className="whitespace-pre-wrap">{m.body}</p>
-          </li>
-        ))}
-      </ol>
+      <div className="x-card space-y-4 p-5">
+        <ol className="space-y-3">
+          {t.messages.map((m) => {
+            // The reader's own messages sit on the right, the other side's on the left.
+            const mine = staff ? m.author_kind === 'staff' : m.author_kind === 'client';
+            return (
+              <li key={m.id} className={`flex ${m.author_kind === 'system' ? 'justify-center' : mine ? 'justify-end' : 'justify-start'}`}>
+                <div className={`x-msg ${m.internal ? 'is-note' : m.author_kind === 'system' ? 'is-system' : mine ? 'is-mine' : ''}`}>
+                  <p className="mb-1 text-[11.5px] text-mist">
+                    {m.internal && <span className="font-semibold text-ember-ink">Internal note · </span>}
+                    <span className="font-semibold">{m.author_name ?? (m.author_kind === 'staff' ? 'Pantera GP desk' : m.author_kind)}</span> · {when(m.created_at)}
+                  </p>
+                  <p className="text-[14px] whitespace-pre-wrap">{m.body}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
 
-      {canReply && t.status !== 'closed' && (
-        <form onSubmit={send} className="space-y-2">
-          <textarea className={input} rows={3} required maxLength={5000} value={body}
-            placeholder={internal ? 'Note for colleagues — the client will not see this' : 'Reply…'}
-            onChange={(e) => setBody(e.target.value)} />
-          <div className="flex items-center gap-3">
-            <button className={btn} disabled={busy}>{busy ? 'Sending…' : 'Send'}</button>
-            {staff && (
-              <label className="flex items-center gap-1 text-xs text-slate-ink">
-                <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
-                internal note (hidden from the client)
-              </label>
-            )}
-          </div>
-        </form>
-      )}
-      {t.status === 'closed' && <p className="text-sm text-slate-ink">This ticket is closed.</p>}
-      {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
+        {canReply && t.status !== 'closed' && (
+          <form onSubmit={send} className="space-y-3 border-t border-white/10 pt-4">
+            <textarea className={input} rows={3} required maxLength={5000} value={body}
+              placeholder={internal ? 'Note for colleagues — the client will not see this' : 'Write a reply…'}
+              onChange={(e) => setBody(e.target.value)} />
+            <div className="flex flex-wrap items-center gap-3">
+              <button className={`${btn} inline-flex items-center gap-2`} disabled={busy}><Send size={15} aria-hidden />{busy ? 'Sending…' : 'Send reply'}</button>
+              {staff && (
+                <label className="flex items-center gap-1 text-xs text-slate-ink">
+                  <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
+                  internal note (hidden from the client)
+                </label>
+              )}
+            </div>
+          </form>
+        )}
+        {t.status === 'closed' && <p className="border-t border-white/10 pt-4 text-sm text-slate-ink">This thread is closed. Raise a new ticket if anything else comes up.</p>}
+        {error && <p role="alert" className={alertBox}>{error}</p>}
+      </div>
     </div>
   );
 }

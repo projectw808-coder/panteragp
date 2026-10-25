@@ -6999,16 +6999,28 @@ app.delete('/admin/site-content/footer/marks/:id', { preHandler: auth('admin') }
 /** The strip under the hero: price, the day's move and a day of hourly closes per symbol. */
 const LANDING_TICKER = ['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD', 'SPY', 'QQQ', 'SOLUSD', 'XRPUSD', 'GBPUSD', 'XAGUSD'];
 // Crypto on the strip is the platform's own price, which is the market's (src/live-market.ts).
+/** A symbol's price and its move over the day, with the hourly line behind it. */
+function dayQuote(symbol: string) {
+  const day = candles(symbol, '1H', 25);
+  const price = spot(symbol);
+  // A real-priced coin's day runs from the market's open; the rest from 24 hourly bars ago.
+  const open = (isLive(symbol) ? liveOpen(symbol) : null) ?? day[0]?.open ?? price;
+  return { symbol, price, change_pct: open ? round8(((price - open) / open) * 100) : 0, spark: day.map((c) => c.close), ...(isLive(symbol) ? { live: true } : {}) };
+}
+
 app.get('/public/ticker', async (_req: any, reply) => {
   const { rows: [{ n }] } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM instruments');
-  const quotes = LANDING_TICKER.map((symbol) => {
-    const day = candles(symbol, '1H', 25);
-    const price = spot(symbol);
-    // A real-priced coin's day runs from the market's open; the rest from 24 hourly bars ago.
-    const open = (isLive(symbol) ? liveOpen(symbol) : null) ?? day[0]?.open ?? price;
-    return { symbol, price, change_pct: open ? round8(((price - open) / open) * 100) : 0, spark: day.map((c) => c.close), ...(isLive(symbol) ? { live: true } : {}) };
-  });
-  return reply.header('cache-control', 'public, max-age=5').send({ instruments: n, quotes });
+  return reply.header('cache-control', 'public, max-age=5').send({ instruments: n, quotes: LANDING_TICKER.map(dayQuote) });
+});
+
+/** The signed-in top bar's price line: whichever instruments the user chose, up to twelve. */
+app.get('/ticker', { preHandler: auth() }, async (req, reply) => {
+  const q = z.object({ symbols: z.string().max(400) }).safeParse(req.query);
+  if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
+  const asked = [...new Set(q.data.symbols.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 12);
+  const { rows } = await pool.query<{ symbol: string }>('SELECT symbol FROM instruments WHERE symbol = ANY($1)', [asked]);
+  const known = new Set(rows.map((r) => r.symbol));
+  return { quotes: asked.filter((s) => known.has(s)).map(dayQuote) };
 });
 
 /**

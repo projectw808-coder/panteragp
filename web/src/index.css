@@ -1808,3 +1808,80 @@ html:not(.dark) .x-wallet-row { border-color: var(--color-pebble); }
 .x-switch-tile { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.015); transition: border-color 0.2s; }
 html:not(.dark) .x-switch-tile { border-color: var(--color-pebble); }
 .x-switch-tile:hover { border-color: rgba(255, 117, 24, 0.35); }
+
+/* The top bar's price line: a chip per instrument, its day move in a pill, a flash on
+   every tick, and a remove button that shows on hover or focus. */
+.x-pline { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+.x-pline .x-quotes { gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 6px 6px 6px 2px; mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.x-pline .x-quotes::-webkit-scrollbar { display: none; }
+.x-quotes li.x-qchip { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 5px; border-radius: 999px; font-size: 12.5px; border: 1px solid rgba(255, 255, 255, 0.09); background-color: rgba(255, 255, 255, 0.03); transition: border-color 0.25s, background-color 0.7s, box-shadow 0.7s; }
+.x-quotes li.x-qchip:hover, .x-quotes li.x-qchip:focus-within { border-color: rgba(255, 117, 24, 0.5); }
+.x-quotes li.x-qchip.is-up { background-color: color-mix(in srgb, var(--color-up) 16%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-up) 45%, transparent); transition: none; }
+.x-quotes li.x-qchip.is-down { background-color: color-mix(in srgb, var(--color-down) 16%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-down) 45%, transparent); transition: none; }
+html:not(.dark) .x-quotes li.x-qchip { border-color: var(--color-pebble); background-color: #fff; }
+.x-qcoin { display: grid; place-items: center; width: 21px; height: 21px; flex-shrink: 0; }
+.x-qcoin > span { transform: scale(0.61); margin: -7px; }
+.x-qchip .x-qsym { color: var(--color-vellum); font-weight: 700; letter-spacing: 0.01em; }
+.x-qchip .x-qpx { color: var(--color-vellum); }
+html:not(.dark) .x-qchip .x-qsym, html:not(.dark) .x-qchip .x-qpx { color: var(--color-obsidian); }
+.x-qchg { display: inline-flex; align-items: center; height: 19px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.x-qchg.is-up { color: var(--color-up); background: color-mix(in srgb, var(--color-up) 13%, transparent); }
+.x-qchg.is-down { color: var(--color-down); background: color-mix(in srgb, var(--color-down) 13%, transparent); }
+.x-qdel { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 999px; color: #140802; background: var(--color-ember); opacity: 0; transform: scale(0.6); transition: opacity 0.15s, transform 0.15s; }
+.x-qchip:hover .x-qdel, .x-qdel:focus-visible { opacity: 1; transform: scale(1); }
+@media (hover: none) { .x-qdel { opacity: 1; transform: scale(1); } }
+.x-qadd { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; color: var(--color-ember-ink); border: 1px dashed rgba(255, 117, 24, 0.55); background: rgba(255, 117, 24, 0.06); transition: background-color 0.2s; }
+.x-qadd:hover, .x-qadd[aria-expanded="true"] { background: rgba(255, 117, 24, 0.16); border-style: solid; }
+.x-qadd svg { transition: transform 0.2s; }
+.x-qadd[aria-expanded="true"] svg { transform: rotate(45deg); }
+.x-qpick { position: absolute; left: 0; top: calc(100% + 12px); z-index: 45; display: flex; flex-direction: column; gap: 12px; width: min(360px, calc(100vw - 32px)); padding: 16px; border-radius: 12px; border: 1px solid #222a2e; background: var(--color-onyx); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 117, 24, 0.06); animation: x-pop 0.16s ease-out; }
+html:not(.dark) .x-qpick { background: #fff; border-color: var(--color-pebble); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12); }
+.x-qsearch { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.03); }
+.x-qsearch:focus-within { border-color: var(--color-ember); }
+.x-qsearch input { flex: 1; min-width: 0; background: transparent; font-size: 13.5px; outline: none; }
+html:not(.dark) .x-qsearch { border-color: var(--color-pebble); }
+.x-qgroups, .x-notes-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 9px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07); }
+.x-qgroups > button, .x-notes-tabs > button { flex: 1; height: 28px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-qgroups > button:hover, .x-notes-tabs > button:hover { color: var(--color-vellum); }
+.x-qgroups > button.is-on, .x-notes-tabs > button.is-on { color: #140802; background: var(--color-ember); }
+.x-qlist { max-height: 300px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+.x-qlist button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; transition: background-color 0.15s; }
+.x-qlist button:hover:not(:disabled) { background: rgba(255, 117, 24, 0.08); }
+.x-qlist button:disabled { opacity: 0.4; cursor: not-allowed; }
+.x-qtick { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; color: var(--color-mist); border: 1px solid rgba(255, 255, 255, 0.14); }
+.x-qlist button.is-on .x-qtick { color: #140802; background: var(--color-ember); border-color: var(--color-ember); }
+@keyframes x-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* The bell in the top bar, and its panel. */
+.x-bell { position: relative; transition: color 0.2s, border-color 0.2s, background-color 0.2s; }
+.x-bell:hover, .x-bell.is-open { color: var(--color-ember-ink); border-color: rgba(255, 117, 24, 0.5); background: rgba(255, 117, 24, 0.08); }
+.x-bell.has-new svg { animation: x-ring 2.4s ease-in-out 0.4s 2; transform-origin: 50% 10%; }
+@keyframes x-ring { 0%, 30%, 100% { transform: rotate(0); } 5%, 15% { transform: rotate(14deg); } 10%, 20% { transform: rotate(-12deg); } }
+.x-bell-count { position: absolute; top: -6px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; color: #140802; background: var(--color-ember); box-shadow: 0 0 0 2px var(--color-obsidian), 0 0 12px rgba(255, 117, 24, 0.6); }
+.x-notes { position: fixed; z-index: 60; display: flex; flex-direction: column; max-height: min(560px, calc(100vh - 90px)); border-radius: 12px; border: 1px solid #222a2e; background: var(--color-onyx); color: var(--color-vellum); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 117, 24, 0.06); overflow: hidden; animation: x-pop 0.16s ease-out; }
+html:not(.dark) .x-notes { background: #fff; color: var(--color-obsidian); border-color: var(--color-pebble); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12); }
+.x-notes::before { content: ""; position: absolute; inset: 0 0 auto; height: 90px; background: radial-gradient(120% 100% at 100% 0, rgba(255, 117, 24, 0.14), transparent 70%); pointer-events: none; }
+.x-notes-head { position: relative; display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.x-notes-tabs { position: relative; margin: 0 16px 8px; }
+.x-notes-list { overflow-y: auto; padding: 4px 8px 8px; }
+.x-note { position: relative; display: flex; width: 100%; align-items: flex-start; gap: 12px; padding: 11px 26px 11px 10px; border-radius: 9px; text-align: left; transition: background-color 0.15s; }
+.x-note:hover { background: rgba(255, 255, 255, 0.04); }
+html:not(.dark) .x-note:hover { background: var(--color-bone); }
+.x-note.is-new { background: linear-gradient(90deg, rgba(255, 117, 24, 0.09), transparent 70%); }
+.x-note-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px; color: var(--color-ember); background: rgba(255, 122, 18, 0.12); border: 1px solid rgba(255, 122, 18, 0.3); }
+.x-note-icon.is-up { color: var(--color-up); background: color-mix(in srgb, var(--color-up) 12%, transparent); border-color: color-mix(in srgb, var(--color-up) 35%, transparent); }
+.x-note-icon.is-down { color: var(--color-down); background: color-mix(in srgb, var(--color-down) 12%, transparent); border-color: color-mix(in srgb, var(--color-down) 35%, transparent); }
+.x-note-body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 12.5px; color: var(--color-slate-ink); }
+.x-note-dot { position: absolute; top: 16px; right: 12px; width: 8px; height: 8px; border-radius: 999px; background: var(--color-ember); box-shadow: 0 0 10px rgba(255, 117, 24, 0.8); }
+@media (prefers-reduced-motion: reduce) { .x-bell.has-new svg, .x-notes, .x-qpick { animation: none; } }
+
+/* Support: the category shelf and the thread's messages. */
+.x-help-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 10px; border-radius: 10px; border: 1px solid transparent; transition: border-color 0.2s, background-color 0.2s; }
+.x-help-row:hover { border-color: rgba(255, 117, 24, 0.4); background: rgba(255, 117, 24, 0.05); }
+.x-help-go { color: var(--color-mist); transition: transform 0.2s, color 0.2s; }
+.x-help-row:hover .x-help-go { color: var(--color-ember-ink); transform: translateX(3px); }
+.x-msg { max-width: min(640px, 88%); padding: 12px 14px; border-radius: 12px 12px 12px 4px; border: 1px solid #222a2e; background: rgba(255, 255, 255, 0.03); }
+.x-msg.is-mine { border-radius: 12px 12px 4px 12px; border-color: rgba(255, 117, 24, 0.35); background: linear-gradient(180deg, rgba(255, 117, 24, 0.12), rgba(255, 117, 24, 0.05)); }
+.x-msg.is-note { border-style: dashed; border-color: var(--color-ember); }
+.x-msg.is-system { max-width: 100%; border-radius: 999px; padding: 6px 14px; font-size: 12px; text-align: center; }
+html:not(.dark) .x-msg { border-color: var(--color-pebble); background: var(--color-bone); }

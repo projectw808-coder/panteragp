@@ -144,7 +144,7 @@ await step('an authenticated socket receives moving prices', async () => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(raw);
       if (msg.type !== 'tick') return;
-      seen.push(msg.ticks.find((t) => t.symbol === 'BTCUSD').price);
+      seen.push(msg.ticks.find((t) => t.symbol === 'EURUSD').price);
       if (seen.length === 3) { clearTimeout(timer); ws.close(); resolve(seen); }
     });
   });
@@ -193,6 +193,11 @@ await step('closing the position realises P&L onto the balance', async () => {
   assert.ok(!(await get('/positions', { token: T })).some((p) => p.symbol === 'ETHUSD'), 'position should be flat');
   assert.ok(Math.abs((after - before) - (exit - entry) * 4) < 1e-6,
     `balance moved ${after - before}, expected ${(exit - entry) * 4}`);
+});
+await step('the top bar price line returns the chosen instruments with their day move', async () => {
+  const { quotes } = await get('/ticker?symbols=SOLUSD,eurusd,NOPE,SOLUSD', { token: T });
+  assert.deepEqual(quotes.map((q) => q.symbol), ['SOLUSD', 'EURUSD'], 'known symbols only, once each, in the order asked');
+  for (const q of quotes) assert.ok(q.price > 0 && Number.isFinite(q.change_pct) && q.spark.length > 1);
 });
 await step('take-profit and stop-loss become linked exit orders', async () => {
   const px = (await get('/quotes', { token: T })).find((q) => q.symbol === 'BTCUSD').price;
