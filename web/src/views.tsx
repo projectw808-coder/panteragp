@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Plus, Search, UserCheck, UserX, Users, Clock } from 'lucide-react';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi, type Stage, type Task } from './api.ts';
 import { ClientRow } from './client-row.tsx';
@@ -46,51 +47,42 @@ export function ClientList() {
   const week = Date.now() - 7 * 86_400_000;
   const isNew = rows.filter((c) => +new Date(c.created_at) > week).length;
   const waiting = rows.filter((c) => c.kyc_status === 'pending').length;
-  const unowned = rows.filter((c) => !c.owner_name).length;
+  // Active: the client can sign in. Inactive: a record with no login yet.
+  const active = rows.filter((c) => c.has_login).length;
+  const inactive = rows.length - active;
 
   const clear = () => { setQ(''); setStage(''); setKyc(''); setOwner(''); };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Clients</PageTitle>
-        <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : 'New client'}
+        <button className={`${btn} ml-auto flex items-center gap-1.5`} onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : <><Plus size={16} aria-hidden />Add Client</>}
         </button>
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
-        <div>
-          <p className="metric-label">{filtered ? 'Matching' : 'Clients'}</p>
-          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">
-            {rows.length}{capped && <span className="text-sm text-slate-ink">+</span>}
-          </p>
-        </div>
-        <div>
-          <p className="metric-label">New this week</p>
-          <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{isNew}</p>
-        </div>
-        <div>
-          <p className="metric-label">Awaiting verification</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${waiting ? 'text-ember-ink' : ''}`}>
-            {waiting}
-          </p>
-        </div>
-        <div>
-          <p className="metric-label">Unassigned</p>
-          <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${unowned ? 'text-ember-ink' : ''}`}>
-            {unowned}
-          </p>
-        </div>
-        <p className="ml-auto max-w-xs text-xs text-slate-ink">
-          Open a row for their money and the controls that go with it, or the full record
-          for everything else.
-        </p>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {([
+          [filtered ? 'Matching' : 'Total Clients', `${rows.length}${capped ? '+' : ''}`, Users, '', `${isNew} new this week`],
+          ['Active', String(active), UserCheck, 'text-up', 'Can sign in'],
+          ['Pending KYC', String(waiting), Clock, waiting ? 'text-ember-ink' : '', 'Awaiting verification'],
+          ['Inactive', String(inactive), UserX, '', 'No login yet'],
+        ] as const).map(([label, value, Icon, tone, note]) => (
+          <div key={label} className="x-card tile lift p-4">
+            <div className="flex items-center justify-between"><span className="text-[13px] text-mist">{label}</span><Icon size={16} className="text-mist" aria-hidden /></div>
+            <p className={`mt-2 text-[26px] leading-none font-bold tabular-nums ${tone}`}>{value}</p>
+            <p className="mt-2 text-xs text-slate-ink">{note}</p>
+          </div>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input className={`${field} min-w-56 flex-1`} placeholder="Search name, email or account number"
-          value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className="x-search min-w-56 flex-1">
+          <Search size={15} aria-hidden className="text-mist" />
+          <span className="sr-only">Search clients</span>
+          <input placeholder="Search by name, email or account number…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
         <select className={`${field} w-36`} value={stage} onChange={(e) => setStage(e.target.value)}>
           <option value="">All stages</option>
           {stages.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -130,7 +122,7 @@ export function ClientList() {
       <div className={`${tableCard} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead className={thead}>
-            <tr>{['Name', 'Email', 'Stage', 'KYC', 'Owner', 'Created'].map((h) =>
+            <tr>{['Client', 'Email', 'Stage', 'Status', 'Manager', 'Joined'].map((h) =>
               <th key={h} className="px-4 py-2 text-left">{h}</th>)}</tr>
           </thead>
           <tbody>
@@ -227,12 +219,15 @@ function NewClient({ onDone }: { onDone: () => void }) {
 
 // ----------------------------------------------------------------- bits
 
-const BADGE: Record<string, string> = {
-  approved: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
-  pending: 'bg-ember text-graphite',
-  rejected: 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist',
-  expired: 'bg-ember text-graphite',
+// Verification, in the plan's chips: green verified, amber pending, red refused, grey otherwise.
+const BADGE: Record<string, [string, string]> = {
+  approved: ['', 'Verified'],
+  pending: ['is-warn', 'Pending KYC'],
+  rejected: ['is-bad', 'Rejected'],
+  expired: ['is-warn', 'Expired'],
+  none: ['is-muted', 'Not started'],
 };
-const Badge = ({ value }: { value: string }) => (
-  <span className={`rounded-full px-2 py-0.5 text-xs ${BADGE[value] ?? 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>{value}</span>
-);
+const Badge = ({ value }: { value: string }) => {
+  const [cls, label] = BADGE[value] ?? ['is-muted', value];
+  return <span className={`x-badge ${cls}`}>{label}</span>;
+};

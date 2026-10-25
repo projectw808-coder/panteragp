@@ -148,18 +148,19 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
   }, [groups.finished]);
 
   const refresh = () => { rows.reload(); onChanged?.(); };
+  // Which group is on show: whatever is upcoming first, else what is running, else the record.
+  const [picked, setTab] = useState<'incoming' | 'running' | 'finished' | null>(null);
+  const tab = picked ?? (groups.incoming.length ? 'incoming' : groups.running.length ? 'running' : 'finished');
 
   if (rows.error) return <p role="alert" className={alertBox}>{rows.error}</p>;
 
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <PageTitle>IPO offerings</PageTitle>
+        <PageTitle>IPO Offerings</PageTitle>
         {/* Live means the page is ticking against the server's clock, not that any one
             offering is open — the per-card status says that. */}
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-ink/10 px-2.5 py-0.5 font-mono text-[10px] tracking-[0.14em] uppercase dark:bg-white/10">
-          <i className="block size-1.5 rounded-full bg-up" aria-hidden />Live
-        </span>
+        <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Live</span>
         {!clientId && (
           <span className="text-xs text-slate-ink">
             subscribe with money you hold — earnings are credited daily and paid at maturity
@@ -175,53 +176,46 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
         </p>
       ) : (
         <>
-          {/* Running leads: money already working is not history, and the brief is explicit
-              that active must not be filed under finished. */}
-          {!!groups.running.length && (
-            <section className="space-y-2">
-              <span className="section-title">Running</span>
-              <div className={`${card} tile grain relative`}>
-                <span className="tile-corner" aria-hidden />
-                {groups.running.map((i, n) => (
-                  <Running key={i.id} ipo={i} clock={clock} first={n === 0} />
-                ))}
-              </div>
-            </section>
-          )}
+          <div role="tablist" aria-label="Offerings" className="x-segs">
+            {([['incoming', 'Upcoming', groups.incoming.length], ['running', 'Running', groups.running.length], ['finished', 'Finished', groups.finished.length]] as const).map(([key, label, n]) => (
+              <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={tab === key ? 'is-on' : ''}>
+                {label}{n ? <span className="ml-1.5 opacity-70">{n}</span> : null}
+              </button>
+            ))}
+          </div>
 
-          {!!groups.incoming.length && (
-            <section className="space-y-2">
-              <div className="flex flex-wrap items-baseline justify-between gap-3">
-                <span className="section-title">Incoming</span>
-                <span className="text-xs text-slate-ink">earnings are credited daily and paid at maturity</span>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+          {/* Running: money already working, each row unfolding into its offering. */}
+          {tab === 'running' && (groups.running.length ? (
+            <div className={`${card} tile grain relative`}>
+              {groups.running.map((i, n) => (
+                <Running key={i.id} ipo={i} clock={clock} first={n === 0} />
+              ))}
+            </div>
+          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing running right now.</p>)}
+
+          {tab === 'incoming' && (groups.incoming.length ? (
+            <>
+              <p className="text-xs text-slate-ink">Earnings are credited daily and paid at maturity.</p>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {groups.incoming.map((i) => (
                   <Offer key={i.id} ipo={i} on={on} clock={clock} onDone={refresh} staff={!!clientId} />
                 ))}
               </div>
-            </section>
-          )}
+            </>
+          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing upcoming right now. New offerings appear here first.</p>)}
 
-          {!!groups.finished.length && (
-            <section>
-              <details open className="border-t border-pebble pt-3 dark:border-white/10">
-                <summary className="flex cursor-pointer flex-wrap items-center gap-3">
-                  <span className="section-title">Finished projects</span>
-                  <span className="text-xs text-slate-ink">{closedOut}</span>
-                </summary>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {groups.finished.map((i) => <Done key={i.id} ipo={i} />)}
-                </div>
-                {/* One line on what the return on these cards is: somebody reading a finished
-                    deal is the most likely person to assume it tracked the share price. */}
-                <p className="mt-3 text-xs text-slate-ink">
-                  The return shown is the offering's ROI accrued over its term, not a movement
-                  in the company's share price.
-                </p>
-              </details>
-            </section>
-          )}
+          {tab === 'finished' && (groups.finished.length ? (
+            <>
+              <p className="text-xs text-slate-ink">{closedOut}</p>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {groups.finished.map((i) => <Done key={i.id} ipo={i} />)}
+              </div>
+              <p className="text-xs text-slate-ink">
+                The return shown is the offering's ROI accrued over its term, not a movement
+                in the company's share price.
+              </p>
+            </>
+          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing has finished yet.</p>)}
         </>
       )}
     </div>
@@ -385,7 +379,7 @@ function Offer({ ipo, on, clock, onDone, staff }: {
         </span>
       </div>
 
-      <h3 className="text-sm font-medium">{ipo.name}</h3>
+      <h3 className="text-[16px] font-semibold">{ipo.name}</h3>
       <p className="text-xs text-slate-ink">{ipo.summary}</p>
 
       {/* No ROI here: the rate is the desk's, and only a finished offering shows what it

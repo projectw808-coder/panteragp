@@ -157,7 +157,7 @@ function Spark({ values, up, w = 52, h = 22, id }: { values: number[]; up: boole
   );
 }
 
-function Coin({ symbol }: { symbol: string }) {
+export function Coin({ symbol }: { symbol: string }) {
   const base = 'grid h-[36px] w-[36px] shrink-0 place-items-center rounded-full';
   switch (symbol) {
     case 'BTCUSD': return <span className={`${base} bg-[#f7931a] text-[18px] font-bold text-white`}>₿</span>;

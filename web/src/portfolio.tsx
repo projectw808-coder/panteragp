@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { alertBox, btn, btnGhost, card, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { PotArt } from './portfolio-art.tsx';
@@ -70,10 +71,15 @@ export function PortfoliosPanel({ clientId, onChanged }: { clientId?: string; on
         {/* As on Staking: steps down to a section heading when embedded in a client
             record, where something above already names the page. */}
         {clientId ? <h3 className="section-title">Portfolios</h3> : <PageTitle>Portfolios</PageTitle>}
+        {!adding && !!types.data?.length && (
+          <button type="button" onClick={() => setAdding(true)} className={`${btn} ml-auto flex items-center gap-1.5`}>
+            <Plus size={16} aria-hidden />Create Pot
+          </button>
+        )}
       </div>
 
       {!!open.length && (
-        <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div className="x-card tile flex flex-wrap items-center gap-x-12 gap-y-3 p-5">
           <div>
             <p className="metric-label">Set aside</p>
             <p className="font-mono text-2xl leading-tight font-medium tabular-nums text-ember-ink">
@@ -182,10 +188,8 @@ function FeatureToggle({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => 
           onDone();
         } finally { setBusy(false); }
       }}
-      className={`rounded-full border px-2.5 py-1 transition-colors ${p.featured
-        ? 'border-ember text-ember-ink'
-        : 'border-pebble text-slate-ink hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum'}`}>
-      {p.featured ? '★ on your balance' : '☆ show on balance'}
+      className={`x-btn-sm ${p.featured ? 'is-on' : ''}`}>
+      {p.featured ? '★ On your balance' : 'Show on balance'}
     </button>
   );
 }
@@ -260,24 +264,25 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
   }
 
   return (
-    <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="shrink-0 text-ember-ink"><PotArt code={p.type_code} size={32} /></span>
+    <div className="x-card tile relative overflow-hidden p-5">
+      <PotLine p={p} />
+      <div className="relative flex flex-wrap items-start gap-4">
+        <span className="x-pot-icon"><PotArt code={p.type_code} size={30} /></span>
         <span className="min-w-0">
-          <span className="block text-sm font-medium">{p.name}</span>
-          <span className="block text-xs text-slate-ink">{p.type_name}</span>
+          <span className="block text-[16px] font-semibold">{p.name}</span>
+          <span className="block text-[13px] text-slate-ink">{p.type_name}</span>
         </span>
 
-        <span className="ml-auto flex items-center gap-6">
+        <span className="ml-auto flex items-start gap-8">
           <span className="text-right">
             <span className="metric-label block">Earned</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-up">
+            <span className="block text-[17px] leading-tight font-semibold tabular-nums text-up">
               {Number(p.earned) > 0 ? `+${money(p.earned, p.currency)}` : `0 ${p.currency}`}
             </span>
           </span>
           <span className="text-right">
             <span className="metric-label block">Balance</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
+            <span className="block text-[17px] leading-tight font-semibold tabular-nums">
               {money(p.balance, p.currency)}
             </span>
           </span>
@@ -307,19 +312,18 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
         <p className="mt-1 text-xs text-slate-ink">Credited daily on the balance in the pot.</p>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+      <div className="relative mt-4 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => { setAction(action === 'contribute' ? null : 'contribute'); setError(null); }}
-          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-          pay in
+          className={`x-btn-sm ${action === 'contribute' ? 'is-on' : ''}`}>
+          Deposit
         </button>
         <button onClick={() => { setAction(action === 'withdraw' ? null : 'withdraw'); setError(null); setSent(null); }}
-          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-          {on.client_id ? 'take out' : 'submit a request'}
+          className={`x-btn-sm ${action === 'withdraw' ? 'is-on' : ''}`}>
+          Withdraw
         </button>
         <FeatureToggle p={p} on={on} onDone={onDone} />
-        <button onClick={() => setHistory((v) => !v)}
-          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-          {history ? 'hide history' : 'history'}
+        <button onClick={() => setHistory((v) => !v)} className={`x-btn-sm ${history ? 'is-on' : ''}`}>
+          {history ? 'Hide history' : 'History'}
         </button>
         {on.client_id && (
           <button onClick={() => { setRate((v) => !v); setError(null); }}
@@ -364,6 +368,30 @@ function Pot({ p, on, onDone }: { p: Portfolio; on: On; onDone: () => void }) {
       )}
       {error && <p role="alert" className={`${alertBox} mt-1 `}>{error}</p>}
     </div>
+  );
+}
+
+/**
+ * The pot's balance over time, from its own movements, as a faint ember line along the foot
+ * of the card. Nothing drawn here is projected: each step is a payment in, out or interest.
+ */
+function PotLine({ p }: { p: Portfolio }) {
+  const rows = useApi<Movement[]>(`/portfolios/${p.id}/transactions`).data;
+  const pts = useMemo(() => {
+    if (!rows || rows.length < 1) return null;
+    const ordered = [...rows].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    let run = 0;
+    const vals = [0, ...ordered.map((m) => (run += Number(m.amount)))];
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+    return vals.map((v, i) => `${i ? 'L' : 'M'}${((i / (vals.length - 1)) * 300).toFixed(1)},${(58 - ((v - lo) / span) * 50).toFixed(1)}`).join(' ');
+  }, [rows]);
+  if (!pts) return null;
+  return (
+    <svg viewBox="0 0 300 60" preserveAspectRatio="none" className="pointer-events-none absolute right-0 bottom-0 h-[64px] w-[45%] opacity-90" aria-hidden>
+      <defs><linearGradient id={`pot-${p.id}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff7a12" stopOpacity="0.3" /><stop offset="1" stopColor="#ff7a12" stopOpacity="0" /></linearGradient></defs>
+      <path d={`${pts} L300,60 L0,60 Z`} fill={`url(#pot-${p.id})`} />
+      <path d={pts} fill="none" stroke="#ff7a12" strokeWidth="1.8" vectorEffect="non-scaling-stroke" className="lp-draw-x" pathLength={1} />
+    </svg>
   );
 }
 

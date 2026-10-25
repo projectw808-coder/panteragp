@@ -8,7 +8,7 @@ import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
 import { StakingAdmin } from './staking-admin.tsx';
 import { PortfolioRequests } from './portfolio-requests.tsx';
-import { BalanceBar } from './balance.tsx';
+import { NAV_ICONS, XTopBar } from './x-shell.tsx';
 import { ProfileView } from './profile.tsx';
 import { WalletView } from './wallet-connect.tsx';
 import { TaskBoard } from './board.tsx';
@@ -346,6 +346,9 @@ function Shell({ dark, setDark, onLogout }: {
   const trading = me?.kind === 'client';   // only an account holder can place orders
   const compliance = me?.role === 'compliance' || me?.role === 'admin';
   const admin = me?.role === 'admin';
+  // Who is signed in, for the top bar: a client by name, a member of staff by role.
+  const profile = useApi<{ name: string; account_number: string | null; kyc_status: string }>(trading ? '/me/profile' : null).data;
+  const who = trading ? profile?.name ?? '' : me?.role ? me.role[0]!.toUpperCase() + me.role.slice(1) : '';
 
   const nav: [string, string, boolean][] = [
     ['#/admin', 'Dashboard', !!admin],
@@ -353,7 +356,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/tasks', 'Tasks', crm],
     ['#/compliance', 'Compliance', !!compliance],
     ['#/staking', 'Staking', crm],
-    ['#/ipos', 'IPO offerings', crm],
+    ['#/ipos', 'IPO Offerings', crm],
     ['#/requests', 'Requests', crm],
     // Support is the same route to two different things. For staff it is a queue they
     // work, so it sits among the work; for a client it is "get hold of us", which belongs
@@ -363,17 +366,16 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/email', 'Client email', crm],
     ['#/overview', 'Overview', trading],
     ['#/charts', 'Charts', true],
-    ['#/trade', 'Auto trader', trading],
+    ['#/trade', 'Auto Trader', trading],
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
-    ['#/ipos', 'IPO offerings', trading],
-    ['#/wallet', 'Connect wallet', trading],
+    ['#/ipos', 'IPO Offerings', trading],
+    ['#/wallet', 'Wallet', trading],
     // Documents, support, settings: the account tail, after the things a client came here
     // to do. Staff keep their own Settings at the very end of their own rail.
     ['#/documents', 'Documents', trading],
     ['#/support', 'Support', trading],
     ['#/settings', 'Settings', trading],
-    ['#/profile', 'Profile', trading],
     ['#/settings', 'Settings', crm],
   ];
   const here = (href: string) => (href === '#/clients' ? hash.startsWith('/clients') : hash === href.slice(1));
@@ -391,12 +393,12 @@ function Shell({ dark, setDark, onLogout }: {
   }, [menu]);
 
   return (
-    <div className={`flex h-full flex-col bg-vellum text-obsidian lg:flex-row dark:bg-obsidian dark:text-vellum ${trading ? 'app-x' : ''}`} onPointerMove={spotlight}>
+    <div className="app-x flex h-full flex-col bg-vellum text-obsidian lg:flex-row dark:bg-obsidian dark:text-vellum" onPointerMove={spotlight}>
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
           while the app keeps the same visual DNA as the marketing hero. The rail reads
           as instrument panel rather than website menu: numbered slots, mono labels, a
           scanline wash, and an accent bar that slides between items. */}
-      <TerminalGround globe={trading} />
+      <TerminalGround globe />
 
       {/* The bar a phone or a tablet gets instead of the rail. */}
       <header className="nav-rail relative z-20 flex shrink-0 items-center gap-3 overflow-hidden bg-obsidian px-4 py-3 lg:hidden dark:bg-onyx">
@@ -433,35 +435,31 @@ function Shell({ dark, setDark, onLogout }: {
               </svg>
             </button>
           </div>
-          <p className="mt-1 flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase">
-            <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
-            {crm ? 'Client desk' : 'Terminal'}
-          </p>
-          <ThemeToggle dark={dark} setDark={setDark} />
+          <p className="x-brand-sub">{crm ? 'Client desk' : 'Trading desk'}</p>
         </div>
 
         <nav className="relative z-10 flex min-h-0 flex-col overflow-y-auto py-2 text-sm">
-          {nav.filter(([, , show]) => show).map(([href, label], i) => (
-            <a key={href} href={href} className={`nav-item ${here(href) ? navOn : navOff}`}>
-              {/* A slot number, as on a console. Ordinal, not a keyboard shortcut — except
-                  for the account, which is a person rather than a destination. */}
-              <span className="nav-num">
-                {href === '#/profile' ? <Person /> : String(i + 1).padStart(2, '0')}
-              </span>
-              <span className={`nav-label ${href === '#/profile' ? 'font-medium' : ''}`}>{label}</span>
-              <span className="nav-tick" aria-hidden />
-            </a>
-          ))}
+          {nav.filter(([, , show]) => show).map(([href, label]) => {
+            const Icon = NAV_ICONS[href];
+            return (
+              <a key={href + label} href={href} className={`nav-item ${here(href) ? navOn : navOff}`}>
+                <span className="nav-icon">{Icon ? <Icon size={17} strokeWidth={1.8} aria-hidden /> : <Person />}</span>
+                <span className="nav-label">{label}</span>
+              </a>
+            );
+          })}
         </nav>
 
-        <div className="relative z-10 mt-auto border-t border-white/10 px-5 py-4 text-mist">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] tracking-[0.16em] uppercase">{me?.role}</span>
-            <NotificationBell />
-            <button onClick={onLogout}
-              className="ml-auto font-mono text-[10px] tracking-[0.16em] uppercase transition-colors hover:text-ember-ink">
-              Sign out
-            </button>
+        <div className="relative z-10 mt-auto px-3 pb-4">
+          <div className="x-account">
+            {trading ? <>
+              <p className="flex items-center gap-2 font-semibold text-ember-ink"><span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />Account {profile?.account_number ?? '······'}</p>
+              <p className="mt-1 text-[12px] text-mist">{profile ? (profile.kyc_status === 'approved' ? 'Verified account' : 'Verification pending — see Documents') : ' '}</p>
+            </> : <>
+              <p className="flex items-center gap-2 font-semibold text-ember-ink"><span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />{who || 'Staff'}</p>
+              <p className="mt-1 text-[12px] text-mist">Signed in to the client desk</p>
+            </>}
+            <button onClick={onLogout} className="mt-2 text-[12px] text-mist underline-offset-2 transition-colors hover:text-ember-ink hover:underline">Sign out</button>
           </div>
         </div>
       </aside>
@@ -474,29 +472,29 @@ function Shell({ dark, setDark, onLogout }: {
         {/* On every client screen, charts included. It used to be hidden there because the
             charts run full-bleed, which stopped mattering the moment charts became where a
             trader lands. */}
-        {trading && <div className={charts ? 'shrink-0' : 'mx-auto max-w-6xl'}><BalanceBar /></div>}
+        <div className={`x-topwrap hidden shrink-0 lg:block ${charts ? 'is-tight' : ''}`}><XTopBar name={who} client={trading} dark={dark} setDark={setDark} onLogout={onLogout} /></div>
         {charts ? <ChartsView dark={dark} />
           : hash === '/admin' ? (admin ? <AdminView /> : <Denied />)
           : hash === '/compliance' ? (compliance ? <ComplianceView role={me?.role} /> : <Denied />)
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
-          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-3xl"><SupportPanel /></div>)
+          : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-5xl"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading
-            ? <div className="mx-auto max-w-3xl"><PortfoliosPanel /></div>
+            ? <div className="mx-auto max-w-[1200px]"><PortfoliosPanel /></div>
             : <Denied />)
           : hash === '/requests' ? (crm ? <PortfolioRequests /> : <Denied />)
           : hash === '/staking' ? (crm ? <StakingAdmin />
             : trading
-              ? <div className="mx-auto max-w-3xl"><StakingPanel /></div>
+              ? <div className="mx-auto max-w-[1200px]"><StakingPanel /></div>
               : <Denied />)
           : hash === '/ipos' ? (crm ? <IposAdmin admin={!!admin} />
             : trading
-              ? <div className='mx-auto max-w-5xl'><IposPanel /></div>
+              ? <div className='mx-auto max-w-[1400px]'><IposPanel /></div>
               : <Denied />)
           : hash === '/email' ? (crm ? <EmailAdmin admin={!!admin} /> : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)
           : hash === '/documents' ? (trading && me
-            ? <div className="stagger mx-auto max-w-3xl space-y-4">
+            ? <div className="stagger mx-auto max-w-5xl space-y-4">
                 <PageTitle>Documents</PageTitle>
                 <DocumentsPanel clientId={me.sub} canUpload />
               </div>
@@ -567,25 +565,6 @@ const TerminalGround = ({ globe = false }: { globe?: boolean }) => (
     </div>
   </div>
 );
-
-/**
- * Light / terminal switch, at the top of the nav where it is findable. Both surfaces are
- * the same design system — the tokens swap roles, nothing else changes.
- */
-function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) => void }) {
-  return (
-    <div role="group" aria-label="Colour theme" className="mt-4 flex gap-1 rounded-full bg-white/10 p-1">
-      {([['Light', false], ['Dark', true]] as const).map(([label, on]) => (
-        <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on}
-          className={`focus-ring flex-1 rounded-full px-2 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${dark === on
-            ? 'bg-ember font-medium text-graphite'
-            : 'text-mist hover:text-vellum'}`}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ── Pantera GP primitives ────────────────────────────────────────────────────────
 // Defined once and consumed by every screen, so the system holds instead of drifting.

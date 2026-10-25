@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { alertBox, card, PageTitle } from './App.tsx';
+import { ChartCandlestick, Landmark, Layers, Wallet } from 'lucide-react';
+import { alertBox, card } from './App.tsx';
+import { QuoteCard, useQuotes } from './x-shell.tsx';
 import { useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
 import { headline, unit, type Accounts } from './balance.tsx';
@@ -80,109 +82,136 @@ export function OverviewView() {
     ? acc.cash.filter((x) => x.currency === native).reduce((n, x) => n + Number(x.balance), 0)
     : null;
 
+  const quotes = useQuotes();
+  const longs = held.filter((p) => Number(p.qty) > 0).length;
+  const shorts = held.filter((p) => Number(p.qty) < 0).length;
+  const equityFmt = native && acc ? headline(acc).format : usd;
+  const equityValue = native && acc ? headline(acc).value : perf.data ? perf.data.equity : a ? Number(a.equity) : null;
+  const shownEquity = useCountUp(equityValue);
+  const tiles: [string, typeof Wallet, number | null, (n: number) => string, string, ('up' | 'down')?][] = [
+    ['Available Cash', Wallet, cashHeld ?? (a ? Number(a.balance) : null), native && u ? u.format : usd, native ? `Cash in ${native}` : a ? `Cash in ${a.currency}` : ''],
+    ['Open P&L', ChartCandlestick, a ? openPnl : null, signed,
+      openPct === null ? 'Nothing open' : pct(openPct), openPnl < 0 ? 'down' : openPnl > 0 ? 'up' : undefined],
+    ['Margin Used', Landmark, a ? margin : null, usd, a ? `${a.leverage}× exposure` : ''],
+    ['Active Positions', Layers, positions.data ? held.length : null, (n) => String(Math.round(n)), `${longs} Long  ${shorts} Short`],
+  ];
+
   if (account.error) return <p role="alert" className={alertBox}>{account.error}</p>;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <PageTitle>Overview</PageTitle>
-        <LiveBadge />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* On a single currency this is that currency's own total, taken from /accounts —
-            the same number and the same unit as the strip above. Converting one currency
-            into dollars showed a figure the client never held. */}
-        <StatCard label="Total equity" icon="◈" i={0}
-          format={native && acc ? headline(acc).format : usd}
-          count={native && acc ? headline(acc).value
-            : perf.data ? perf.data.equity : a ? Number(a.equity) : null}
-          note={native ? `Everything held, in ${native}` : 'Everything held, valued in dollars'} />
-        {/* A proportion of what the open positions cost, computed server-side so this and
-            the balance strip cannot arrive at it two different ways. A null basis is a
-            dash, not a skeleton: the card is loaded, there is simply nothing open.
-            The amount rides in the note, because it is the same P&L the Result card
-            states below and the two should be recognisable as one figure. */}
-        <StatCard label="Open P&L" icon="↗" i={1}
-          format={(n) => (openPct === null ? '—' : pct(n))}
-          count={a ? openPct ?? 0 : null}
-          tone={openPct === null ? undefined : openPct < 0 ? 'down' : 'up'}
-          note={`${a ? `${signed(openPnl)} · ` : ''}${held.length} position${held.length === 1 ? '' : 's'} open`} />
-        {/* /account is one account. A client whose cash is in GBP was shown the balance of
-            an empty USD one, which read $0.00 while they held 222 GBP. Where there is a
-            single currency, this is their cash in it. */}
-        <StatCard label="Available" icon="≡" i={2}
-          format={native && u ? u.format : usd}
-          count={cashHeld ?? (a ? Number(a.balance) : null)}
-          note={native ? `Cash in ${native}` : a ? `Cash in ${a.currency}` : ''} />
-        <StatCard label="Margin used" icon="⊞" i={3} format={usd}
-          count={a ? margin : null}
-          note={a ? `${a.leverage}× on ${usd(exposure)} exposure` : ''} />
-      </div>
-
-      <div className={`${card} grain enter space-y-4`} style={{ '--i': 5 } as CSSProperties}>
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0">
-            <h2 className="section-title">Earnings</h2>
-            {/* The proportion leads, not the amount: the amount is in dollars whatever the
-                account holds, and pct is already null when there was nothing to earn on —
-                a percentage of an opening balance of zero is not a return. */}
-            {perf.data ? (
-              <p className="mt-1 flex flex-wrap items-baseline gap-2">
-                <span className={`font-mono text-2xl leading-none font-medium tabular-nums ${
-                  perf.data.pct === null ? 'text-slate-ink'
-                    : perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
-                  {perf.data.pct === null ? '—' : pct(perf.data.pct)}
-                </span>
-                {/* The amount beside the proportion, because the Result card below states
-                    this same figure and a reader should not have to work out that the two
-                    are the same thing. */}
-                <span className={`font-mono text-sm tabular-nums ${
-                  perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>
-                  {signed(perf.data.earned)}
-                </span>
-                <span className="text-xs text-slate-ink">
-                  over the last {range.label === '1W' ? 'week'
-                    : range.label === '1M' ? 'month'
-                    : range.label === '3M' ? 'three months' : 'year'}
-                </span>
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-ink">Loading…</p>
-            )}
+    <div className="mx-auto max-w-[1440px] space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        {/* Total equity, and what the account has earned over the range beneath it. */}
+        <div className="x-card tile enter p-5" style={{ '--i': 0 } as CSSProperties}>
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] text-mist">Total Equity</p>
+              {shownEquity === null
+                ? <span className="skeleton mt-2 block h-[38px] w-56" aria-label="Total equity loading" />
+                : <p className="mt-1 flex items-center gap-3 text-[36px] leading-none font-bold tracking-[-0.02em] tabular-nums">
+                    <span className="h-[30px] w-[3px] rounded bg-ember" aria-hidden />{equityFmt(shownEquity)}
+                  </p>}
+              {perf.data && (
+                <p className="mt-2 flex flex-wrap items-baseline gap-2 tabular-nums">
+                  <span className={`text-[20px] font-semibold ${perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>{perf.data.pct === null ? '—' : pct(perf.data.pct)}</span>
+                  <span className={`text-[13px] ${perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>{signed(perf.data.earned)} ({range.label})</span>
+                </p>
+              )}
+            </div>
+            <div role="tablist" aria-label="Range" className="x-tabs ml-auto">
+              {RANGES.map((r) => (
+                <button key={r.label} role="tab" aria-selected={range.label === r.label} onClick={() => setRange(r)}
+                  className={range.label === r.label ? 'is-on' : ''}>{r.label}</button>
+              ))}
+            </div>
           </div>
-
-          <div role="tablist" aria-label="Range" className="ml-auto flex gap-1 rounded-full bg-bone p-0.5 dark:bg-white/10">
-            {RANGES.map((r) => (
-              <button key={r.label} role="tab" aria-selected={range.label === r.label}
-                onClick={() => setRange(r)}
-                className={`rounded-full px-3 py-1 font-mono text-[11px] transition-colors ${
-                  range.label === r.label
-                    ? 'bg-ember text-graphite'
-                    : 'text-slate-ink hover:text-obsidian dark:text-mist dark:hover:text-vellum'}`}>
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <div className="mt-3"><EarningsChart points={perf.data?.series ?? []} /></div>
         </div>
 
-        <EarningsChart points={perf.data?.series ?? []} />
+        <div className="grid grid-cols-2 gap-4">
+          {tiles.map(([label, Icon, value, format, note, tone], i) => (
+            <XTile key={label} label={label} Icon={Icon} value={value} format={format} note={note} tone={tone} i={i + 1} />
+          ))}
+        </div>
+      </div>
 
-        <p className="text-xs text-slate-ink">
-          Realised trading results, interest credited into savings and staking rewards, each
-          on the day it happened. It is what the account has earned, not what it has been
-          worth — nothing here keeps a daily valuation of open positions.
+      {/* The markets the account trades most, live. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {([['BTCUSD', 'Bitcoin'], ['ETHUSD', 'Ethereum'], ['XAUUSD', 'Gold'], ['EURUSD', 'EUR/USD']] as const).map(([sym, name], i) => {
+          const q = quotes.find((x) => x.symbol === sym);
+          return q
+            ? <div key={sym} className="enter" style={{ '--i': i + 5 } as CSSProperties}><QuoteCard q={q} name={name} /></div>
+            : <div key={sym} className="x-card h-[68px] skeleton" />;
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="enter" style={{ '--i': 9 } as CSSProperties}><Allocation accounts={accounts.data} /></div>
+        <div className="enter" style={{ '--i': 10 } as CSSProperties}><PerformanceBars perf={perf.data} label={range.label} /></div>
+      </div>
+      <p className="text-xs text-slate-ink">
+        Earnings are realised trading results, interest credited into savings and staking rewards, each on the day it
+        happened: what the account has earned, not a daily valuation of open positions.
+      </p>
+    </div>
+  );
+}
+
+/** A headline figure in the plan's tile: an ember icon chip, the label, the value, a note. */
+function XTile({ label, Icon, value, format, note, tone, i }: {
+  label: string; Icon: typeof Wallet; value: number | null; format: (n: number) => string; note: string; tone?: 'up' | 'down'; i: number;
+}) {
+  const shown = useCountUp(value);
+  return (
+    <div className="x-card tile lift enter flex flex-col p-4" style={{ '--i': i } as CSSProperties}>
+      <div className="flex items-center gap-3">
+        <span className="x-chip"><Icon size={18} strokeWidth={1.9} aria-hidden /></span>
+        <span className="text-[13px] text-mist">{label}</span>
+      </div>
+      {shown === null
+        ? <span className="skeleton mt-3 block h-[24px] w-28" aria-label={`${label} loading`} />
+        : <p className={`mt-3 truncate text-[22px] leading-none font-bold tabular-nums ${tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : ''}`}>{format(shown)}</p>}
+      {note && <p className={`mt-2 text-xs ${tone === 'down' && label === 'Open P&L' ? 'text-down' : 'text-slate-ink'}`}>{note}</p>}
+    </div>
+  );
+}
+
+/** What each day earned over the range, as ember bars, losses below the line in red. */
+function PerformanceBars({ perf, label }: { perf?: Performance | null; label: string }) {
+  const series = perf?.series ?? [];
+  const W = 520, H = 150;
+  const vals = series.map((p) => p.earned);
+  const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals), span = hi - lo || 1;
+  const y = (v: number) => H - ((v - lo) / span) * H;
+  const bw = series.length ? (W / series.length) * 0.62 : 0;
+  const months = series.filter((p, i) => i === 0 || new Date(p.day).getMonth() !== new Date(series[i - 1]!.day).getMonth());
+  return (
+    <div className="x-card h-full p-5">
+      <h2 className="x-h">Performance</h2>
+      {perf ? (
+        <p className="mt-2 flex flex-wrap items-baseline gap-3 tabular-nums">
+          <span className={`text-[22px] font-semibold ${perf.earned < 0 ? 'text-down' : 'text-up'}`}>{perf.pct === null ? '—' : pct(perf.pct)}</span>
+          <span className={`text-[13px] ${perf.earned < 0 ? 'text-down' : 'text-up'}`}>{signed(perf.earned)}</span>
+          <span className="text-xs text-slate-ink">{label}</span>
         </p>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <div className="enter" style={{ '--i': 6 } as CSSProperties}>
-          <Allocation accounts={accounts.data} />
+      ) : <span className="skeleton mt-2 block h-6 w-40" />}
+      {series.length > 1 ? (
+        <div className="mt-3">
+          <svg viewBox={`0 0 ${W} ${H}`} className="h-[150px] w-full" preserveAspectRatio="none" role="img" aria-label="Earnings by day">
+            <defs><linearGradient id="perf-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff9a3d" /><stop offset="1" stopColor="#ff7a12" stopOpacity="0.35" /></linearGradient></defs>
+            {[0.25, 0.5, 0.75].map((f) => <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="currentColor" strokeOpacity="0.07" />)}
+            {series.map((p, i) => {
+              const x = (i + 0.19) * (W / series.length);
+              const top = y(Math.max(0, p.earned)), bottom = y(Math.min(0, p.earned));
+              return <rect key={p.day} x={x} y={top} width={bw} height={Math.max(1, bottom - top)} rx="1"
+                fill={p.earned < 0 ? 'var(--color-down)' : 'url(#perf-bar)'} className="bar" style={{ animationDelay: `${i * 12}ms` }} />;
+            })}
+          </svg>
+          <div className="mt-1 flex justify-around text-[11px] text-slate-ink">
+            {months.map((m) => <span key={m.day}>{new Date(m.day).toLocaleDateString(undefined, { month: 'short' })}</span>)}
+          </div>
         </div>
-        <div className="enter" style={{ '--i': 7 } as CSSProperties}>
-          <Breakdown perf={perf.data} openPnl={openPnl} openPct={openPct} />
-        </div>
-      </div>
+      ) : <p className="py-12 text-center text-sm text-slate-ink">Not enough history yet. This fills in as the account earns.</p>}
     </div>
   );
 }
@@ -339,8 +368,8 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
   const total = groups.reduce((n, g) => n + g.value, 0);
 
   return (
-    <div className={`${card} space-y-4`}>
-      <h2 className="section-title">Allocation</h2>
+    <div className="x-card h-full space-y-4 p-5">
+      <h2 className="x-h">Portfolio Allocation</h2>
 
       {total === 0 ? (
         <p className="py-10 text-center text-sm text-slate-ink">
@@ -377,13 +406,13 @@ function Donut({ groups, total, format }: {
   let offset = 0;
 
   return (
-    <svg viewBox="0 0 140 140" width="140" height="140" role="img"
+    <svg viewBox="0 0 140 140" width="170" height="170" role="img"
       aria-label={groups.map((g) => `${g.name} ${((g.value / total) * 100).toFixed(0)}%`).join(', ')}>
       <g transform="rotate(-90 70 70)">
         {groups.map((g) => {
           const len = (g.value / total) * C;
           const dash = <circle key={g.name} cx="70" cy="70" r={R} fill="none" stroke={g.colour}
-            strokeWidth="18" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />;
+            strokeWidth="16" className="ring-draw" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />;
           offset += len;
           return dash;
         })}

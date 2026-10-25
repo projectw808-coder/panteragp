@@ -79,9 +79,9 @@ export function AutoTraderView() {
   const halted = d.halted_until !== null && new Date(d.halted_until) >= new Date(new Date().toDateString());
 
   return (
-    <div className="stagger mx-auto max-w-6xl space-y-4">
+    <div className="stagger mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <PageTitle>Auto trader</PageTitle>
+        <PageTitle>Auto Trader</PageTitle>
         <span className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
           d.on ? 'chip-up text-up' : 'bg-bone text-slate-ink dark:bg-white/10'}`}>
           {d.on ? (halted ? 'halted' : 'running') : 'stopped'}
@@ -99,7 +99,7 @@ export function AutoTraderView() {
             if (!window.confirm(`Close ${k.open} open bot position${k.open === 1 ? '' : 's'} at market and stop the auto trader?`)) return;
             run(() => api('/me/auto-trader/kill', { method: 'POST' }));
           }}>
-          Stop and close all
+          Stop All
         </button>
       </div>
 

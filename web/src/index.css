@@ -9,7 +9,7 @@
 
 /* Substitutes for the licensed faces: Playfair Display for Ogg Text Light, JetBrains Mono
    for PP Supply Mono. Token names stay the same if the real fonts are ever licensed. */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Figtree:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Figtree:wght@400;500;600;700&display=swap');
 
 @theme {
   /* Ember orange is the ONLY chromatic colour in the system. */
@@ -1640,3 +1640,127 @@ input:-webkit-autofill:active {
 html:not(.dark) .x-globe { display: none; }
 @keyframes x-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.08) translate3d(-2%, -1.5%, 0); } }
 @media (max-width: 1023px) { .x-globe { width: 120%; opacity: 0.2; } }
+
+/* ---------------------------------------------------------------- the frame (client-area plan)
+   An icon rail with the brand and its line, and a top bar of live prices, the bell and the
+   person signed in. */
+.x-brand-sub { margin-top: 3px; padding-left: 33px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--color-mist); }
+.app-x .nav-icon { display: grid; place-items: center; width: 20px; color: rgba(255, 255, 255, 0.55); transition: color 0.2s; }
+.app-x .nav-item:hover .nav-icon { color: #fff; }
+.app-x .nav-item.is-active .nav-icon { color: var(--color-ember); }
+.app-x .nav-item.is-active { background: linear-gradient(90deg, rgba(255, 122, 18, 0.2), rgba(255, 122, 18, 0.06)); box-shadow: inset 0 0 0 1px rgba(255, 122, 18, 0.28); }
+.app-x .nav-item::before { display: none; }
+.x-account { padding: 12px 14px; border-radius: 9px; border: 1px solid rgba(255, 122, 18, 0.3); background: linear-gradient(180deg, rgba(255, 122, 18, 0.1), rgba(255, 122, 18, 0.02)); font-size: 12.5px; }
+
+.x-topwrap { position: sticky; top: 0; z-index: 25; margin: -24px -24px 20px; }
+.x-topwrap.is-tight { margin: -16px -16px 12px; }
+.x-topbar { display: flex; align-items: center; gap: 16px; height: 58px; padding: 0 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); background: color-mix(in srgb, var(--color-obsidian) 82%, transparent); backdrop-filter: blur(12px); }
+html:not(.dark) .x-topbar { border-bottom-color: var(--color-pebble); }
+.x-quotes { display: flex; align-items: center; gap: 26px; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.x-quotes li { display: flex; align-items: baseline; gap: 8px; }
+.x-qsym { color: var(--color-mist); font-weight: 600; }
+.x-qpx { font-weight: 600; }
+.x-iconbtn { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.1); color: var(--color-mist); }
+html:not(.dark) .x-iconbtn { border-color: var(--color-pebble); }
+.x-user { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px 0 4px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 13.5px; font-weight: 500; }
+html:not(.dark) .x-user { border-color: var(--color-pebble); }
+.x-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #140802; background: linear-gradient(135deg, #ffb066, #ff7a12); }
+.x-menu { position: absolute; right: 0; top: calc(100% + 8px); min-width: 200px; padding: 6px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); background: var(--color-onyx); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); z-index: 40; }
+html:not(.dark) .x-menu { background: #fff; border-color: var(--color-pebble); }
+.x-menu > a, .x-menu > button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 7px; font-size: 13.5px; text-align: left; }
+.x-menu > a:hover, .x-menu > button:hover { background: rgba(255, 122, 18, 0.1); }
+
+/* The plan's card: the page's near-black panel with a hairline. */
+.x-card { border-radius: var(--radius-lg); background: var(--color-bone); }
+.dark .x-card { background: var(--color-onyx); box-shadow: var(--shadow-inset-dark); }
+.lp-draw-x { stroke-dasharray: 1; stroke-dashoffset: 1; animation: x-draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.1s forwards; }
+@keyframes x-draw { to { stroke-dashoffset: 0; } }
+.x-h { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.x-chip { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 9px; color: var(--color-ember); background: rgba(255, 122, 18, 0.12); border: 1px solid rgba(255, 122, 18, 0.32); }
+.x-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07); }
+html:not(.dark) .x-tabs { background: var(--color-bone); border-color: var(--color-pebble); }
+.x-tabs > button { min-width: 34px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-tabs > button:hover { color: var(--color-vellum); }
+html:not(.dark) .x-tabs > button:hover { color: var(--color-obsidian); }
+.x-tabs > button.is-on { color: #140802; background: var(--color-ember); }
+.x-tf { min-width: 34px; height: 30px; padding: 0 10px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-tf:hover { color: var(--color-vellum); background: rgba(255, 255, 255, 0.05); }
+html:not(.dark) .x-tf:hover { color: var(--color-obsidian); }
+.x-tf.is-on { color: #140802; background: var(--color-ember); }
+.x-mini { height: 24px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 500; color: var(--color-mist); background: rgba(255, 255, 255, 0.05); transition: color 0.2s, background-color 0.2s; }
+html:not(.dark) .x-mini { background: var(--color-bone); }
+.x-mini:hover { color: var(--color-vellum); }
+html:not(.dark) .x-mini:hover { color: var(--color-obsidian); }
+.x-mini.is-on { color: var(--color-ember); background: rgba(255, 122, 18, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 122, 18, 0.35); }
+.x-symsel { appearance: none; padding-right: 18px; background: transparent; font-size: 14.5px; font-weight: 700; color: inherit; outline: none; cursor: pointer; }
+.x-symsel option, .x-symsel optgroup { background: var(--color-onyx); color: var(--color-vellum); }
+.x-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.03); }
+html:not(.dark) .x-search { border-color: var(--color-pebble); background: #fff; }
+.x-search:focus-within { border-color: var(--color-ember); }
+.x-search input { flex: 1; min-width: 0; background: transparent; font-size: 13px; outline: none; }
+.x-coin-sm > span { width: 22px !important; height: 22px !important; font-size: 10px !important; }
+.x-coin-sm svg { transform: scale(0.6); }
+
+/* The plan's voice across every page: sans headings with an ember tick, quiet sans labels,
+   figures in the page's sans with lined-up numerals, no corner brackets. */
+.app-x .section-title { font-family: var(--font-ui); font-size: 15px; font-weight: 600; letter-spacing: -0.005em; text-transform: none; }
+.app-x .section-title::before { width: 3px; height: 15px; border-radius: 2px; }
+.app-x .metric-label { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+.dark .app-x .metric-label { font-size: 12.5px; color: var(--color-mist); }
+.app-x .font-mono { font-family: var(--font-ui); letter-spacing: -0.005em; font-variant-numeric: tabular-nums; }
+.app-x .bal-label, .app-x .bal-value { font-family: var(--font-ui); }
+.app-x .tile-corner { display: none; }
+.app-x h1.font-display { font-size: 26px; font-weight: 700; }
+.app-x th { font-weight: 500; }
+.x-btn-sm { height: 30px; padding: 0 13px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--color-vellum); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); transition: border-color 0.2s, background-color 0.2s, color 0.2s; }
+html:not(.dark) .x-btn-sm { color: var(--color-obsidian); background: var(--color-bone); border-color: var(--color-pebble); }
+.x-btn-sm:hover { border-color: rgba(255, 122, 18, 0.55); }
+.x-btn-sm.is-on { color: var(--color-ember-ink); border-color: var(--color-ember); background: rgba(255, 122, 18, 0.1); }
+.x-pot-icon { display: grid; place-items: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 12px; color: #ffcf9e; background: radial-gradient(circle at 30% 25%, rgba(255, 170, 90, 0.55), rgba(255, 122, 18, 0.35) 45%, rgba(120, 50, 0, 0.5)); box-shadow: inset 0 0 0 1px rgba(255, 150, 60, 0.45), 0 6px 18px rgba(255, 122, 18, 0.25); }
+
+/* ---------------------------------------------------------------- calibration
+   The pixel-fidelity kit's tokens (DESIGN_TOKENS.md), sampled from the approved collage:
+   Inter, a cooler near-black, the kit's orange, green and red, greyer hairlines and labels,
+   10px cards. These override the values above for the signed-in platform. */
+.app-x {
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --radius-lg: 10px;
+  --radius-xl: 13px;
+  letter-spacing: -0.01em;
+}
+.dark .app-x, .app-x.auth-screen {
+  --color-obsidian: #080d10;
+  --color-onyx: #0b1115;
+  --color-ember: #ff7518;
+  --color-ember-ink: #ff8a33;
+  --color-up: #18d889;
+  --color-down: #ff4b4d;
+  --color-mist: #839098;
+  --color-slate-ink: #8a969e;
+  --shadow-inset-dark: #222a2e 0 0 0 1px inset;
+}
+.app-x .nav-rail { background: linear-gradient(180deg, #0d0c0c, #0b0b0d); border-right: 1px solid #1d1f21; box-shadow: 1px 0 0 rgba(255, 117, 24, 0.08); }
+.app-x .nav-item { font-size: 13.5px; }
+.x-brand { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+.app-x .x-topbar { height: 52px; }
+.x-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--color-up); background: color-mix(in srgb, var(--color-up) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-up) 40%, transparent); white-space: nowrap; }
+.x-badge.is-locked { color: var(--color-ember-ink); background: rgba(255, 117, 24, 0.1); border-color: rgba(255, 117, 24, 0.4); }
+.x-badge.is-muted { color: var(--color-mist); background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.12); }
+.x-badge.is-warn { color: #f5c542; background: rgba(245, 197, 66, 0.12); border-color: rgba(245, 197, 66, 0.4); }
+.x-coin-md > span { width: 44px !important; height: 44px !important; }
+.x-segs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid #222a2e; }
+html:not(.dark) .x-segs { background: var(--color-bone); border-color: var(--color-pebble); }
+.x-segs > button { height: 32px; padding: 0 18px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-segs > button:hover { color: var(--color-vellum); }
+html:not(.dark) .x-segs > button:hover { color: var(--color-obsidian); }
+.x-segs > button.is-on { color: #140802; background: var(--color-ember); box-shadow: 0 4px 16px rgba(255, 117, 24, 0.3); }
+.x-badge.is-bad { color: var(--color-down); background: color-mix(in srgb, var(--color-down) 12%, transparent); border-color: color-mix(in srgb, var(--color-down) 40%, transparent); }
+.x-avatar-sm { width: 28px; height: 28px; font-size: 10.5px; flex-shrink: 0; }
+.app-x .table-card { border-radius: var(--radius-lg); }
+.dark .app-x .table-card { background: var(--color-onyx); border-color: #222a2e; }
+.dark .app-x .table-card thead { background: rgba(255, 255, 255, 0.025); }
+.app-x .table-card th { font-size: 12.5px; color: var(--color-mist); }
+.app-x select { cursor: pointer; }
+.dark .app-x select, .dark .app-x input:not([type=checkbox]):not([type=radio]), .dark .app-x textarea { border-color: #222a2e; background-color: #0b1115; }
+.x-topwrap { margin-bottom: 28px; } .x-topwrap.is-tight { margin-bottom: 14px; }

@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { alertBox, btn, btnGhost, card, field, PageTitle } from './App.tsx';
+import { Coin } from './landing.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
 import { AssetArt } from './asset-art.tsx';
@@ -83,7 +84,7 @@ export function StakingPanel({ clientId, onChanged }: { clientId?: string; onCha
 
       {!!active.length && <Totals stakes={active} />}
 
-      {active.map((s) => <StakeCard key={s.id} s={s} on={on} onDone={reload} />)}
+      {!!active.length && <div className="grid gap-4 md:grid-cols-2">{active.map((s) => <StakeCard key={s.id} s={s} on={on} onDone={reload} />)}</div>}
 
       {!active.length && !adding && (
         <p className="text-sm text-slate-ink">
@@ -136,41 +137,39 @@ function StakeCard({ s, on, onDone }: { s: Stake; on: On; onDone: () => void }) 
   }
 
   return (
-    <div className="rounded-lg border border-pebble bg-bone/50 p-4 dark:border-white/10 dark:bg-white/5">
-      <div className="flex flex-wrap items-center gap-3">
-        <TermRing s={s} />
+    <div className="x-card tile flex h-full flex-col p-5">
+      <div className="flex items-start gap-3">
+        {s.lock_days > 0 ? <TermRing s={s} /> : <span className="x-coin-md"><Coin symbol={`${s.asset}USD`} /></span>}
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium">{s.product_name}</span>
-          <span className="block text-xs text-slate-ink">
+          <span className="block text-[16px] font-semibold">{s.product_name}</span>
+          <span className="block text-[13px] text-slate-ink">
             {term(s.lock_days)}
             {s.unlocks_at && ` · ${s.locked ? 'unlocks' : 'unlocked'} ${day(s.unlocks_at)}`}
           </span>
         </span>
-
-        <span className="ml-auto flex items-center gap-6">
-          <span className="text-right">
-            <span className="metric-label block">Staked</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
-              {num(s.amount)} {s.asset}
-            </span>
-          </span>
-        </span>
+        <span className={`x-badge ${s.locked ? 'is-locked' : ''}`}>{s.locked ? 'Locked' : 'Flexible'}</span>
       </div>
 
-      <p className="mt-2 text-xs text-slate-ink">
-        Earned so far <span className="font-mono text-up">{num(s.rewards)} {s.asset}</span>
-        {' · '}about {num(s.projected_year)} {s.asset} over a year, credited daily.
+      <p className="mt-4 text-[13px] text-slate-ink">
+        Earned so far <span className="font-semibold text-up tabular-nums">{num(s.rewards)} {s.asset}</span>
       </p>
+      <p className="mt-0.5 text-[13px] text-slate-ink">≈ {num(s.projected_year)} {s.asset} over a year, credited daily.</p>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+      <div className="mt-auto flex flex-wrap items-end gap-3 pt-5">
+        <span>
+          <span className="metric-label block">Staked</span>
+          <span className="block text-[20px] leading-tight font-bold tabular-nums">{num(s.amount)} {s.asset}</span>
+        </span>
+        <span className="ml-auto flex flex-wrap items-center gap-2 text-xs">
         <button onClick={unstake} disabled={busy || s.locked}
-          className="rounded-full border border-pebble px-2.5 py-1 text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:text-vellum"
+          className="x-btn-sm disabled:cursor-not-allowed disabled:opacity-50"
           title={s.locked ? 'Locked until its date' : undefined}>
           {busy ? 'Unstaking…' : 'Unstake'}
         </button>
         {s.locked && !on.client_id && (
           <span className="text-slate-ink">Locked until {day(s.unlocks_at!)}.</span>
         )}
+        </span>
         {on.client_id && (
           <>
             {s.locked && (

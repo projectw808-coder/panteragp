@@ -47,6 +47,7 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
           <span className="flex items-center gap-2">
             <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
               aria-hidden>›</span>
+            <span className="x-avatar x-avatar-sm" aria-hidden>{c.name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
             <span className="font-medium">{c.name}</span>
             {c.account_number && (
               <span className="font-mono text-[11px] tracking-wide text-slate-ink" title="Account number">{c.account_number}</span>
