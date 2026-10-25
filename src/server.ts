@@ -6718,9 +6718,26 @@ const contactBody = z.object({
   region_hours: z.record(z.string().max(60), z.string().max(60)).optional(),
 });
 const fillsBody = z.record(z.string().max(200), z.string().max(400));
+type Testimonial = { quote: string; name: string; role: string; rating: number; consent: boolean };
+const testimonialsBody = z.object({
+  items: z.array(z.object({
+    quote: z.string().trim().max(400),
+    name: z.string().trim().max(80),
+    role: z.string().trim().max(80).default(''),
+    rating: z.number().int().min(1).max(5).default(5),
+    // The desk confirms the client agreed to be quoted; nothing without it is published.
+    consent: z.boolean().default(false),
+  })).max(9).default([]),
+});
 // The account whose auto trader the landing page shows, by its six-digit number; empty for none.
 const showcaseBody = z.object({ account_number: z.string().trim().regex(/^(\d{6})?$/, 'six digits, or empty for none').optional() });
 const footerBody = z.object({
+  // The footer's social links; an icon shows only for an address that is set.
+  social: z.object({
+    linkedin: z.string().trim().max(300).regex(/^(https:\/\/.+)?$/).optional(),
+    x: z.string().trim().max(300).regex(/^(https:\/\/.+)?$/).optional(),
+    telegram: z.string().trim().max(300).regex(/^(https:\/\/.+)?$/).optional(),
+  }).optional(),
   text: z.string().max(400).optional(),
   column_title: z.string().max(40).optional(),
   links: z.array(z.object({ label: z.string().min(1).max(60), href: z.string().min(1).max(300) })).max(12).optional(),
@@ -6855,8 +6872,9 @@ app.get('/public/showcase', async (_req, reply) => {
   if (!who) return { configured: false };
   const d = await autoDashboard(who.id);
   const k = d.kpis;
-  // At most sixty points: enough for the line's shape, little enough to send every time.
-  const step = Math.max(1, Math.ceil(d.curve.length / 60));
+  const extra = await showcaseExtras(who.id, d.strategies, k.allocated);
+  // At most two hundred points: enough for the line's shape across every range tab.
+  const step = Math.max(1, Math.ceil(d.curve.length / 200));
   const curve = d.curve.filter((_, i) => i % step === 0 || i === d.curve.length - 1).map((p) => ({ at: p.at, equity: p.equity }));
   return {
     configured: true,
@@ -6868,22 +6886,84 @@ app.get('/public/showcase', async (_req, reply) => {
       wins: k.wins, closed: k.closed, win_rate: k.win_rate,
       profit_factor: k.profit_factor, avg_win_r: k.avg_win_r, avg_loss_r: k.avg_loss_r,
       max_drawdown: k.max_drawdown, drawdown_at: k.drawdown_at, open: k.open,
+      total_trades: extra.total, sharpe: extra.sharpe,
     },
     curve,
-    trades: d.closed.slice(0, 4).map((t) => ({ closed_at: t.closed_at, symbol: t.symbol, side: t.side, entry: t.entry, exit: t.exit, net: t.net, strategy: t.strategy })),
-    strategies: d.strategies.map((s) => ({ name: s.name, symbols: s.symbols, state: s.state })),
+    trades: d.closed.slice(0, 5).map((t) => ({ closed_at: t.closed_at, symbol: t.symbol, side: t.side, entry: t.entry, exit: t.exit, net: t.net, strategy: t.strategy })),
+    strategies: d.strategies.map((s) => ({
+      name: s.name, kind: s.kind, symbols: s.symbols, state: s.state,
+      return_pct: extra.byStrategy.get(s.id)?.return_pct ?? null, spark: extra.byStrategy.get(s.id)?.spark ?? [],
+    })),
   };
 });
 
+/**
+ * What the landing panel shows beyond the account's own dashboard: every closed trade
+ * counted, a Sharpe ratio from the daily results, and each strategy's return on what it
+ * may deploy with the running total that makes its little line.
+ *
+ * The Sharpe ratio is the mean of the daily returns over their standard deviation,
+ * annualised by the square root of 365 because the markets here trade every day. It needs
+ * five days with a result before it means anything, and is null until then.
+ */
+async function showcaseExtras(clientId: string, strategies: { id: string; allocation: number }[], allocated: number) {
+  const settings = await autoSettings(clientId);
+  const closed = await autoClosedTrades(clientId, settings.record_since, 1_000_000);
+  const rows = closed
+    .map((c) => ({ c, net: pairTrade({ side: c.side, qty: c.qty, price: c.price, fee: c.fee, stop: c.stop_loss }, { price: c.exit_price, fee: c.exit_fee }).net }))
+    .sort((a, b) => new Date(a.c.exit_at).getTime() - new Date(b.c.exit_at).getTime());
+
+  const days = new Map<string, number>();
+  for (const { c, net } of rows) { const day = new Date(c.exit_at).toISOString().slice(0, 10); days.set(day, (days.get(day) ?? 0) + net); }
+  let equity = allocated; const daily: number[] = [];
+  for (const pnl of days.values()) { if (equity > 0) daily.push(pnl / equity); equity += pnl; }
+  let sharpe: number | null = null;
+  if (daily.length >= 5) {
+    const mean = daily.reduce((a, b) => a + b, 0) / daily.length;
+    const sd = Math.sqrt(daily.reduce((a, b) => a + (b - mean) ** 2, 0) / (daily.length - 1));
+    sharpe = sd > 0 ? round8((mean / sd) * Math.sqrt(365)) : null;
+  }
+
+  const byStrategy = new Map<string, { return_pct: number | null; spark: number[] }>();
+  for (const s of strategies) {
+    let run = 0; const series: number[] = [0];
+    for (const { c, net } of rows) if (c.strategy_id === s.id) { run += net; series.push(round8(run)); }
+    const keep = series.slice(-24);
+    byStrategy.set(s.id, { return_pct: s.allocation > 0 ? round8(run / s.allocation) : null, spark: keep });
+  }
+  return { total: rows.length, sharpe, byStrategy };
+}
+
+/** The markets section's counts: how many instruments each asset class really has. */
+app.get('/public/markets', async (_req, reply) => {
+  const { rows } = await pool.query<{ asset_class: string | null; n: number }>(
+    'SELECT asset_class, count(*)::int AS n FROM instruments GROUP BY asset_class');
+  const counts = Object.fromEntries(rows.map((r) => [r.asset_class ?? 'other', r.n]));
+  return reply.header('cache-control', 'public, max-age=300').send({ counts, total: rows.reduce((a, r) => a + r.n, 0) });
+});
+
+/**
+ * Client testimonials, as the desk enters them in Settings. Only quotes the desk has
+ * marked as published with the client's consent are ever sent; the landing page shows
+ * the section only when there is at least one. Nothing here is invented.
+ */
+app.get('/public/testimonials', async (_req, reply) => {
+  const saved = await siteContent<{ items?: Testimonial[] }>('testimonials');
+  const items = (saved?.items ?? []).filter((t) => t.consent && t.quote.trim() && t.name.trim())
+    .map(({ quote, name, role, rating }) => ({ quote, name, role, rating }));
+  return reply.header('cache-control', 'public, max-age=60').send(items);
+});
+
 app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
-  const [contact, terms, privacy, risk, footer, showcase] = await Promise.all([
+  const [contact, terms, privacy, risk, footer, showcase, testimonials] = await Promise.all([
     siteContent<ContactContent>('contact'), siteContent<Fills>('legal:terms'), siteContent<Fills>('legal:privacy'), siteContent<Fills>('legal:risk'), footerView(),
-    siteContent<{ account_number?: string }>('showcase'),
+    siteContent<{ account_number?: string }>('showcase'), siteContent<{ items?: Testimonial[] }>('testimonials'),
   ]);
   return {
     contact: contact ?? {},
     footer,
     showcase: showcase ?? {},
+    testimonials: testimonials ?? { items: [] },
     legal: {
       terms: { placeholders: placeholdersOf('terms'), fills: terms ?? {} },
       privacy: { placeholders: placeholdersOf('privacy'), fills: privacy ?? {} },
@@ -6894,7 +6974,7 @@ app.get('/admin/site-content', { preHandler: auth('admin') }, async () => {
 
 app.put('/admin/site-content/:key', { preHandler: auth('admin') }, async (req: any, reply) => {
   const key = String(req.params.key);
-  const schema = key === 'contact' ? contactBody : key === 'footer' ? footerBody : key === 'showcase' ? showcaseBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
+  const schema = key === 'contact' ? contactBody : key === 'footer' ? footerBody : key === 'showcase' ? showcaseBody : key === 'testimonials' ? testimonialsBody : /^legal:(terms|privacy|risk)$/.test(key) ? fillsBody : null;
   if (!schema) return reply.code(404).send({ error: 'no such section' });
   const body = schema.safeParse(req.body);
   if (!body.success) return reply.code(400).send({ error: body.error.flatten() });

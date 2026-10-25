@@ -24,6 +24,8 @@ export type FooterView = {
   marks_title?: string; marks?: FooterMark[];
   /** Free text above the copyright line, pasted as written: paragraphs, line breaks and lists survive. */
   notice?: string;
+  /** The footer's social links, shown on the landing page when set. */
+  social?: { linkedin?: string; x?: string; telegram?: string };
 };
 
 /**

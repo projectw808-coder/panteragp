@@ -24,8 +24,10 @@ type Footer = {
   capabilities_title?: string; capabilities?: string[];
   marks_title?: string; marks?: FooterMark[];
   notice?: string;
+  social?: { linkedin?: string; x?: string; telegram?: string };
 };
-type Content = { contact: Contact; legal: Legal; footer: Footer; showcase?: { account_number?: string } };
+type Testimonial = { quote: string; name: string; role: string; rating: number; consent: boolean };
+type Content = { contact: Contact; legal: Legal; footer: Footer; showcase?: { account_number?: string }; testimonials?: { items?: Testimonial[] } };
 
 /**
  * The footer: a logo, a paragraph, one column of links and the copyright line, on the
@@ -100,6 +102,12 @@ function FooterEditor({ initial, busy, saved, onSave, onLogo, onMark }: {
           <p className="text-xs text-slate-ink">With no links, the column shows Terms, Privacy, Risk warning and Contact.</p>
         </div>
       </Row>
+      {(['linkedin', 'x', 'telegram'] as const).map((k) => (
+        <Row key={k} label={k === 'x' ? 'X (Twitter) link' : k === 'linkedin' ? 'LinkedIn link' : 'Telegram link'}>
+          <input className={`${input} max-w-md`} value={f.social?.[k] ?? ''} placeholder="https://… (empty hides the icon)"
+            onChange={(e) => setF({ ...f, social: { ...f.social, [k]: e.target.value } })} />
+        </Row>
+      ))}
       <Row label="Copyright line">
         <input className={`${input} max-w-md`} value={f.line ?? ''} placeholder={`© ${new Date().getFullYear()} Pantera GP`} onChange={(e) => setF({ ...f, line: e.target.value })} />
       </Row>
@@ -199,11 +207,14 @@ export function SiteContent() {
     if (!loaded.data) return;
     setContact(loaded.data.contact);
     setShowcase(loaded.data.showcase?.account_number ?? '');
+    setQuotes(loaded.data.testimonials?.items ?? []);
     setLegal(loaded.data.legal);
   }, [loaded.data]);
 
   // The account whose auto trader the landing page shows, by account number.
   const [showcase, setShowcase] = useState('');
+  // Real client quotes for the landing page, each published only with the client's consent.
+  const [quotes, setQuotes] = useState<Testimonial[]>([]);
 
   const save = async (key: string, body: unknown) => {
     setBusy(key); setError(null); setSaved(null);
@@ -310,11 +321,52 @@ export function SiteContent() {
         </div>
       </div>
 
+      {/* --------------------------------------------------------- testimonials */}
+      <div className="space-y-3 border-t border-pebble pt-4 dark:border-white/10">
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-sm font-semibold">Client testimonials</h3>
+          <span className="text-xs text-slate-ink">The "What our clients say" section on the landing page.</span>
+        </div>
+        <p className="text-xs text-slate-ink">
+          Real quotes from real clients only, in their words, and only with their agreement to be quoted. A quote shows on the page
+          once "Client agreed to publish" is ticked. With none ticked, the section is hidden.
+        </p>
+        {quotes.map((q, i) => {
+          const set = (patch: Partial<Testimonial>) => setQuotes(quotes.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+          return (
+            <div key={i} className="space-y-2 rounded-lg border border-pebble p-3 dark:border-white/10">
+              <textarea className={`${input} min-h-16`} maxLength={400} placeholder="The client's words" value={q.quote} onChange={(e) => set({ quote: e.target.value })} />
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <input className={input} maxLength={80} placeholder="Name as they agreed to be shown, e.g. Michael R." value={q.name} onChange={(e) => set({ name: e.target.value })} />
+                <input className={input} maxLength={80} placeholder="Role, e.g. Private investor" value={q.role} onChange={(e) => set({ role: e.target.value })} />
+                <select className={input} value={q.rating} onChange={(e) => set({ rating: Number(e.target.value) })} aria-label="Stars">
+                  {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} stars</option>)}
+                </select>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={q.consent} onChange={(e) => set({ consent: e.target.checked })} /> Client agreed to publish
+                </label>
+                <button type="button" className="text-xs text-slate-ink hover:text-down" onClick={() => setQuotes(quotes.filter((_, j) => j !== i))}>Remove</button>
+              </div>
+            </div>
+          );
+        })}
+        <div className="flex flex-wrap items-center gap-3">
+          {quotes.length < 9 && <button type="button" className={btnGhost} onClick={() => setQuotes([...quotes, { quote: '', name: '', role: '', rating: 5, consent: false }])}>Add a testimonial</button>}
+          <button className={btn} disabled={busy === 'testimonials'} onClick={() => save('testimonials', { items: quotes.filter((q) => q.quote.trim() && q.name.trim()) })}>
+            {busy === 'testimonials' ? 'Saving…' : 'Save testimonials'}
+          </button>
+          {saved === 'testimonials' && <span className="text-xs text-up">Saved · live now</span>}
+        </div>
+      </div>
+
       {/* ------------------------------------------------------------- footer */}
       <FooterEditor initial={loaded.data?.footer ?? {}} busy={busy === 'footer'} saved={saved === 'footer'}
         onSave={(f) => save('footer', {
           text: f.text, column_title: f.column_title, links: f.links, line: f.line,
           capabilities_title: f.capabilities_title, capabilities: f.capabilities, notice: f.notice,
+          social: { linkedin: f.social?.linkedin?.trim() || undefined, x: f.social?.x?.trim() || undefined, telegram: f.social?.telegram?.trim() || undefined },
           marks_title: f.marks_title, marks: (f.marks ?? []).map(({ id, name, href }) => ({ id, name, href })),
         })}
         onLogo={(file) => picture('/admin/site-content/footer/logo', file)}

@@ -2392,6 +2392,25 @@ if (!WEBHOOK) {
   const footer = await get('/site-content/footer');
   assert.equal(footer.column_title, 'Company');
   assert.deepEqual(footer.capabilities, ['ONE', 'TWO'], 'the engine strip follows the desk');
+  // Social links: https addresses only, and an empty one hides its icon.
+  assert.equal(await status('/admin/site-content/footer', { token: A, method: 'PUT', body: { social: { x: 'http://x.com/pantera' } } }), 400, 'plain http is refused');
+  await get('/admin/site-content/footer', { token: A, method: 'PUT', body: { column_title: 'Company', links: [{ label: 'Acceptance link', href: '/blog' }], line: 'Acceptance line', text: 'A footer paragraph.', capabilities_title: 'What it does', capabilities: ['ONE', 'TWO'], notice: 'Acceptance notice, first paragraph.\r\nSecond line of it.\n\n- one point <b>\n- another', social: { linkedin: 'https://www.linkedin.com/company/acceptance' } } });
+  const social = (await get('/site-content/footer')).social ?? {};
+  assert.equal(social.linkedin, 'https://www.linkedin.com/company/acceptance');
+  assert.equal(social.x, undefined, 'an unset link stays unset');
+  // Testimonials: only quotes the client agreed to are ever published.
+  await get('/admin/site-content/testimonials', { token: A, method: 'PUT', body: { items: [
+    { quote: 'Agreed quote.', name: 'Agreed A.', role: 'Investor', rating: 5, consent: true },
+    { quote: 'Not agreed.', name: 'Private P.', role: 'Investor', rating: 4, consent: false },
+  ] } });
+  const quotes = await get('/public/testimonials');
+  assert.deepEqual(quotes, [{ quote: 'Agreed quote.', name: 'Agreed A.', role: 'Investor', rating: 5 }], 'without consent nothing is shown, and consent itself is not sent');
+  assert.equal(await status('/admin/site-content/testimonials', { token: A, method: 'PUT', body: { items: [{ quote: 'x', name: 'y', rating: 9 }] } }), 400, 'stars run one to five');
+  await get('/admin/site-content/testimonials', { token: A, method: 'PUT', body: { items: [] } });
+  assert.deepEqual(await get('/public/testimonials'), [], 'with none, the landing section hides');
+  // The markets section counts what the instruments table really holds.
+  const mk = await get('/public/markets');
+  assert.ok(mk.total > 0 && mk.total === Object.values(mk.counts).reduce((x, y) => x + y, 0), 'the counts add up to the total');
   assert.equal(footer.logo_url, null, 'no logo until one is uploaded');
   const foot = await fetch(`${B}/terms`).then((r) => r.text());
   assert.match(foot, /Acceptance link/);
