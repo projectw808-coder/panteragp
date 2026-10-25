@@ -1,3 +1,4 @@
+import { liveEnabled, makeLiveMarket } from './live-market.ts';
 // Mock OHLC data. Deterministic: a given (symbol, timeframe, bar index) always yields the
 // same candle, so panning and reloading are stable.
 // ponytail: value noise, not a market. This is still the only price source — the live feed
@@ -181,7 +182,7 @@ function walker(symbol: string, tf: Timeframe) {
   };
 }
 
-export function candles(symbol: string, tf: Timeframe, limit: number): Candle[] {
+function synthCandles(symbol: string, tf: Timeframe, limit: number): Candle[] {
   const { step, seed, amp, round, at } = walker(symbol, tf);
 
   const last = Math.floor(Date.now() / 1000 / step);
@@ -207,7 +208,7 @@ export function candles(symbol: string, tf: Timeframe, limit: number): Candle[] 
  * again a second later gives a slightly different number, which is what the feed
  * broadcasts and what the chart's last candle converges towards.
  */
-export function spot(symbol: string, atMs = Date.now()): number {
+function synthSpot(symbol: string, atMs = Date.now()): number {
   const { step, round, at, amp } = walker(symbol, '1m');
   const x = atMs / 1000 / step;
   const frac = x - Math.floor(x);
@@ -216,6 +217,59 @@ export function spot(symbol: string, atMs = Date.now()): number {
   // price equal to the bar's open at its start and its close at the next boundary.
   const chop = amp * 1.5 * (fbm(x * 120) - 0.5) * Math.sin(Math.PI * frac);
   return round(at(x) + chop);
+}
+
+// ------------------------------------------------------------------ real crypto
+// Crypto prices come from the market (src/live-market.ts) once the server starts the feed;
+// forex, metals and ETFs stay on the curve above. Symbols ending in USD that are not
+// currencies or metals are the crypto list.
+const NOT_CRYPTO = new Set(['EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'XAUUSD', 'XAGUSD']);
+export const CRYPTO = Object.keys(BASE).filter((s) => s.endsWith('USD') && !NOT_CRYPTO.has(s));
+const live = liveEnabled() ? makeLiveMarket() : null;
+/** Begin reading real crypto prices. Called once by the server at boot; a no-op in tests. */
+export const startLiveMarket = () => live?.start(CRYPTO);
+/** Whether this symbol is being priced from the market right now. */
+export const isLive = (symbol: string) => !!live?.price(symbol);
+/** The market's opening price today, for a day's change on a real-priced symbol. */
+export const liveOpen = (symbol: string) => live?.open(symbol) ?? null;
+const roundFor = (symbol: string) => walker(symbol, '1m').round;
+// Real over curve: until a symbol's real history arrives, its curve is drawn at the real level.
+const levelOf = (symbol: string) => {
+  const real = live?.price(symbol);
+  return real ? real / synthSpot(symbol) : 1;
+};
+
+export function candles(symbol: string, tf: Timeframe, limit: number): Candle[] {
+  const real = live?.candles(symbol, tf, limit);
+  if (real?.length) {
+    const round = roundFor(symbol);
+    return real.map((c) => ({ time: c.time, open: round(c.open), high: round(c.high), low: round(c.low), close: round(c.close), volume: Math.round(c.volume) }));
+  }
+  const k = levelOf(symbol);
+  const out = synthCandles(symbol, tf, limit);
+  if (k === 1) return out;
+  const round = roundFor(symbol);
+  return out.map((c) => ({ ...c, open: round(c.open * k), high: round(c.high * k), low: round(c.low * k), close: round(c.close * k) }));
+}
+
+/**
+ * The live price. Crypto: the market's last trade now, or its price at a past moment from
+ * the history held; the curve, at the real level, only until real data is there.
+ */
+export function spot(symbol: string, atMs = Date.now()): number {
+  if (live) {
+    const round = roundFor(symbol);
+    if (Math.abs(atMs - Date.now()) < 15_000) {
+      const p = live.price(symbol);
+      if (p) return round(p);
+    } else {
+      const p = live.priceAt(symbol, atMs);
+      if (p) return round(p);
+    }
+    const k = levelOf(symbol);
+    if (k !== 1) return round(synthSpot(symbol, atMs) * k);
+  }
+  return synthSpot(symbol, atMs);
 }
 
 /** Last price and change over the most recent bar, for the watchlist. */
