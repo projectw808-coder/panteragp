@@ -1421,6 +1421,11 @@ const geoPolicy = policyFromEnv();
 /** The door's state, said on the health check so it can be read from outside without the logs. */
 // Tor's exit list, kept fresh while the process runs; empty when the door is off.
 const torExits = makeTorList();
+// Whether this caller is let past the door whatever it would say: an address on
+// GEO_ALLOW_IPS, or a holder of the door pass. Set below when the door is on. Used to stand
+// the browser's time-zone check down for them too, or an allowed address in the United
+// States would get in at the server and be turned away again by its own clock.
+let doorExempt: (req: any) => boolean = () => false;
 const doorState = () => (geoPolicy
   ? { countries: [...geoPolicy.countries], anon: geoPolicy.anon, datacenter: geoPolicy.datacenter, keyed: !!process.env.GEO_API_KEY?.trim(), tor_exits: torExits.size() }
   : null);
@@ -1430,6 +1435,7 @@ if (geoPolicy) {
   const geoCrawlers = (process.env.GEO_ALLOW_CRAWLERS ?? '1') === '1';
   const geoPass = process.env.GEO_PASS?.trim() || undefined;
   const GEO_OPEN = new Set(['/health', '/webhooks/bunzy', '/whereami', '/door', '/door/pass']);
+  doorExempt = (req: any) => geoAllow.has(String(req.ip ?? '')) || (!!geoPass && hasPass(req.headers?.cookie, geoPass));
   torExits.start();
   app.addHook('onRequest', async (req: any, reply) => {
     const path = (req.raw.url ?? '/').split('?')[0];
@@ -1473,9 +1479,11 @@ app.get('/door/pass', async (req: any, reply) => {
 });
 // What the app needs to take the door's second look in the browser: whether the door is
 // on, and whether the refused countries include one whose time zones the page can check.
-app.get('/door', async (_req, reply) => {
+app.get('/door', async (req, reply) => {
   const on = !!geoPolicy;
-  return reply.header('cache-control', 'public, max-age=300').send({ on, countries: on ? [...geoPolicy!.countries] : [], timezones: on && geoPolicy!.countries.has('US') });
+  const exempt = on && doorExempt(req);
+  // Per caller now, since an allowed address is told so: cached by the browser only.
+  return reply.header('cache-control', 'private, max-age=60').send({ on, countries: on ? [...geoPolicy!.countries] : [], timezones: on && geoPolicy!.countries.has('US'), exempt });
 });
 
 await app.register(websocket);
@@ -6659,8 +6667,9 @@ app.get('/articles/:slug', async (req: any, reply) => {
 // page carries the guard that takes the door's second look in the browser: a device on
 // United States time refuses the page itself, VPN or no VPN.
 const html = (reply: any) => {
-  const r = reply.type('text/html; charset=utf-8').header('cache-control', 'public, max-age=60');
-  const guard = geoPolicy?.countries.has('US') ? TZ_GUARD_SCRIPT : '';
+  const exempt = !!reply.request && doorExempt(reply.request);
+  const r = reply.type('text/html; charset=utf-8').header('cache-control', exempt ? 'private, max-age=60' : 'public, max-age=60');
+  const guard = geoPolicy?.countries.has('US') && !exempt ? TZ_GUARD_SCRIPT : '';
   const out = {
     code(n: number) { r.code(n); return out; },
     send: (page: string) => r.send(guard ? page.replace('</head>', `${guard}</head>`) : page),

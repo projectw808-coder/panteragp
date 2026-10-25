@@ -26,4 +26,4 @@ export function deviceTimezone(): string | null {
 
 export const deviceInUs = () => { const tz = deviceTimezone(); return !!tz && US_TIMEZONES.has(tz); };
 
-export type DoorState = { on: boolean; countries: string[]; timezones: boolean };
+export type DoorState = { on: boolean; countries: string[]; timezones: boolean; exempt?: boolean };

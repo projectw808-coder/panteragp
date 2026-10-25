@@ -56,7 +56,7 @@ function useDoor() {
   const [refused, setRefused] = useState(false);
   useEffect(() => {
     if (!deviceInUs()) return;
-    fetch('/api/door').then((r) => r.json()).then((d: DoorState) => { if (d.on && d.timezones) setRefused(true); }).catch(() => {});
+    fetch('/api/door').then((r) => r.json()).then((d: DoorState) => { if (d.on && d.timezones && !d.exempt) setRefused(true); }).catch(() => {});
   }, []);
   return refused;
 }
