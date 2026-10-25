@@ -14,13 +14,13 @@ import { round8 } from './trading.ts';
  * record grows as time passes.
  */
 
-// Sized so the record stood at about 570,553 USD on 25 October 2026; it moves with each day's trades.
-export const DEMO_START = 545_117;
+// Sized so the record stood at about 570,553 USD on 25 October 2026, and grows from there.
+export const DEMO_START = 535_961;
 export const DEMO_SINCE = Date.UTC(2026, 8, 25);   // 25 September 2026
 const DAY = 86_400_000;
-const DAILY_DRIFT = 0.0015;       // the planned path
+const DAILY_DRIFT = 0.0025;       // the planned path: steady growth, about 7.8% a month
 const RISK = 0.0019;              // of equity, per trade
-const PULL = 1.5;                 // how firmly a day's hit rate leans back toward the path
+const PULL = 8;                   // how firmly a day's hit rate is lifted when the record falls behind the path
 const FEE = 0.0001;               // commission per side, on notional
 const ALLOC: Record<StrategyKind, number> = { trend: 0.2, mean_reversion: 0.3, grid: 0.5 };
 const PICK: [StrategyKind, number][] = [['grid', 0.5], ['mean_reversion', 0.3], ['trend', 0.2]];
@@ -52,7 +52,7 @@ type Trade = {
 function dayTrades(d: number, equity: number): Trade[] {
   const start = DEMO_SINCE + d * DAY;
   const traj = DEMO_START * Math.pow(1 + DAILY_DRIFT, d);
-  const p = Math.min(0.92, Math.max(0.15, 0.56 + 0.3 * gauss(d * 101 + 1) + PULL * (traj - equity) / equity));
+  const p = Math.min(0.92, Math.max(0.15, 0.58 + 0.09 * gauss(d * 101 + 1) + PULL * Math.max(0, traj - equity) / equity));
   const n = 8 + Math.floor(rnd(d * 101 + 2) * 9);
   const risk = equity * RISK;
   const units = Array.from({ length: n }, (_, i) => {

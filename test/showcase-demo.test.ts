@@ -32,3 +32,11 @@ test('the demo figures stay in a believable range over time', () => {
     assert.ok(k.profit_factor! > 1 && k.profit_factor! < 2, `profit factor ${k.profit_factor} at day ${days}`);
   }
 });
+
+test('the demo record grows over time', () => {
+  const D = 86_400_000;
+  const at = (days: number) => demoShowcase(NOW + days * D).kpis.equity;
+  assert.ok(at(30) > at(0), 'a month on it stands higher');
+  assert.ok(at(90) > at(30), 'and higher again after three');
+  assert.ok(at(90) < at(0) * 1.6, 'at a believable pace');
+});
