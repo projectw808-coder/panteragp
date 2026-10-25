@@ -607,7 +607,6 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
             {([
               ['What is Pantera GP?', 'A trading platform where AI-driven strategies trade for you, alongside a full terminal with live charts, managed portfolios, staking and fixed-return IPO offerings, all on one account.'],
               ['How does the AI auto trader work?', 'It reads every market around the clock, opens a position when one of its strategies sees a setup, sizes each trade against the risk you set and attaches a stop and a target. You can pause a strategy, change what it may deploy, or switch it off at any time.'],
-              ['Can I lose money?', 'Yes. Trading carries risk, the auto trader can lose, and past results are no guide to future ones. Only trade with money you can afford to lose, and read the risk warning first.'],
               ['How do I open an account?', 'Choose Open Account and enter your name, email, a password and the registration code the desk gave you. Verification of your identity follows inside the platform.'],
               ['What can I trade?', `${instruments} instruments across crypto, forex, metals and index ETFs, with market, limit, stop, stop-limit and trailing orders.`],
               ['How do IPO offerings pay?', 'Each offering pays a fixed rate over a set term, credited daily and settled at maturity, whatever the company’s share price does after it lists.'],
@@ -618,7 +617,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
                     {q}<Plus size={20} className="shrink-0 text-[color:var(--lp-ember)] transition-transform duration-300 group-open:rotate-45" aria-hidden />
                   </summary>
                   <p className="pb-[16px] text-[15px] leading-[1.6] text-[color:var(--lp-soft)]">
-                    {a}{i === 2 && <> <a href="/risk" className="text-[color:var(--lp-ember)] underline underline-offset-2">Read the risk warning.</a></>}
+                    {a}
                   </p>
                 </details>
               </Reveal>

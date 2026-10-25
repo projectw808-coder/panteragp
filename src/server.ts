@@ -343,35 +343,175 @@ app.post('/auth/register', async (req, reply) => {
   }
 });
 
-app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
-  const q = z.object({
-    stage_id: z.coerce.number().int().optional(),
-    owner_staff_id: z.string().uuid().optional(),
-    kyc_status: z.enum(['none', 'pending', 'approved', 'rejected', 'expired']).optional(),
-    q: z.string().max(100).optional(),
-    limit: z.coerce.number().int().min(1).max(200).default(50),
-  }).parse(req.query);
+/**
+ * The client book, for desks of any size: filters, a sort, paging with the total that
+ * matches, and — on request — what each listed client holds in dollars. The same filters
+ * drive the CSV export below, so what is exported is exactly what was on screen.
+ */
+const clientListQuery = z.object({
+  stage_id: z.coerce.number().int().optional(),
+  owner_staff_id: z.string().uuid().optional(),
+  kyc_status: z.enum(['none', 'pending', 'approved', 'rejected', 'expired']).optional(),
+  q: z.string().max(100).optional(),
+  // Nobody owns them yet: the queue a manager hands out.
+  unassigned: z.enum(['1', 'true']).optional(),
+  // Can sign in (true) or a record without a login (false).
+  has_login: z.enum(['true', 'false']).optional(),
+  // Joined since this many days ago.
+  new_days: z.coerce.number().int().min(1).max(3650).optional(),
+  sort: z.enum(['joined', 'name', 'stage', 'status', 'manager']).default('joined'),
+  dir: z.enum(['asc', 'desc']).default('desc'),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  with_value: z.enum(['1', 'true']).optional(),
+});
+const CLIENT_SORT: Record<string, string> = {
+  joined: 'c.created_at', name: 'lower(c.name)', stage: 's.sort_order', status: 'c.kyc_status', manager: 'lower(o.name)',
+};
+
+async function listClients(q: z.infer<typeof clientListQuery>, page = true) {
+  const order = `${CLIENT_SORT[q.sort]} ${q.dir === 'asc' ? 'ASC' : 'DESC'} NULLS LAST, c.created_at DESC`;
   // ponytail: ILIKE '%x%' is a seq scan; add a pg_trgm index when the client list gets long.
   const { rows } = await pool.query(
-    `SELECT c.id, c.account_number, c.email, c.name, c.tier, c.kyc_status, c.risk_profile, c.created_at,
+    `SELECT c.id, c.account_number, c.email, c.name, c.phone, c.country, c.tier, c.kyc_status, c.risk_profile, c.created_at,
             c.stage_id, s.name AS stage, c.owner_staff_id, o.name AS owner_name,
             -- Whether they can sign in at all, never the hash itself. A client created
             -- from the CRM has no password until someone sets one, and that state was
             -- invisible here: the row looked identical to an account that works.
             c.password_hash IS NOT NULL AS has_login,
             -- So a screen choosing who to email can say who has asked not to be.
-            c.email_opt_out
+            c.email_opt_out,
+            count(*) OVER()::int AS total_count
        FROM clients c
        JOIN pipeline_stages s ON s.id = c.stage_id
        LEFT JOIN staff o ON o.id = c.owner_staff_id
       WHERE ($1::smallint IS NULL OR c.stage_id = $1)
         AND ($2::uuid IS NULL OR c.owner_staff_id = $2)
-        AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.email ILIKE '%'||$3||'%' OR c.account_number ILIKE '%'||$3||'%')
+        AND ($3::text IS NULL OR c.name ILIKE '%'||$3||'%' OR c.email ILIKE '%'||$3||'%' OR c.account_number ILIKE '%'||$3||'%' OR c.phone ILIKE '%'||$3||'%')
         AND ($5::text IS NULL OR c.kyc_status = $5)
-      ORDER BY c.created_at DESC LIMIT $4`,
-    [q.stage_id ?? null, q.owner_staff_id ?? null, q.q || null, q.limit, q.kyc_status ?? null],
+        AND (NOT $6::bool OR c.owner_staff_id IS NULL)
+        AND ($7::bool IS NULL OR (c.password_hash IS NOT NULL) = $7)
+        AND ($8::int IS NULL OR c.created_at > now() - make_interval(days => $8))
+      ORDER BY ${order}
+      LIMIT $4 OFFSET $9`,
+    [q.stage_id ?? null, q.owner_staff_id ?? null, q.q || null, page ? q.limit : 50000, q.kyc_status ?? null,
+      !!q.unassigned, q.has_login === undefined ? null : q.has_login === 'true', q.new_days ?? null, page ? q.offset : 0],
   );
   return rows;
+}
+
+/**
+ * What each listed client holds, in dollars: cash, crypto, open pots and active stakes, each
+ * converted the way the client's own balance is. Open positions' gains and IPO allocations
+ * are left to the client record — this is the book's at-a-glance size, not a valuation.
+ */
+async function assetsUsd(ids: string[]) {
+  const out = new Map<string, { usd: number; unpriced: boolean }>();
+  if (!ids.length) return out;
+  const { rows } = await pool.query<{ client_id: string; code: string; amount: number }>(
+    `SELECT client_id, currency AS code, balance AS amount FROM trading_accounts WHERE client_id = ANY($1)
+     UNION ALL SELECT client_id, asset, balance FROM wallets WHERE client_id = ANY($1)
+     UNION ALL SELECT client_id, currency, balance FROM portfolios WHERE client_id = ANY($1) AND status = 'open'
+     UNION ALL SELECT s.client_id, p.asset, s.amount + s.rewards FROM stakes s JOIN staking_products p ON p.code = s.product_code
+                WHERE s.client_id = ANY($1) AND s.status = 'active'`, [ids]);
+  const rates = new Map<string, number | null>();
+  for (const r of rows) {
+    if (!rates.has(r.code)) rates.set(r.code, await rateToUsd(r.code));
+    const rate = rates.get(r.code)!;
+    const cur = out.get(r.client_id) ?? { usd: 0, unpriced: false };
+    if (rate === null) cur.unpriced = true; else cur.usd += Number(r.amount) * rate;
+    out.set(r.client_id, cur);
+  }
+  return out;
+}
+
+app.get('/clients', { preHandler: auth('crm:read') }, async (req) => {
+  const q = clientListQuery.parse(req.query);
+  const rows = await listClients(q);
+  if (!q.with_value) return rows;
+  const value = await assetsUsd(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, assets_usd: round8(value.get(r.id)?.usd ?? 0), assets_unpriced: value.get(r.id)?.unpriced ?? false }));
+});
+
+/** The whole book at a glance, and how it is spread across the team, for the list's tiles and team panel. */
+app.get('/clients/summary', { preHandler: auth('crm:read') }, async () => {
+  const { rows: [t] } = await pool.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE password_hash IS NOT NULL)::int AS active,
+            count(*) FILTER (WHERE password_hash IS NULL)::int AS inactive,
+            count(*) FILTER (WHERE kyc_status = 'pending')::int AS pending_kyc,
+            count(*) FILTER (WHERE kyc_status = 'approved')::int AS verified,
+            count(*) FILTER (WHERE owner_staff_id IS NULL)::int AS unassigned,
+            count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS new_week
+       FROM clients`);
+  const { rows: team } = await pool.query(
+    `SELECT o.id, o.name, o.role,
+            count(c.id)::int AS clients,
+            count(c.id) FILTER (WHERE c.kyc_status = 'pending')::int AS pending_kyc,
+            count(c.id) FILTER (WHERE c.created_at > now() - interval '7 days')::int AS new_week,
+            count(c.id) FILTER (WHERE c.password_hash IS NULL)::int AS no_login
+       FROM staff o LEFT JOIN clients c ON c.owner_staff_id = o.id
+      WHERE o.active
+      GROUP BY o.id ORDER BY count(c.id) DESC, o.name`);
+  return { ...t, team };
+});
+
+/**
+ * One change to many clients at once: hand a set to a manager (or back to the pool), or
+ * move them along the pipeline. Each client's timeline records the change, the same as a
+ * change made one at a time.
+ */
+const bulkBody = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  owner_staff_id: z.string().uuid().nullable().optional(),
+  stage_id: z.number().int().optional(),
+}).refine((b) => b.owner_staff_id !== undefined || b.stage_id !== undefined, { message: 'nothing to change' });
+app.post('/clients/bulk', { preHandler: auth('crm:write') }, async (req: any, reply) => {
+  const body = bulkBody.safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { ids, owner_staff_id, stage_id } = body.data;
+  if (owner_staff_id) {
+    const { rowCount } = await pool.query('SELECT 1 FROM staff WHERE id = $1 AND active', [owner_staff_id]);
+    if (!rowCount) return reply.code(404).send({ error: 'no such active staff member' });
+  }
+  if (stage_id !== undefined) {
+    const { rowCount } = await pool.query('SELECT 1 FROM pipeline_stages WHERE id = $1', [stage_id]);
+    if (!rowCount) return reply.code(404).send({ error: 'no such stage' });
+  }
+  return tx(req.principal.sub, async (c) => {
+    const sets: string[] = []; const params: unknown[] = [ids];
+    if (owner_staff_id !== undefined) { params.push(owner_staff_id); sets.push(`owner_staff_id = $${params.length}`); }
+    if (stage_id !== undefined) { params.push(stage_id); sets.push(`stage_id = $${params.length}`); }
+    const { rows } = await c.query<{ id: string }>(`UPDATE clients SET ${sets.join(', ')} WHERE id = ANY($1) RETURNING id`, params);
+    const owner = owner_staff_id ? (await c.query<{ name: string }>('SELECT name FROM staff WHERE id = $1', [owner_staff_id])).rows[0]?.name : null;
+    for (const r of rows) {
+      if (owner_staff_id !== undefined) {
+        await logActivity(c, { client_id: r.id, kind: 'owner', actor: req.principal.sub,
+          summary: owner ? `Assigned to ${owner}` : 'Unassigned', data: { owner_staff_id, bulk: true } });
+      }
+      if (stage_id !== undefined) {
+        await logActivity(c, { client_id: r.id, kind: 'stage', actor: req.principal.sub,
+          summary: 'Pipeline stage changed', data: { stage_id, bulk: true } });
+      }
+    }
+    return { updated: rows.length };
+  });
+});
+
+/** The list as filtered, as a spreadsheet. Admin only: it is the whole book's contact details. */
+app.get('/clients/export.csv', { preHandler: auth('crm:read') }, async (req: any, reply) => {
+  if (req.principal.role !== 'admin') return reply.code(403).send({ error: 'exporting the client book is for admins' });
+  const q = clientListQuery.parse(req.query);
+  const rows = await listClients(q, false);
+  const value = await assetsUsd(rows.map((r) => r.id));
+  const out = rows.map((r) => ({
+    account_number: r.account_number, name: r.name, email: r.email, phone: r.phone, country: r.country,
+    stage: r.stage, kyc_status: r.kyc_status, manager: r.owner_name ?? '', has_login: r.has_login,
+    assets_usd: round8(value.get(r.id)?.usd ?? 0), joined: new Date(r.created_at).toISOString().slice(0, 10),
+  }));
+  return reply.header('content-type', 'text/csv; charset=utf-8')
+    .header('content-disposition', `attachment; filename="clients-${new Date().toISOString().slice(0, 10)}.csv"`)
+    .send(toCSV(out));
 });
 
 app.get('/pipeline-stages', { preHandler: auth('crm:read') }, async () =>

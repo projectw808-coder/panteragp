@@ -1764,3 +1764,30 @@ html:not(.dark) .x-segs > button:hover { color: var(--color-obsidian); }
 .app-x select { cursor: pointer; }
 .dark .app-x select, .dark .app-x input:not([type=checkbox]):not([type=radio]), .dark .app-x textarea { border-color: #222a2e; background-color: #0b1115; }
 .x-topwrap { margin-bottom: 28px; } .x-topwrap.is-tight { margin-bottom: 14px; }
+/* The balance, highlighted in the top bar. */
+.x-balance-chip { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-radius: 9px; background: linear-gradient(135deg, rgba(255, 117, 24, 0.22), rgba(255, 117, 24, 0.07)); border: 1px solid rgba(255, 117, 24, 0.55); box-shadow: 0 0 18px rgba(255, 117, 24, 0.2), inset 0 0 0 1px rgba(255, 170, 90, 0.08); transition: box-shadow 0.2s; }
+.x-balance-chip:hover { box-shadow: 0 0 26px rgba(255, 117, 24, 0.35); }
+.x-bal-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-mist); }
+.x-bal-value { font-size: 16px; font-weight: 700; color: #ffb066; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+html:not(.dark) .x-bal-value { color: var(--color-ember-ink); }
+.x-pot-chip { align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 9px; font-size: 13px; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.1); }
+html:not(.dark) .x-pot-chip { border-color: var(--color-pebble); }
+
+/* The client book: saved views, bulk bar, team panel, density. */
+.x-view { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--color-mist); border: 1px solid transparent; transition: color 0.2s, background-color 0.2s, border-color 0.2s; }
+.x-view:hover { color: var(--color-vellum); background: rgba(255, 255, 255, 0.04); }
+html:not(.dark) .x-view:hover { color: var(--color-obsidian); }
+.x-view.is-on { color: var(--color-vellum); background: rgba(255, 117, 24, 0.12); border-color: rgba(255, 117, 24, 0.45); }
+html:not(.dark) .x-view.is-on { color: var(--color-obsidian); }
+.x-view-n { min-width: 22px; padding: 1px 6px; border-radius: 999px; font-size: 11px; font-weight: 600; text-align: center; background: rgba(255, 255, 255, 0.08); font-variant-numeric: tabular-nums; }
+.x-view.is-on .x-view-n { color: #140802; background: var(--color-ember); }
+.x-bulk { position: sticky; top: 60px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; font-size: 13px; background: linear-gradient(90deg, rgba(255, 117, 24, 0.18), rgba(255, 117, 24, 0.06)); border: 1px solid rgba(255, 117, 24, 0.5); backdrop-filter: blur(8px); }
+.x-crm-row.is-picked { background: rgba(255, 117, 24, 0.07); }
+.app-x .table-card.is-compact td { padding-top: 4px; padding-bottom: 4px; }
+.app-x .table-card input[type=checkbox], .app-x .x-bulk input[type=checkbox] { accent-color: var(--color-ember); width: 15px; height: 15px; cursor: pointer; }
+.x-team-row { display: flex; width: 100%; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; font-size: 13px; transition: background-color 0.2s; }
+.x-team-row:hover { background: rgba(255, 255, 255, 0.04); }
+.x-team-row.is-on { background: rgba(255, 117, 24, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 117, 24, 0.35); }
+.x-crm-row td:nth-child(2) > span { white-space: nowrap; }
+.x-crm-row td:nth-child(3) { max-width: 230px; }
+.x-crm-row td:nth-child(6) { white-space: nowrap; }

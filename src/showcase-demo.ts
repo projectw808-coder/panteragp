@@ -14,7 +14,8 @@ import { round8 } from './trading.ts';
  * record grows as time passes.
  */
 
-export const DEMO_START = 50_000;
+// Sized so the record stood at about 570,553 USD on 25 October 2026; it moves with each day's trades.
+export const DEMO_START = 545_117;
 export const DEMO_SINCE = Date.UTC(2026, 8, 25);   // 25 September 2026
 const DAY = 86_400_000;
 const DAILY_DRIFT = 0.0015;       // the planned path

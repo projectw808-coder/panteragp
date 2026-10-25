@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Coins, Flag, Inbox, ListTodo, ShieldCheck, Users } from 'lucide-react';
 import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
@@ -406,16 +407,22 @@ function Graph({ label, days, pick, total, unit, signed }: {
   );
 }
 
+// The client area's tile: an ember icon chip, the label, the figure, a note.
+const TILE_ICON: Record<string, typeof Users> = {
+  Clients: Users, 'KYC waiting': ShieldCheck, 'Open flags': Flag, 'Open tasks': ListTodo,
+  'Withdrawal requests': Inbox, 'Open stakes': Coins,
+};
 function Tile({ label, value, sub, href, alert }: {
   label: string; value: string; sub?: string; href: string; alert?: boolean;
 }) {
+  const Icon = TILE_ICON[label] ?? Users;
   return (
-    <a href={href}
-      className={`${card} tile block transition-colors hover:bg-pebble dark:hover:bg-white/10 ${alert ? 'is-alert' : ''}`}>
-      <span className="tile-corner" aria-hidden />
-      <p className="metric-label">{label}</p>
-      {/* Mono numerals at tile size: the stat should read as a terminal readout. */}
-      <p className={`mt-2 font-mono text-[34px] font-medium leading-none tabular-nums ${alert ? 'text-ember-ink' : ''}`}>{value}</p>
+    <a href={href} className={`x-card tile lift block p-4 ${alert ? 'is-alert' : ''}`}>
+      <div className="flex items-center gap-3">
+        <span className="x-chip"><Icon size={18} strokeWidth={1.9} aria-hidden /></span>
+        <span className="text-[13px] text-mist">{label}</span>
+      </div>
+      <p className={`mt-3 text-[28px] font-bold leading-none tabular-nums ${alert ? 'text-ember-ink' : ''}`}>{value}</p>
       {sub && <p className="mt-2 text-xs text-slate-ink">{sub}</p>}
     </a>
   );

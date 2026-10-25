@@ -1242,6 +1242,25 @@ await step('the client list filters on verification as well as stage and owner',
 
   assert.equal(await status('/clients?kyc_status=nonsense', { token: A }), 400,
     'an unknown status is refused rather than ignored');
+
+  // The book for big desks: whole-book counts, paging with the true total, bulk changes, export.
+  const sum = await get('/clients/summary', { token: A });
+  assert.ok(sum.total > 0 && sum.active + sum.inactive === sum.total, 'the summary counts the whole book');
+  assert.ok(Array.isArray(sum.team), 'and says how it is spread across the team');
+  const page1 = await get('/clients?limit=2&offset=0&sort=name&dir=asc&with_value=1', { token: A });
+  assert.equal(page1.length, 2);
+  assert.equal(page1[0].total_count, sum.total, 'each page carries the true total');
+  assert.ok(typeof page1[0].assets_usd === 'number', 'and what each client holds, when asked');
+  const page2 = await get('/clients?limit=2&offset=2&sort=name&dir=asc', { token: A });
+  assert.ok(!page2.some((c) => page1.some((d) => d.id === c.id)), 'pages do not overlap');
+  const moved = await get('/clients/bulk', { token: A, method: 'POST', body: { ids: [client.id], owner_staff_id: null } });
+  assert.equal(moved.updated, 1);
+  assert.ok((await get('/clients?unassigned=1&limit=200', { token: A })).some((c) => c.id === client.id), 'a bulk unassign lands in the unassigned view');
+  assert.equal(await status('/clients/bulk', { token: T, method: 'POST', body: { ids: [client.id], owner_staff_id: null } }), 403, 'a client cannot move the book');
+  const csv = await fetch(`${B}/clients/export.csv?kyc_status=expired`, { headers: { authorization: `Bearer ${A}` } });
+  assert.equal(csv.status, 200);
+  assert.match(await csv.text(), /^account_number,name,email/, 'the export is a spreadsheet of the filtered list');
+  assert.equal(await status('/clients/export.csv', { token: T }), 403, 'and only staff with the right role get it');
 });
 
 await step('a client can open their own document, and nobody else can', async () => {

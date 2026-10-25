@@ -4,6 +4,7 @@ import {
   LayoutGrid, ListTodo, LogOut, Mail, Moon, Rocket, Settings, ShieldCheck, Sun, User, Users, Wallet,
 } from 'lucide-react';
 import { useApi } from './api.ts';
+import { headline, type Accounts } from './balance.tsx';
 import { Coin } from './landing.tsx';
 import { NotificationBell } from './notifications.tsx';
 
@@ -64,6 +65,7 @@ export function XTopBar({ name, client, dark, setDark, onLogout }: {
         {!quotes.length && <li><span className="skeleton inline-block h-3 w-56" /></li>}
       </ul>
       <div className="ml-auto flex items-center gap-2">
+        {client && <BalanceChip />}
         <span className="x-iconbtn"><NotificationBell /></span>
         <div ref={menu} className="relative">
           <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu"
@@ -83,6 +85,37 @@ export function XTopBar({ name, client, dark, setDark, onLogout }: {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The client's balance, highlighted in the top bar on every page: the same total the old
+ * balance strip led with, and beside it the pot they chose to show on their balance.
+ */
+function BalanceChip() {
+  const acc = useApi<Accounts>('/accounts');
+  useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) acc.reload(); }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const a = acc.data;
+  if (!a) return <span className="x-balance-chip"><span className="x-bal-label">Balance</span><span className="skeleton inline-block h-4 w-24" /></span>;
+  const total = headline(a);
+  const pot = a.portfolios.find((p) => p.featured);
+  return (
+    <>
+      {pot && (
+        <a href="#/portfolios" className="x-pot-chip hidden xl:flex" title="The pot you show on your balance">
+          <span className="x-bal-label">{pot.name}</span>
+          <span className="tabular-nums">{Number(pot.balance).toLocaleString('en-US', { maximumFractionDigits: 2 })} {pot.currency}</span>
+        </a>
+      )}
+      <a href="#/overview" className="x-balance-chip" title="Your total balance">
+        <span className="x-bal-label">Balance</span>
+        <span className="x-bal-value">{total.format(total.value)}</span>
+      </a>
+    </>
   );
 }
 

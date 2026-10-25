@@ -22,7 +22,7 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 const usd = (n: number) =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds, canWrite, stages }: {
+export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds, canWrite, stages, selected, onSelect, assets }: {
   c: Client;
   open: boolean;
   onToggle: () => void;
@@ -33,6 +33,10 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
   canMoveFunds: boolean;
   canWrite: boolean;
   stages: Stage[];
+  /** Bulk selection, when the list offers it. */
+  selected?: boolean; onSelect?: (on: boolean) => void;
+  /** What they hold in dollars, when the list asked for it. */
+  assets?: number | null;
 }) {
   // Only fetched once the row is opened: a list of fifty clients should not pull fifty
   // holdings summaries nobody asked to see.
@@ -42,7 +46,12 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
   return (
     <>
       <tr onClick={onToggle} aria-expanded={open}
-        className="cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5">
+        className={`x-crm-row cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5 ${selected ? 'is-picked' : ''}`}>
+        {onSelect && (
+          <td className="w-10 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+            <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Select ${c.name}`} />
+          </td>
+        )}
         <td className="px-4 py-2">
           <span className="flex items-center gap-2">
             <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
@@ -79,13 +88,14 @@ export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, c
           <StageCell c={c} stages={stages} onChanged={onChanged} />
         </td>
         <td className="px-4 py-2">{badge(c.kyc_status)}</td>
-        <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? '—'}</td>
-        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{when(c.created_at)}</td>
+        <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? <span className="text-ember-ink">Unassigned</span>}</td>
+        {assets !== undefined && <td className={`px-4 py-2 text-right ${mono}`}>{assets === null ? '—' : '$' + Math.round(assets).toLocaleString('en-US')}</td>}
+        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
       </tr>
 
       {open && (
         <tr className="border-t border-pebble bg-bone/60 dark:border-white/10 dark:bg-white/5">
-          <td colSpan={6} className="px-4 py-5">
+          <td colSpan={6 + (onSelect ? 1 : 0) + (assets !== undefined ? 1 : 0)} className="px-4 py-5">
             <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
               <div>
                 <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Position</h3>
