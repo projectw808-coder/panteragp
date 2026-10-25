@@ -748,7 +748,7 @@ function PriceStrip({ quotes }: { quotes: Ticker['quotes'] }) {
         </div>
         <button onClick={() => move(1)} aria-label="Later prices" className="lp-round lp-strip-arrow lp-strip-next"><ArrowRight size={18} aria-hidden /></button>
       </div>
-      <p className="lp-wrap -mt-1.5 pb-2 text-right font-mono text-[10px] tracking-[0.14em] text-white/40 uppercase">Prices quoted on this platform · updated every five seconds</p>
+      <p className="lp-wrap -mt-1.5 pb-2 text-right font-mono text-[10px] tracking-[0.14em] text-white/40 uppercase">Crypto at live market prices · other markets as quoted on this platform</p>
     </section>
   );
 }

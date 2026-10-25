@@ -27,7 +27,7 @@ const fmt = (p: number) => p.toLocaleString('en-US', { minimumFractionDigits: 2,
 
 /** Live quotes, re-read every five seconds while the tab is visible. */
 export function useQuotes() {
-  const q = useApi<{ quotes: Quote[] }>('/public/ticker');
+  const q = useApi<{ quotes: Quote[] }>('/public/ticker?platform=1');
   useEffect(() => {
     const id = setInterval(() => { if (!document.hidden) q.reload(); }, 5000);
     return () => clearInterval(id);

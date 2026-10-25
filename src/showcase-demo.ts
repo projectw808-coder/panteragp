@@ -24,6 +24,11 @@ const FEE = 0.0001;               // commission per side, on notional
 const ALLOC: Record<StrategyKind, number> = { trend: 0.2, mean_reversion: 0.3, grid: 0.5 };
 const PICK: [StrategyKind, number][] = [['grid', 0.5], ['mean_reversion', 0.3], ['trend', 0.2]];
 
+/** How the public page scales a symbol's platform price to the real market; 1 until told. */
+let scaleOf: (symbol: string) => number = () => 1;
+export function setDemoScale(f: (symbol: string) => number) { scaleOf = f; cache = null; }
+const px = (symbol: string, at: number) => spot(symbol, at) * scaleOf(symbol);
+
 /** A repeatable random number in [0, 1) for any whole-number key. */
 function rnd(n: number): number {
   let t = (n * 0x9e3779b1 + 0x6d2b79f5) | 0;
@@ -63,10 +68,10 @@ function dayTrades(d: number, equity: number): Trade[] {
     const openAt = start + ((i + rnd(k + 9) * 0.8) / n) * DAY;
     const net = round8(units[i]! * risk);
     // Hold until the price has moved enough to carry the result past the commission.
-    let closeAt = openAt, entry = spot(symbol, openAt), exit = entry;
+    let closeAt = openAt, entry = px(symbol, openAt), exit = entry;
     for (let h = 0; h < 12; h++) {
       closeAt = openAt + (25 + rnd(k + 10 + h) * 180 + h * 70) * 60_000;
-      exit = spot(symbol, closeAt);
+      exit = px(symbol, closeAt);
       if (Math.abs(exit - entry) / entry >= 0.003) break;
     }
     const move = Math.abs(exit - entry);
@@ -97,7 +102,7 @@ function simulate(nowMs: number) {
   const done = all.filter((t) => t.closeAt <= nowMs).sort((a, b) => a.closeAt - b.closeAt);
   const open = all.filter((t) => t.openAt <= nowMs && t.closeAt > nowMs);
   const unrealised = round8(open.reduce((a, t) => {
-    const mark = spot(t.symbol, nowMs);
+    const mark = px(t.symbol, nowMs);
     return a + (t.side === 'long' ? mark - t.entry : t.entry - mark) * t.qty - FEE * t.entry * t.qty;
   }, 0));
   const st = stats(done.map((t) => ({ net: t.net, r: t.r, at: new Date(t.closeAt) })), DEMO_START, unrealised);

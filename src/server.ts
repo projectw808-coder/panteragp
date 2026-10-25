@@ -17,7 +17,8 @@ import {
 } from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
-import { demoShowcase } from './showcase-demo.ts';
+import { demoShowcase, setDemoScale } from './showcase-demo.ts';
+import { liveEnabled, makeLiveCrypto } from './live-prices.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
@@ -6856,10 +6857,39 @@ app.delete('/admin/site-content/footer/marks/:id', { preHandler: auth('admin') }
 
 /** The strip under the hero: price, the day's move and a day of hourly closes per symbol. */
 const LANDING_TICKER = ['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD', 'SPY', 'QQQ', 'SOLUSD', 'XRPUSD', 'GBPUSD', 'XAGUSD'];
-app.get('/public/ticker', async (_req, reply) => {
+// The public page shows the real market for crypto (src/live-prices.ts); the platform keeps
+// its own quotes. ?platform=1 asks for the platform's, which the signed-in top bar uses so it
+// agrees with the charts and prices a client trades at.
+const liveCrypto = liveEnabled() ? makeLiveCrypto() : null;
+const CRYPTO_ON_STRIP = LANDING_TICKER.filter((s) => /USD$/.test(s) && !['XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD'].includes(s));
+// Everything the public page prices from the market: the strip's coins and every coin the
+// demo record trades.
+const LIVE_SYMBOLS = [...new Set([...CRYPTO_ON_STRIP, ...Object.values(STRATEGIES).flatMap((s) => s.symbols).filter((s) => !['XAUUSD', 'XAGUSD'].includes(s))])];
+// The demo record on the public page is drawn at real levels too: each crypto symbol's
+// platform price scaled by real over platform, held for an hour so past trades stay put.
+const demoScale = new Map<string, { k: number; at: number }>();
+setDemoScale((symbol) => {
+  const real = liveCrypto?.last(symbol);
+  if (!real) return demoScale.get(symbol)?.k ?? 1;
+  const held = demoScale.get(symbol);
+  if (held && Date.now() - held.at < 3_600_000) return held.k;
+  const k = real / spot(symbol);
+  demoScale.set(symbol, { k, at: Date.now() });
+  return k;
+});
+app.get('/public/ticker', async (req: any, reply) => {
   const { rows: [{ n }] } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM instruments');
+  const platform = req.query?.platform === '1';
+  const live = platform || !liveCrypto ? new Map() : await liveCrypto.quotes(LIVE_SYMBOLS);
   const quotes = LANDING_TICKER.map((symbol) => {
     const day = candles(symbol, '1H', 25);
+    const l = live.get(symbol);
+    if (l) {
+      // The hourly line from the exchange, or the platform's shape at the real level until it arrives.
+      const k = l.price / spot(symbol);
+      const spark = l.spark.length > 1 ? l.spark : day.map((c) => round8(c.close * k));
+      return { symbol, price: l.price, change_pct: l.open ? round8(((l.price - l.open) / l.open) * 100) : 0, spark, live: true };
+    }
     const price = spot(symbol);
     const open = day[0]?.open ?? price;
     return { symbol, price, change_pct: open ? round8(((price - open) / open) * 100) : 0, spark: day.map((c) => c.close) };
@@ -6878,9 +6908,9 @@ app.get('/public/showcase', async (_req, reply) => {
   reply.header('cache-control', 'public, max-age=20');
   const cfg = await siteContent<{ account_number?: string }>('showcase');
   const number = cfg?.account_number?.trim();
-  if (!number) return demoShowcase();
+  if (!number) { await liveCrypto?.quotes(LIVE_SYMBOLS); return demoShowcase(); }
   const { rows: [who] } = await pool.query<{ id: string }>('SELECT id FROM clients WHERE account_number = $1', [number]);
-  if (!who) return demoShowcase();
+  if (!who) { await liveCrypto?.quotes(LIVE_SYMBOLS); return demoShowcase(); }
   const d = await autoDashboard(who.id);
   const k = d.kpis;
   const extra = await showcaseExtras(who.id, d.strategies, k.allocated);
