@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Clock, FileText, ShieldCheck, Upload } from 'lucide-react';
+import { StatTile } from './x-shell.tsx';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
 
@@ -557,133 +559,135 @@ export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
     docs.reload();
   }
 
+  const pending = rows.filter((d) => d.status === 'pending').length;
+
   return (
     <div className="space-y-4">
-      <div className={`${card} space-y-4`}>
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="section-title">Identity</h2>
-          <span className={`ml-auto rounded-full px-2.5 py-0.5 font-mono text-[11px] tracking-wide uppercase ${
-            done === REQUIRED.length ? 'chip-up text-up' : 'bg-ember/15 text-ember-ink'}`}>
-            {done} of {REQUIRED.length} approved
-          </span>
+      {/* Where verification stands, at a glance. */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile label="Verification" Icon={ShieldCheck} value={`${done} of ${REQUIRED.length}`}
+          tone={done === REQUIRED.length ? 'text-up' : ''}
+          note={done === REQUIRED.length ? 'Identity verified' : 'Identity documents accepted'}>
+          <div className="x-meter mt-3"><span style={{ width: `${(done / REQUIRED.length) * 100}%` }} /></div>
+        </StatTile>
+        <StatTile label="On file" Icon={FileText} value={rows.length} note={`${identity.length} identity · ${extra.length} additional`} />
+        <StatTile label="In review" Icon={Clock} value={pending} tone={pending ? 'text-ember-ink' : ''}
+          note={pending ? 'The desk is looking at these' : 'Nothing waiting on the desk'} />
+      </div>
+
+      <div className={`grid gap-4 ${canUpload ? 'xl:grid-cols-2' : ''}`}>
+        <div className="x-card x-holo space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="section-title">Identity</h2>
+            <span className={`x-badge ml-auto ${done === REQUIRED.length ? '' : 'is-locked'}`}>{done} of {REQUIRED.length} approved</span>
+          </div>
+          <ol className="space-y-3">
+            {checklist.map((c, i) => (
+              <li key={c.kind} className="flex items-center gap-3">
+                <span className={`x-step ${c.state === 'approved' ? '!border-up !text-up' : c.state === 'rejected' ? '!border-down !text-down' : ''}`} aria-hidden>
+                  {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold capitalize text-obsidian dark:text-vellum">{pretty(c.kind)}</span>
+                  <span className="block text-xs text-slate-ink">
+                    {c.state === 'approved' ? 'Accepted'
+                      : c.state === 'pending' ? 'With us for review'
+                      : c.state === 'rejected' ? 'Needs sending again'
+                      : 'Not sent yet'}
+                  </span>
+                </span>
+                <span className={`x-badge ${c.state === 'approved' ? '' : c.state === 'pending' ? 'is-locked' : c.state === 'rejected' ? 'is-bad' : 'is-muted'}`}>
+                  {c.state === 'approved' ? 'Accepted' : c.state === 'pending' ? 'Reviewing' : c.state === 'rejected' ? 'Resend' : 'Missing'}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <DocList rows={identity} empty="No identification uploaded yet." />
         </div>
 
-        <ol className="space-y-2">
-          {checklist.map((c) => (
-            <li key={c.kind} className="flex flex-wrap items-center gap-3">
-              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-mono text-[11px] ${
-                c.state === 'approved' ? 'chip-up text-up'
-                  : c.state === 'rejected' ? 'chip-down text-down'
-                  : c.state === 'pending' ? 'bg-ember/15 text-ember-ink'
-                  : 'bg-bone text-slate-ink dark:bg-white/10'}`} aria-hidden>
-                {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : '•'}
-              </span>
-              <span className="text-sm font-medium text-obsidian dark:text-vellum">{pretty(c.kind)}</span>
-              <span className="text-xs text-slate-ink">
-                {c.state === 'approved' ? 'Accepted'
-                  : c.state === 'pending' ? 'With us for review'
-                  : c.state === 'rejected' ? 'Needs sending again'
-                  : 'Not sent yet'}
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        <DocList rows={identity} empty="No identification uploaded yet." />
-      </div>
-
-      <div className={`${card} space-y-3`}>
-        <h2 className="section-title">Additional documents</h2>
-        <p className="text-sm text-obsidian dark:text-vellum">
-          Anything else the desk has asked for.
-        </p>
-        <p className="text-xs text-slate-ink">
-          Reviewed like the rest, but they do not change your verification either way.
-        </p>
-        <DocList rows={extra} empty="Nothing else on file." />
-      </div>
-
-      {canUpload && (
-        <div className={`${card} space-y-3`}>
-          <h2 className="section-title">{onBehalf ? 'Upload for this client' : 'Upload'}</h2>
-          {onBehalf && (
-            <p className="text-xs text-slate-ink">
-              Filed against their record exactly as their own upload would be: it lands on
-              their timeline, and an identity document moves them to pending verification.
-            </p>
-          )}
-
-          {/* A drop target that is also a file picker: dragging is the fast path and the
-              click is the one that works on a phone and with a keyboard. */}
-          <label
-            onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-            onDragLeave={() => setOver(false)}
-            onDrop={(e) => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files?.[0] ?? null); }}
-            className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-6 transition-colors ${
-              over ? 'border-ember bg-ember/5' : 'border-pebble hover:border-ember/60 dark:border-white/15'}`}>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
-              onChange={(e) => choose(e.target.files?.[0] ?? null)} />
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember/15 font-mono text-ember-ink" aria-hidden>↑</span>
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-obsidian dark:text-vellum">
+        {canUpload && (
+          <div className="x-card space-y-4 p-5">
+            <h2 className="section-title">{onBehalf ? 'Upload for this client' : 'Upload a document'}</h2>
+            {onBehalf && (
+              <p className="text-xs text-slate-ink">
+                Filed against their record exactly as their own upload would be: it lands on
+                their timeline, and an identity document moves them to pending verification.
+              </p>
+            )}
+            {/* A drop target that is also a file picker: dragging is the fast path and the
+                click is the one that works on a phone and with a keyboard. */}
+            <label
+              onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+              onDragLeave={() => setOver(false)}
+              onDrop={(e) => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files?.[0] ?? null); }}
+              className={`x-drop ${over ? 'is-over' : ''}`}>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
+                onChange={(e) => choose(e.target.files?.[0] ?? null)} />
+              <span className="x-drop-icon" aria-hidden><Upload size={24} /></span>
+              <span className="block text-[15px] font-semibold text-obsidian dark:text-vellum">
                 {file ? file.name : 'Drop a file here, or choose one'}
               </span>
               <span className="block text-xs text-slate-ink">
                 {file
                   ? `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || 'unknown type'}`
-                  : 'JPEG, PNG or PDF, up to 10 MB'}
+                  : 'JPEG, PNG or PDF, up to 10 MB · encrypted in transit'}
               </span>
-            </span>
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="block">
-              <span className="metric-label">Document type</span>
-              <select className={`${field} mt-1 w-full`} value={kind} onChange={(e) => setKind(e.target.value)}>
-                <optgroup label="Identity">
-                  {IDENTITY.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
-                </optgroup>
-                <optgroup label="Additional">
-                  {ADDITIONAL.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
-                </optgroup>
-              </select>
             </label>
-            <button onClick={upload} disabled={busy || !file} className={`${btn} self-end disabled:opacity-50`}>
-              {busy ? 'Uploading…' : 'Upload'}
-            </button>
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="block">
+                <span className="metric-label">Document type</span>
+                <select className={`${field} mt-1 w-full`} value={kind} onChange={(e) => setKind(e.target.value)}>
+                  <optgroup label="Identity">
+                    {IDENTITY.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
+                  </optgroup>
+                  <optgroup label="Additional">
+                    {ADDITIONAL.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
+                  </optgroup>
+                </select>
+              </label>
+              <button onClick={upload} disabled={busy || !file} className={`${btn} self-end disabled:opacity-50`}>
+                {busy ? 'Uploading…' : 'Upload'}
+              </button>
+            </div>
+            {error && <p role="alert" className={alertBox}>{error}</p>}
           </div>
+        )}
+      </div>
 
-          {error && <p role="alert" className={alertBox}>{error}</p>}
+      <div className="x-card space-y-3 p-5">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 className="section-title">Additional documents</h2>
+          <span className="text-xs text-slate-ink">Anything else the desk has asked for. Reviewed like the rest, but they do not change your verification either way.</span>
+        </div>
+        <DocList rows={extra} empty="Nothing else on file." />
+      </div>
 
-          {/* What else you can send, and why. Picking one sets the type and opens the file
-              picker, so the whole thing is one click rather than a dropdown somebody has
-              to find and then remember to set. */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h3 className="section-title">{onBehalf ? 'What else can be filed' : 'What else you can send'}</h3>
-              <span className="text-xs text-slate-ink">
-                {onBehalf
-                  ? 'none of these are required — they answer questions before they have to be asked'
-                  : 'none of these are required — they answer questions before the desk has to ask'}
-              </span>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {ADDITIONAL.map((k) => (
-                <button key={k} type="button"
-                  onClick={() => { setKind(k); fileRef.current?.click(); }}
-                  className={`${card} tile lift grain focus-ring text-left`}>
-                  <span className="tile-corner" aria-hidden />
-                  <span className="flex items-center gap-2">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/15 font-mono text-[11px] font-medium text-ember-ink" aria-hidden>
-                      {pretty(k).split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-                    </span>
-                    <span className="block truncate text-sm font-medium capitalize">{pretty(k)}</span>
+      {/* What else you can send, and why. Picking one sets the type and opens the file picker. */}
+      {canUpload && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h3 className="section-title">{onBehalf ? 'What else can be filed' : 'What else you can send'}</h3>
+            <span className="text-xs text-slate-ink">
+              {onBehalf
+                ? 'none of these are required — they answer questions before they have to be asked'
+                : 'none of these are required — they answer questions before the desk has to ask'}
+            </span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {ADDITIONAL.map((k) => (
+              <button key={k} type="button"
+                onClick={() => { setKind(k); fileRef.current?.click(); }}
+                className="x-card tile lift focus-ring p-4 text-left">
+                <span className="flex items-center gap-3">
+                  <span className="x-chip text-[11px] font-bold" aria-hidden>
+                    {pretty(k).split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
                   </span>
-                  <span className="mt-2 block text-xs text-slate-ink">{WHY[k]}</span>
-                </button>
-              ))}
-            </div>
+                  <span className="block truncate text-[15px] font-semibold capitalize">{pretty(k)}</span>
+                </span>
+                <span className="mt-2 block text-xs text-slate-ink">{WHY[k]}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { ArrowRight, Check, Layers, Search, ShieldCheck, Wallet as WalletIcon } from 'lucide-react';
+import { StatTile } from './x-shell.tsx';
 import { alertBox, btn, card, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
@@ -163,100 +165,128 @@ export function WalletView() {
   const linked = wallets.data ?? [];
 
   return (
-    <div className="stagger mx-auto max-w-3xl space-y-4">
-      <PageTitle>Wallet</PageTitle>
-
-      <div className={`${card} space-y-4`}>
-        <div>
-          <h2 className="section-title">Your wallets</h2>
-          <p className="mt-1 text-xs text-slate-ink">
-            Addresses you have proved are yours.
-          </p>
-        </div>
-        {linked.length === 0
-          ? <p className="text-sm text-slate-ink">Nothing linked yet.</p>
-          : (
-            <ul className="divide-y divide-pebble dark:divide-white/10">
-              {linked.map((w) => (
-                <li key={w.id} className="flex flex-wrap items-center gap-3 py-2">
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-up" aria-hidden />
-                  <span className={`text-sm ${mono} text-ember-ink`} title={w.address}>{short(w.address)}</span>
-                  <span className="text-xs text-slate-ink">{w.label ?? 'wallet'}</span>
-                  <span className={`text-xs text-slate-ink ${mono}`}>
-                    linked {new Date(w.linked_at).toLocaleDateString()}
-                  </span>
-                  <button type="button" onClick={() => unlink(w)}
-                    className="ml-auto font-mono text-xs text-slate-ink hover:text-down hover:underline">
-                    unlink
-                  </button>
-                  <WalletBalance address={w.address} />
-                </li>
-              ))}
-            </ul>
-          )}
+    <div className="stagger mx-auto max-w-[1300px] space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <PageTitle>Wallet</PageTitle>
+        <span className="x-badge"><ShieldCheck size={13} className="mr-1.5" aria-hidden />Signature only · no gas · no approvals</span>
       </div>
 
-      <div className={`${card} space-y-4`}>
-        <div>
-          <h2 className="section-title">Choose a wallet</h2>
-          <p className="mt-1 text-xs text-slate-ink">
-            {providers.length
-              ? 'Found in this browser. Pick the one holding the address you want to link.'
-              : 'No wallet extension found in this browser. Install one of these, then reload the page.'}
-          </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatTile label="Linked wallets" Icon={WalletIcon} value={linked.length} tone={linked.length ? 'text-up' : ''}
+          note={linked.length ? 'Proved to be yours' : 'Nothing linked yet'} />
+        <StatTile label="Found in this browser" Icon={Search} value={providers.length}
+          note={providers.length ? 'Ready to link' : 'Install a wallet extension to link'} />
+        <StatTile label="Supported" Icon={Layers} value={KNOWN.length} note="MetaMask, Coinbase, Rabby and more" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <div className="x-card x-holo space-y-4 p-5">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h2 className="section-title">Your wallets</h2>
+              <span className="text-xs text-slate-ink">Addresses you have proved are yours.</span>
+            </div>
+            {linked.length === 0
+              ? (
+                <div className="grid place-items-center gap-2 py-8 text-center">
+                  <span className="x-drop-icon" aria-hidden><WalletIcon size={24} /></span>
+                  <p className="text-[15px] font-semibold">Nothing linked yet</p>
+                  <p className="max-w-sm text-xs text-slate-ink">Choose a wallet below and sign one short message to prove the address is yours.</p>
+                </div>
+              )
+              : (
+                <ul className="space-y-2">
+                  {linked.map((w) => (
+                    <li key={w.id} className="x-wallet-row">
+                      <span className="x-chip" aria-hidden><WalletIcon size={18} /></span>
+                      <span className="min-w-0">
+                        <span className={`block text-[15px] font-semibold ${mono} text-ember-ink`} title={w.address}>{short(w.address)}</span>
+                        <span className="block text-xs text-slate-ink">{w.label ?? 'wallet'} · linked {new Date(w.linked_at).toLocaleDateString()}</span>
+                      </span>
+                      <span className="x-badge ml-1"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Verified</span>
+                      <button type="button" onClick={() => unlink(w)} className="x-btn-sm ml-auto hover:!border-down hover:!text-down">Unlink</button>
+                      <span className="w-full"><WalletBalance address={w.address} /></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </div>
+
+          <div className="x-card space-y-4 p-5">
+            <div>
+              <h2 className="section-title">Choose a wallet</h2>
+              <p className="mt-1 text-xs text-slate-ink">
+                {providers.length
+                  ? 'Found in this browser. Pick the one holding the address you want to link.'
+                  : 'No wallet extension found in this browser. Install one of these, then reload the page.'}
+              </p>
+            </div>
+
+            {!!providers.length && (
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {providers.map((w, i) => (
+                  <li key={w.info.uuid}>
+                    <button type="button" onClick={() => connect(w)} disabled={!!busy}
+                      className={`x-wallet-row w-full text-left disabled:opacity-60 ${i === 0 ? '!border-ember/70 !bg-ember/5' : ''}`}>
+                      <Mark w={w} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-semibold">{w.info.name}</span>
+                        <span className="block text-[11px] tracking-wide text-slate-ink uppercase">
+                          {active.current === w.info.uuid && busy ? busy : (i === 0 ? 'recommended' : 'installed')}
+                        </span>
+                      </span>
+                      <ArrowRight size={16} className="text-ember-ink" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {!!missing.length && (
+              <div>
+                <h3 className="metric-label">Not installed</h3>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {missing.map((k) => (
+                    <li key={k.rdns}>
+                      <a href={k.url} target="_blank" rel="noreferrer noopener" className="x-btn-sm inline-flex items-center gap-1.5">
+                        {k.name} <span aria-hidden>↗</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {error && <p role="alert" className={alertBox}>{error}</p>}
+          </div>
         </div>
 
-        {!!providers.length && (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {providers.map((w, i) => (
-              <li key={w.info.uuid}>
-                <button type="button" onClick={() => connect(w)} disabled={!!busy}
-                  className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${
-                    i === 0
-                      ? 'border-ember bg-ember/5 hover:bg-ember/10'
-                      : 'border-pebble hover:border-ember/50 dark:border-white/10'}`}>
-                  <Mark w={w} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium">{w.info.name}</span>
-                    <span className="block font-mono text-[10px] tracking-wide text-slate-ink uppercase">
-                      {active.current === w.info.uuid && busy ? busy : (i === 0 ? 'recommended' : 'installed')}
-                    </span>
-                  </span>
-                  <span className="font-mono text-xs text-ember-ink" aria-hidden>→</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {!!missing.length && (
-          <div>
-            <h3 className="section-title">Not installed</h3>
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {missing.map((k) => (
-                <li key={k.rdns}>
-                  <a href={k.url} target="_blank" rel="noreferrer noopener"
-                    className="flex items-center gap-2 rounded-lg border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-                    {k.name} <span aria-hidden>↗</span>
-                  </a>
+        <div className="space-y-4">
+          <div className="x-card x-holo space-y-4 p-5">
+            <h2 className="section-title">How linking works</h2>
+            <ol className="space-y-4">
+              {([
+                ['Choose your wallet', 'Pick the extension that holds the address you want to link.'],
+                ['Sign one message', 'A short text signature. It costs no gas and moves nothing.'],
+                ['Linked and verified', 'The address is proved to be yours and shown here with its balance.'],
+              ] as const).map(([t, d], i) => (
+                <li key={t} className="flex gap-3">
+                  <span className="x-step" aria-hidden>{i + 1}</span>
+                  <span><span className="block text-[15px] font-semibold">{t}</span><span className="block text-xs text-slate-ink">{d}</span></span>
                 </li>
+              ))}
+            </ol>
+          </div>
+          <div className="x-card space-y-3 p-5">
+            <h2 className="section-title">Your keys stay yours</h2>
+            <ul className="space-y-2.5 text-[13px]">
+              {['We never hold your keys and cannot spend from your wallet.', 'No transaction or token approval is ever requested from this page.',
+                'Deposits and withdrawals do not run through here.', 'Unlink whenever you like — it removes the address and nothing else.'].map((t) => (
+                <li key={t} className="flex items-start gap-2.5"><span className="x-check" aria-hidden><Check size={13} /></span><span className="text-slate-ink">{t}</span></li>
               ))}
             </ul>
           </div>
-        )}
-
-        {error && <p role="alert" className={alertBox}>{error}</p>}
-      </div>
-
-      <div className={`${card} space-y-2`}>
-        <h2 className="section-title">What linking does</h2>
-        <ul className="space-y-1 text-xs text-slate-ink">
-          <li>You sign a short message. It costs no gas and moves nothing.</li>
-          <li>We never hold your keys and cannot spend from your wallet.</li>
-          <li>No transaction or token approval is ever requested from this page.</li>
-          <li>Deposits and withdrawals do not run through here.</li>
-          <li>Unlink whenever you like — it removes the address and nothing else.</li>
-        </ul>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import { BadgeCheck, Lock, Moon, Sun, UserRound } from 'lucide-react';
+import { StatTile } from './x-shell.tsx';
 import { alertBox, btn, btnGhost, card, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { SiteContent } from './site-content.tsx';
@@ -22,54 +24,37 @@ export function SettingsView({ me, dark, setDark }: {
   const staff = me?.kind === 'staff';
 
   return (
-    <div className="stagger mx-auto max-w-3xl space-y-4">
+    <div className="stagger mx-auto max-w-[1300px] space-y-4">
       <PageTitle>Settings</PageTitle>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
-        <div>
-          <p className="metric-label">Signed in as</p>
-          <p className="text-sm font-medium">{staff ? 'Staff' : 'Account holder'}</p>
-        </div>
-        <div>
-          <p className="metric-label">Role</p>
-          <p className="text-sm font-medium capitalize">{me?.role ?? '—'}</p>
-        </div>
-        <div>
-          <p className="metric-label">Theme</p>
-          {/* The one control that belongs in a header: it changes the thing you are
-              looking at while you look at it. */}
-          {/* Set like the switcher on the sign-in card, because it does the same job:
-              two words in the platform's own voice, the chosen one lit. */}
-          <div role="group" aria-label="Colour theme"
-            className="mt-1.5 flex gap-1 rounded-full bg-bone p-1 dark:bg-white/10">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Signed in as" Icon={UserRound} value={staff ? 'Staff' : 'Account holder'} note="This browser's session" />
+        <StatTile label="Role" Icon={BadgeCheck} value={<span className="capitalize">{me?.role ?? '—'}</span>} note="What you can see and do" />
+        <StatTile label="Theme" Icon={dark ? Moon : Sun} note="Kept on this device">
+          {/* The one control that belongs in a header: it changes the thing you are looking at while you look at it. */}
+          <div role="group" aria-label="Colour theme" className="x-tabs mt-3 self-start">
             {([['Light', false], ['Dark', true]] as const).map(([label, on]) => (
-              <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on}
-                className={`focus-ring rounded-full px-4 py-1.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-colors ${dark === on
-                  ? 'bg-ember font-medium text-graphite'
-                  : 'text-slate-ink hover:text-obsidian dark:text-mist dark:hover:text-vellum'}`}>
-                {label}
-              </button>
+              <button key={label} type="button" onClick={() => setDark(on)} aria-pressed={dark === on} className={dark === on ? 'is-on' : ''}>{label}</button>
             ))}
           </div>
-        </div>
-        <p className="ml-auto max-w-xs text-xs text-slate-ink">
-          Both themes are the same design system with the surface roles swapped, not a
-          second look. Your choice is kept on this device.
-        </p>
+        </StatTile>
+        <StatTile label="Security" Icon={Lock} value="Encrypted" tone="text-up" note="Every session over TLS · actions recorded" />
       </div>
 
-      <Notifications />
-
-      <ChangePassword />
-
-      <Section title="Session"
-        note="What this browser is signed in as. Useful when something is refused and it is not obvious why.">
-        <Field label="Account id">
-          <span className={`text-xs break-all text-slate-ink ${mono}`}>{me?.sub ?? '—'}</span>
-        </Field>
-        <Field label="Kind"><span className={`text-xs ${mono}`}>{me?.kind ?? '—'}</span></Field>
-        <Field label="Role"><span className={`text-xs ${mono}`}>{me?.role ?? '—'}</span></Field>
-      </Section>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <Notifications />
+        <div className="space-y-4">
+          <ChangePassword />
+          <Section title="Session"
+            note="What this browser is signed in as. Useful when something is refused and it is not obvious why.">
+            <Field label="Account id">
+              <span className={`text-xs break-all text-slate-ink ${mono}`}>{me?.sub ?? '—'}</span>
+            </Field>
+            <Field label="Kind"><span className={`text-xs ${mono}`}>{me?.kind ?? '—'}</span></Field>
+            <Field label="Role"><span className={`text-xs ${mono}`}>{me?.role ?? '—'}</span></Field>
+          </Section>
+        </div>
+      </div>
 
       {admin && <StaffAccounts meId={me?.sub} />}
       {admin && <SiteContent />}
@@ -113,15 +98,19 @@ function Notifications() {
   return (
     <Section title={`Notifications${off ? ` · ${off} off` : ''}`}
       note="What reaches your bell. Switching one off stops it being written at all, so it will not turn up later — it simply never happens.">
-      {!prefs.data ? <p className="text-sm text-slate-ink">Loading…</p> : prefs.data.map((p) => (
-        <div key={p.kind} className="flex items-start gap-4 border-t border-pebble py-2 first:border-0 dark:border-white/10">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{p.label}</p>
-            <p className="text-xs text-slate-ink">{p.note}</p>
-          </div>
-          <Switch on={value(p)} locked={p.locked} label={p.label} onChange={() => toggle(p)} />
+      {!prefs.data ? <p className="text-sm text-slate-ink">Loading…</p> : (
+        <div className="grid gap-2.5 md:grid-cols-2">
+          {prefs.data.map((p) => (
+            <div key={p.kind} className="x-switch-tile">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{p.label}</p>
+                <p className="text-xs text-slate-ink">{p.note}</p>
+              </div>
+              <Switch on={value(p)} locked={p.locked} label={p.label} onChange={() => toggle(p)} />
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       {error && <p role="alert" className={alertBox}>{error}</p>}
     </Section>
   );
@@ -321,7 +310,7 @@ export function ResetPassword({ path, who, onDone }: { path: string; who: string
 // ------------------------------------------------------------------ bits
 
 const Section = ({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) => (
-  <section className={`${card} space-y-4`}>
+  <section className="x-card x-holo space-y-4 p-5">
     <div>
       <h2 className="section-title">{title}</h2>
       {note && <p className="mt-1.5 max-w-2xl text-xs text-slate-ink">{note}</p>}

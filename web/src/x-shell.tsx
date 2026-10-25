@@ -143,3 +143,20 @@ export function QuoteCard({ q, name }: { q: Quote; name: string }) {
     </div>
   );
 }
+
+/** The client area's stat tile — an ember icon chip, the label, the figure, a note — for any page's header row. */
+export function StatTile({ label, value, note, Icon, tone = '', children }: {
+  label: string; value?: React.ReactNode; note?: React.ReactNode; Icon: typeof User; tone?: string; children?: React.ReactNode;
+}) {
+  return (
+    <div className="x-card x-holo tile lift flex flex-col p-4">
+      <div className="flex items-center gap-3">
+        <span className="x-chip"><Icon size={18} strokeWidth={1.9} aria-hidden /></span>
+        <span className="text-[13px] text-mist">{label}</span>
+      </div>
+      {value !== undefined && <p className={`mt-3 truncate text-[22px] leading-none font-bold tabular-nums ${tone}`}>{value}</p>}
+      {children}
+      {note && <p className="mt-2 text-xs text-slate-ink">{note}</p>}
+    </div>
+  );
+}
