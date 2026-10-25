@@ -30,7 +30,7 @@ type FooterView = {
 type Article = { slug: string; title: string; excerpt: string | null; cover_url: string | null; tags: string[] | null; read_minutes: number; published_at: string };
 type Ticker = { instruments: number; quotes: { symbol: string; price: number; change_pct: number; spark: number[] }[] };
 type Showcase = {
-  configured: boolean; on?: boolean; since?: string | null;
+  configured: boolean; demo?: boolean; on?: boolean; since?: string | null;
   kpis?: {
     equity: number; allocated: number; return_pct: number | null; unrealised: number;
     today_net: number; today_trades: number; today_fees: number;
@@ -200,6 +200,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
+  /** A soft ember light follows the pointer across whichever card it is over. */
+  const spotlight = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.lp-card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    card.style.setProperty('--my', `${e.clientY - r.top}px`);
+  };
+
   const go = (id: string) => scroller.current?.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   /** The side arrow's slow glide to the footer and back; a wheel, touch or key takes over at once. */
@@ -225,7 +235,7 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
   };
 
   return (
-    <div ref={scroller} className="landing lp h-full overflow-auto">
+    <div ref={scroller} className="landing lp h-full overflow-auto" onPointerMove={spotlight}>
       {/* ------------------------------------------------------------ the bar */}
       <nav className="lp-bar sticky top-0 z-30">
         <div className="lp-wrap flex h-[66px] items-center gap-6">
@@ -258,17 +268,16 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
       {/* ------------------------------------------------------------ the hero */}
       <section id="top" className="lp-hero relative overflow-hidden">
         <div aria-hidden className="lp-hero-art" />
-        <div aria-hidden className="lp-nodes">
-          {[[61, 28], [70, 18], [76, 42], [66, 55], [83, 30], [88, 58], [72, 70], [58, 46], [93, 40], [80, 78]].map(([x, y], i) => (
-            <span key={i} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${(i * 0.37) % 3}s` }} />
-          ))}
+        <HeroNetwork />
+        <div aria-hidden className="lp-embers">
+          {EMBERS.map((e, i) => <span key={i} style={{ left: `${e.x}%`, width: e.s, height: e.s, animationDuration: `${e.d}s`, animationDelay: `${e.delay}s` }} />)}
         </div>
         <div className="lp-wrap relative z-10 flex min-h-[500px] flex-col justify-center pt-10 pb-8">
           <div className="max-w-[660px]">
             <div className="anim-rise" style={{ animationDelay: '60ms' }}><Eyebrow>Powered by artificial intelligence</Eyebrow></div>
-            <h1 className="anim-rise mt-3 text-[44px] leading-[1.03] font-bold tracking-[-0.02em] sm:text-[60px]" style={{ animationDelay: '160ms' }}>
-              <span className="block text-white">AI Trading</span>
-              <span className="lp-gradient-text block">for Real Opportunities.</span>
+            <h1 className="mt-3 text-[44px] leading-[1.03] font-bold tracking-[-0.02em] sm:text-[60px]" style={{ animationDelay: '160ms' }}>
+              <span className="block text-white">{words('AI Trading', 200)}</span>
+              <span className="lp-gradient-text block">{words('for Real Opportunities.', 420)}</span>
             </h1>
             <p className="anim-rise mt-4 max-w-[580px] text-[19px] leading-[1.45] text-[color:var(--lp-soft-2)]" style={{ animationDelay: '260ms' }}>
               AI-driven strategies. Diversified portfolios. Global markets.<br className="hidden sm:inline" /> All in one platform.
@@ -321,7 +330,9 @@ export function Landing({ onSignIn, onRegister }: { onSignIn: () => void; onRegi
               </div>
               <div className="flex flex-wrap items-center gap-4">
                 <span className={`lp-status ${show?.on ? 'is-on' : ''}`}>
-                  {show?.on && <span className="lp-live-dot" aria-hidden />}Auto trader: {show?.configured ? (show.on ? 'running' : 'paused') : 'offline'}
+                  {show?.on && <span className="lp-live-dot" aria-hidden />}
+                  Auto trader: {show?.configured ? (show.on ? 'running' : 'paused') : 'starting'}
+                  {show?.demo && <span className="lp-demo-tag">Demo</span>}
                 </span>
                 <button onClick={onSignIn} className="lp-btn lp-btn-outline">View Auto Trader <ArrowRight size={17} aria-hidden /></button>
               </div>
@@ -707,6 +718,10 @@ function PriceStrip({ quotes }: { quotes: Ticker['quotes'] }) {
     return () => clearInterval(id);
   }, []);
   const move = (dir: 1 | -1) => row.current?.scrollBy({ left: dir * 220, behavior: 'smooth' });
+  // Each quote flashes green or red when it moves, against the price shown before.
+  const last = useRef(new Map<string, number>());
+  const moved = new Map(quotes.map((q) => { const p = last.current.get(q.symbol); return [q.symbol, p === undefined || p === q.price ? '' : q.price > p ? 'lp-flash-up' : 'lp-flash-down'] as const; }));
+  useEffect(() => { for (const q of quotes) last.current.set(q.symbol, q.price); }, [quotes]);
   const list = quotes.length ? [...quotes, ...quotes] : Array.from({ length: 7 }, () => null);
   return (
     <section className="lp-strip" aria-label="Live prices">
@@ -719,7 +734,7 @@ function PriceStrip({ quotes }: { quotes: Ticker['quotes'] }) {
                 <Coin symbol={q.symbol} />
                 <div className="min-w-0">
                   <p className="text-[11.5px] font-medium text-[color:var(--lp-soft)]">{q.symbol === 'QQQ' ? 'NASDAQ' : q.symbol}</p>
-                  <p className="text-[15px] font-semibold text-white tabular-nums">{price(q.price)}</p>
+                  <p key={q.price} className={`text-[15px] font-semibold text-white tabular-nums ${moved.get(q.symbol) ?? ''}`}>{price(q.price)}</p>
                 </div>
                 <div className="ml-auto flex flex-col items-end gap-0.5">
                   <Spark values={q.spark} up={q.change_pct >= 0} w={46} h={20} id={`tk-${i}`} />
@@ -764,8 +779,10 @@ function AutoPanel({ show, onOpen }: { show: Showcase | null; onOpen: () => void
     <>
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-[10px] lg:grid-cols-[minmax(0,2.05fr)_minmax(0,1fr)]">
         <div className="grid grid-cols-2 gap-[10px] md:grid-cols-4">
-          {!show?.configured || !k ? (
-            ['Bot equity', 'Today', 'Win rate', 'Profit factor', 'Max drawdown', 'Open positions', 'Total trades', 'Sharpe ratio'].map((l) => stat(l, dash, l === 'Bot equity' ? 'no showcase account set' : dash))
+          {!k ? (
+            ['Bot equity', 'Today', 'Win rate', 'Profit factor', 'Max drawdown', 'Open positions', 'Total trades', 'Sharpe ratio'].map((l) => (
+              <div key={l} className="lp-card px-[18px] py-[15px]"><p className="lp-label">{l}</p><span className="lp-skeleton mt-3 block h-[22px] w-3/4" /><span className="lp-skeleton mt-2 block h-[12px] w-1/2" /></div>
+            ))
           ) : <>
             {stat('Bot equity', <CountUp value={k.equity} format={usd} />, k.return_pct === null ? 'since start' : `${k.return_pct >= 0 ? '+' : ''}${(k.return_pct * 100).toFixed(2)}% since start`)}
             {stat('Today', signed(k.today_net), `${k.today_trades} closed · fees ${usd(k.today_fees)}`, up(k.today_net))}
@@ -777,7 +794,7 @@ function AutoPanel({ show, onOpen }: { show: Showcase | null; onOpen: () => void
             {stat('Sharpe ratio', k.sharpe === null ? dash : k.sharpe.toFixed(2), k.sharpe === null ? 'after five trading days' : 'Risk adjusted return')}
           </>}
         </div>
-        <div className="lp-card flex min-h-[250px] flex-col px-[18px] pt-[15px] pb-3">
+        <div className="lp-card lp-scan flex min-h-[250px] flex-col px-[18px] pt-[15px] pb-3">
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-[14px] font-semibold text-white">Bot Equity{show?.since ? ` · Since ${shortDay(show.since)}` : ''}</p>
             {curve.length > 1 && <p className={`text-[13px] font-semibold tabular-nums ${up(curve[curve.length - 1]!.equity - curve[0]!.equity)}`}>{usd(curve[0]!.equity)} → {usd(curve[curve.length - 1]!.equity)}</p>}
@@ -812,7 +829,9 @@ function AutoPanel({ show, onOpen }: { show: Showcase | null; onOpen: () => void
               {!show?.trades?.length && <tr><td colSpan={7} className="border-t border-white/[0.06] py-6 text-[14px] text-[color:var(--lp-soft)]">No closed trades to show yet.</td></tr>}
             </tbody>
           </table>
-          <p className="mt-2 text-[11.5px] text-[color:var(--lp-soft)]">Live from the desk’s demo account, on prices this platform quotes.</p>
+          <p className="mt-2 text-[11.5px] text-[color:var(--lp-soft)]">{show?.demo
+            ? 'Demo account: a simulated record on this platform’s live prices, not real trading results.'
+            : 'Live from the desk’s demo account, on prices this platform quotes.'}</p>
         </div>
         <div className="lp-card px-[18px] py-[15px]">
           <div className="flex items-center justify-between"><p className="lp-title">Active strategies</p>
@@ -840,6 +859,36 @@ function AutoPanel({ show, onOpen }: { show: Showcase | null; onOpen: () => void
         </div>
       </div>
     </>
+  );
+}
+
+/** Words of a headline rising one after another. */
+function words(text: string, from: number) {
+  return text.split(' ').map((w, i, all) => (
+    <span key={i} className="lp-word" style={{ animationDelay: `${from + i * 90}ms` }}>{w}{i < all.length - 1 ? ' ' : ''}</span>
+  ));
+}
+
+// Points of light on the globe, in percent of the hero, and the routes that join them.
+const NODES: [number, number][] = [[61, 28], [70, 18], [76, 42], [66, 55], [83, 30], [88, 58], [72, 70], [58, 46], [93, 40], [80, 78]];
+const ROUTES: [number, number][] = [[0, 2], [1, 4], [2, 5], [3, 6], [7, 2], [4, 8], [5, 9], [0, 3], [1, 2], [6, 9]];
+const EMBERS = Array.from({ length: 18 }, (_, i) => ({ x: 40 + ((i * 37) % 60), s: 2 + (i % 3), d: 9 + ((i * 7) % 8), delay: -((i * 1.7) % 12) }));
+
+/** Data travelling between cities on the globe: dashed routes with a bright pulse running along each. */
+function HeroNetwork() {
+  const paths = ROUTES.map(([a, b]) => {
+    const [x1, y1] = NODES[a]!, [x2, y2] = NODES[b]!;
+    const cx = (x1 + x2) / 2, cy = Math.min(y1, y2) - 10;
+    return `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
+  });
+  return (
+    <div aria-hidden className="lp-network">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        {paths.map((d, i) => <path key={'r' + i} d={d} className="lp-route" pathLength={100} />)}
+        {paths.map((d, i) => <path key={'p' + i} d={d} className="lp-pulse-route" pathLength={100} style={{ animationDelay: `${(i * 0.83) % 5}s`, animationDuration: `${3.6 + (i % 4) * 0.7}s` }} />)}
+      </svg>
+      {NODES.map(([x, y], i) => <span key={i} className="lp-node" style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${(i * 0.37) % 3}s` }} />)}
+    </div>
   );
 }
 

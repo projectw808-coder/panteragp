@@ -1480,3 +1480,92 @@ input:-webkit-autofill:active {
   .lp .lp-bar-cta svg { display: none; }
 }
 @media (max-width: 639px) { .lp .lp-bar .lp-btn-dark { display: none; } }
+
+/* ==========================================================================
+   Landing v2.1: motion a visitor notices. Routes of light run between cities on
+   the globe, embers rise, the headline arrives word by word, prices flash as they
+   move, a light follows the pointer over cards, and a scan line sweeps the live
+   panels. All of it stops under prefers-reduced-motion.
+   ========================================================================== */
+.lp .lp-hero-art { animation: lp-drift 22s ease-in-out infinite alternate; }
+@keyframes lp-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.1) translate3d(-2%, -1.2%, 0); } }
+
+.lp .lp-network { position: absolute; inset: 0; pointer-events: none; }
+.lp .lp-network svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.lp .lp-route { fill: none; stroke: rgba(255, 150, 60, 0.35); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1.2 2.4; animation: lp-flow 6s linear infinite; }
+@keyframes lp-flow { to { stroke-dashoffset: -36; } }
+.lp .lp-pulse-route {
+  fill: none; stroke: #ffd2a0; stroke-width: 2.4; stroke-linecap: round; vector-effect: non-scaling-stroke;
+  stroke-dasharray: 7 93; stroke-dashoffset: 100; filter: drop-shadow(0 0 4px rgba(255, 150, 50, 0.95));
+  animation: lp-comet 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes lp-comet { 0% { stroke-dashoffset: 100; opacity: 0; } 8% { opacity: 1; } 85% { opacity: 1; } 100% { stroke-dashoffset: -7; opacity: 0; } }
+.lp .lp-node {
+  position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 999px; background: #ffc98f;
+  box-shadow: 0 0 12px 4px rgba(255, 140, 40, 0.8); animation: lp-node 2.6s ease-in-out infinite;
+}
+.lp .lp-node::after { content: ''; position: absolute; inset: -3px; border-radius: 999px; border: 1px solid rgba(255, 170, 90, 0.8); animation: lp-ring 2.6s ease-out infinite; animation-delay: inherit; }
+@keyframes lp-ring { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(4.5); opacity: 0; } }
+@media (max-width: 1023px) { .lp .lp-network { opacity: 0.55; } .lp .lp-pulse-route { display: none; } }
+
+.lp .lp-embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.lp .lp-embers span {
+  position: absolute; bottom: -10px; border-radius: 999px; background: #ffb066; box-shadow: 0 0 8px 2px rgba(255, 130, 30, 0.7);
+  opacity: 0; animation: lp-ember linear infinite;
+}
+@keyframes lp-ember { 0% { transform: translate3d(0, 0, 0); opacity: 0; } 10% { opacity: 0.9; } 80% { opacity: 0.6; } 100% { transform: translate3d(-40px, -520px, 0); opacity: 0; } }
+
+.lp .lp-word { display: inline-block; opacity: 0; transform: translateY(0.45em); filter: blur(6px); animation: lp-word 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+@keyframes lp-word { to { opacity: 1; transform: none; filter: blur(0); } }
+.lp .lp-gradient-text { background: linear-gradient(92deg, #ff7a12 0%, #ffb36b 45%, #ff7a12 70%, #ff7a12 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; background-size: 250% 100%; animation: lp-shine 4.5s ease-in-out infinite; }
+.lp .lp-gradient-text .lp-word { -webkit-text-fill-color: transparent; background: inherit; -webkit-background-clip: text; background-clip: text; background-size: inherit; background-attachment: fixed; }
+.lp .lp-float { animation: lp-float 6s ease-in-out infinite; }
+@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+.lp .lp-float-icon { animation: lp-glow 3s ease-in-out infinite; }
+@keyframes lp-glow { 0%, 100% { box-shadow: 0 0 0 rgba(255, 122, 18, 0); } 50% { box-shadow: 0 0 18px rgba(255, 122, 18, 0.55); } }
+
+/* Prices flash as they move. */
+.lp .lp-flash-up { animation: lp-flash-up 1.2s ease-out; border-radius: 4px; }
+.lp .lp-flash-down { animation: lp-flash-down 1.2s ease-out; border-radius: 4px; }
+@keyframes lp-flash-up { 0% { background: rgba(24, 200, 121, 0.45); color: #b9ffd9; } 100% { background: transparent; } }
+@keyframes lp-flash-down { 0% { background: rgba(255, 75, 85, 0.45); color: #ffd0d3; } 100% { background: transparent; } }
+
+/* Cards: a light that follows the pointer, and a sweep across live panels. */
+.lp .lp-card { position: relative; }
+.lp .lp-card::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 122, 18, 0.13), transparent 70%);
+}
+.lp .lp-card:hover::after { opacity: 1; }
+.lp .lp-scan { overflow: hidden; }
+.lp .lp-scan::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -30%; width: 30%; pointer-events: none; z-index: 1;
+  background: linear-gradient(90deg, transparent, rgba(255, 122, 18, 0.10), transparent); animation: lp-sweep 4.5s ease-in-out infinite;
+}
+@keyframes lp-sweep { 0% { left: -30%; } 60%, 100% { left: 110%; } }
+.lp .lp-scan-row { transition: background-color 0.4s; }
+.lp .lp-scan-row.is-on { background: linear-gradient(90deg, rgba(255, 122, 18, 0.14), rgba(255, 122, 18, 0.02)); box-shadow: inset 2px 0 0 var(--lp-ember); }
+.lp .lp-meter { display: block; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.lp .lp-meter > span { display: block; height: 100%; border-radius: 999px; transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); animation: lp-meter 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lp .lp-meter > .is-up { background: linear-gradient(90deg, rgba(24, 200, 121, 0.4), #18c879); }
+.lp .lp-meter > .is-down { background: linear-gradient(90deg, rgba(255, 75, 85, 0.4), #ff4b55); }
+@keyframes lp-meter { from { width: 0 !important; } }
+.lp .lp-skeleton { border-radius: 4px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)); background-size: 200% 100%; animation: lp-skel 1.4s ease-in-out infinite; }
+@keyframes lp-skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.lp .lp-state.is-running { animation: lp-breathe 2.4s ease-in-out infinite; }
+@keyframes lp-breathe { 0%, 100% { box-shadow: 0 0 0 rgba(24, 200, 121, 0); } 50% { box-shadow: 0 0 12px rgba(24, 200, 121, 0.35); } }
+
+/* Sections arrive with more presence. */
+.lp .reveal { opacity: 0; transform: translateY(34px) scale(0.985); filter: blur(4px); }
+.lp .reveal.shown { opacity: 1; transform: none; filter: none; transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.8s; }
+.lp .lp-icon-tile, .lp .lp-icon-hex { transition: transform 0.35s, box-shadow 0.35s; }
+.lp .lp-hover:hover .lp-icon-tile { box-shadow: 0 0 18px rgba(255, 122, 18, 0.45); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-route, .lp .lp-node, .lp .lp-node::after, .lp .lp-float-icon, .lp .lp-scan::before, .lp .lp-skeleton, .lp .lp-state.is-running, .lp .lp-meter > span { animation: none; }
+  .lp .lp-pulse-route, .lp .lp-embers { display: none; }
+  .lp .lp-word { animation: none; opacity: 1; transform: none; filter: none; }
+  .lp .lp-flash-up, .lp .lp-flash-down { animation: none; }
+  .lp .reveal, .lp .reveal.shown { opacity: 1; transform: none; filter: none; transition: none; }
+}
+.lp .lp-demo-tag { margin-left: 10px; padding: 2px 7px; border-radius: 4px; font-size: 10px; letter-spacing: 0.14em; color: #ffcf9e; background: rgba(255, 122, 18, 0.16); border: 1px solid rgba(255, 122, 18, 0.4); }

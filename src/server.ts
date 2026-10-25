@@ -17,6 +17,7 @@ import {
 } from './mail.ts';
 import { commission, executionPrice, MAX_BPS, termsOf } from './terms.ts';
 import { candles, quote, spot, TIMEFRAMES, type Timeframe } from './market.ts';
+import { demoShowcase } from './showcase-demo.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
@@ -6861,15 +6862,16 @@ app.get('/public/ticker', async (_req, reply) => {
  * The auto trader's live record on the account the desk has chosen to show (Settings ->
  * Site content -> Landing showcase, by account number). The same figures that account's
  * own Auto trader page shows, cut to what the landing panel draws. Nothing configured, or
- * an account number that matches nobody, is { configured: false } and the panel says so.
+ * an account number that matches nobody, gives the demo record instead (src/showcase-demo.ts),
+ * marked demo: true so the panel labels it.
  */
 app.get('/public/showcase', async (_req, reply) => {
   reply.header('cache-control', 'public, max-age=20');
   const cfg = await siteContent<{ account_number?: string }>('showcase');
   const number = cfg?.account_number?.trim();
-  if (!number) return { configured: false };
+  if (!number) return demoShowcase();
   const { rows: [who] } = await pool.query<{ id: string }>('SELECT id FROM clients WHERE account_number = $1', [number]);
-  if (!who) return { configured: false };
+  if (!who) return demoShowcase();
   const d = await autoDashboard(who.id);
   const k = d.kpis;
   const extra = await showcaseExtras(who.id, d.strategies, k.allocated);
