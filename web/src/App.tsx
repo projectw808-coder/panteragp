@@ -450,7 +450,7 @@ function Shell({ dark, setDark, onLogout }: {
           })}
         </nav>
 
-        <div className="relative z-10 mt-auto px-3 pb-4">
+        <div className="relative z-10 mt-3 px-3 pb-4">
           <div className="x-account">
             {trading ? <>
               <p className="flex items-center gap-2 font-semibold text-ember-ink"><span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />Account {profile?.account_number ?? '······'}</p>
