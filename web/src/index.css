@@ -1238,7 +1238,8 @@ input:-webkit-autofill:active {
 @keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 .lp .lp-strip { background: #0a0a0d; border-bottom: 1px solid var(--lp-line); }
-.lp .lp-strip-row { scrollbar-width: none; scroll-snap-type: x mandatory; }
+/* No snapping: it pulled the slow drift back to the nearest card after every step. */
+.lp .lp-strip-row { scrollbar-width: none; }
 .lp .lp-strip-row::-webkit-scrollbar { display: none; }
 .lp .lp-tick {
   display: flex; align-items: center; gap: 10px; flex: 0 0 auto; width: 196px; height: 64px; padding: 0 12px;
@@ -1290,7 +1291,6 @@ input:-webkit-autofill:active {
   border-bottom: 1px solid var(--lp-line);
 }
 .lp .lp-footer { background: #08080a; }
-@media (prefers-reduced-motion: reduce) { .lp .lp-float { animation: none; } }
 .lp .lp-hover { transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s; }
 .lp .lp-hover:hover { border-color: rgba(255, 122, 18, 0.55); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 122, 18, 0.12); }
 .lp .lp-glow { background: radial-gradient(70% 140% at 0% 50%, rgba(255, 122, 18, 0.10), transparent 60%), var(--lp-card); }
@@ -1307,13 +1307,12 @@ input:-webkit-autofill:active {
 .lp .lp-faq summary::-webkit-details-marker { display: none; }
 .lp .lp-faq[open] { border-color: rgba(255, 122, 18, 0.35); }
 .lp .lp-livefoot { font-family: var(--font-ui); letter-spacing: normal; }
-@media (prefers-reduced-motion: reduce) { .lp .lp-hover:hover { transform: none; } }
 
 /* ==========================================================================
    Landing v2 (the "build ready" pack): the hero's globe drifts and its network
    nodes pulse, the floating cards bob, charts draw themselves in, figures count
    up, cards lift on hover and buttons carry a passing sheen. Everything that
-   moves stops under prefers-reduced-motion.
+   moves keeps moving for every visitor; see the reduced-motion note at the end.
    ========================================================================== */
 .landing.lp { --lp-soft-2: #c9ced6; }
 .lp .lp-gradient-text { color: var(--lp-ember); background: linear-gradient(92deg, #ff7a12 0%, #ff9a3d 55%, #ff7a12 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; background-size: 200% 100%; animation: lp-shine 7s ease-in-out infinite; }
@@ -1462,16 +1461,6 @@ input:-webkit-autofill:active {
 .lp .lp-social { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px; color: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.16); transition: color 0.2s, border-color 0.2s; }
 .lp .lp-social:hover { color: var(--lp-ember); border-color: var(--lp-ember); }
 
-@media (prefers-reduced-motion: reduce) {
-  .lp .lp-hero-art, .lp .lp-cta-art, .lp .lp-nodes span, .lp .lp-gradient-text, .lp .lp-sheen::after, .lp .lp-play,
-  .lp .lp-live-dot, .lp .lp-pulse, .lp .lp-bob, .lp .lp-row, .lp .lp-step-ring, .lp .lp-laptop, .lp .lp-tablet, .lp .lp-phone { animation: none; }
-  .lp .lp-cta-art { transform: scaleX(-1); }
-  .lp .lp-nodes span { opacity: 0.7; }
-  .lp .lp-draw { animation: none; stroke-dashoffset: 0; }
-  .lp .lp-fade-in { animation: none; opacity: 1; }
-  .lp .lp-grow { animation: none; transform: none; }
-  .lp .lp-market:hover .lp-market-art, .lp .lp-eco:hover .lp-icon-tile, .lp .lp-arrow-btn:hover { transform: none; }
-}
 .lp .lp-h2-sm { font-size: 29px; }
 @media (max-width: 639px) { .lp .lp-h2-sm { font-size: 25px; } }
 @media (max-width: 639px) {
@@ -1485,7 +1474,7 @@ input:-webkit-autofill:active {
    Landing v2.1: motion a visitor notices. Routes of light run between cities on
    the globe, embers rise, the headline arrives word by word, prices flash as they
    move, a light follows the pointer over cards, and a scan line sweeps the live
-   panels. All of it stops under prefers-reduced-motion.
+   panels.
    ========================================================================== */
 .lp .lp-hero-art { animation: lp-drift 22s ease-in-out infinite alternate; }
 @keyframes lp-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.1) translate3d(-2%, -1.2%, 0); } }
@@ -1561,11 +1550,18 @@ input:-webkit-autofill:active {
 .lp .lp-icon-tile, .lp .lp-icon-hex { transition: transform 0.35s, box-shadow 0.35s; }
 .lp .lp-hover:hover .lp-icon-tile { box-shadow: 0 0 18px rgba(255, 122, 18, 0.45); }
 
-@media (prefers-reduced-motion: reduce) {
-  .lp .lp-route, .lp .lp-node, .lp .lp-node::after, .lp .lp-float-icon, .lp .lp-scan::before, .lp .lp-skeleton, .lp .lp-state.is-running, .lp .lp-meter > span { animation: none; }
-  .lp .lp-pulse-route, .lp .lp-embers { display: none; }
-  .lp .lp-word { animation: none; opacity: 1; transform: none; filter: none; }
-  .lp .lp-flash-up, .lp .lp-flash-down { animation: none; }
-  .lp .reveal, .lp .reveal.shown { opacity: 1; transform: none; filter: none; transition: none; }
-}
 .lp .lp-demo-tag { margin-left: 10px; padding: 2px 7px; border-radius: 4px; font-size: 10px; letter-spacing: 0.14em; color: #ffcf9e; background: rgba(255, 122, 18, 0.16); border: 1px solid rgba(255, 122, 18, 0.4); }
+
+/* Reduced motion on the landing. The owner wants every visitor to see the page as
+   designed (25 October 2026), so the ambient motion stays: routes of light, embers,
+   shine, pulses and price flashes. What a reduced-motion visitor is spared is travel:
+   sections and headline words fade in where they would slide, cards do not lift, and
+   the globe drifts more slowly. The global .anim-rise rule is restored here. */
+@media (prefers-reduced-motion: reduce) {
+  .lp .anim-rise { animation: rise 0.7s var(--ease-enter) both; }
+  .lp .reveal { opacity: 0; transform: none; filter: none; }
+  .lp .reveal.shown { opacity: 1; transform: none; filter: none; transition: opacity 0.8s ease; }
+  .lp .lp-word { transform: none; }
+  .lp .lp-hero-art { animation-duration: 60s; }
+  .lp .lp-hover:hover { transform: none; }
+}

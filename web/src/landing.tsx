@@ -59,7 +59,9 @@ const price = (p: number) => p.toLocaleString('en-US', { minimumFractionDigits: 
 const shortDay = (iso: string | Date) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 const compact = (n: number) => (Math.abs(n) >= 1000 ? `$${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}K` : `$${n.toFixed(0)}`);
-const reduced = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// The landing keeps its motion for every visitor, at the owner's request (25 October 2026);
+// the reduced-motion softening is in index.css. Kept as a function so it can be restored.
+const reduced = () => false;
 
 /** Re-read a public endpoint every few seconds while the page is visible. */
 function usePolled<T>(path: string, everyMs: number) {
