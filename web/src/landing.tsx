@@ -126,8 +126,8 @@ function CountUp({ value, format }: { value: number; format: (n: number) => stri
 // ------------------------------------------------------------------ marks and small parts
 export const LogoMark = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-    <path d="M5 6.5 L16 17 L27 6.5 M16 17 V27.5" stroke="var(--lp-ember)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-    <circle cx="5" cy="6.5" r="2.6" fill="var(--lp-ember)" /><circle cx="27" cy="6.5" r="2.6" fill="var(--lp-ember)" /><circle cx="16" cy="27.5" r="2.6" fill="var(--lp-ember)" />
+    <path d="M5 6.5 L16 17 L27 6.5 M16 17 V27.5" stroke="var(--lp-ember, #ff7a12)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="5" cy="6.5" r="2.6" fill="var(--lp-ember, #ff7a12)" /><circle cx="27" cy="6.5" r="2.6" fill="var(--lp-ember, #ff7a12)" /><circle cx="16" cy="27.5" r="2.6" fill="var(--lp-ember, #ff7a12)" />
   </svg>
 );
 const Wordmark = () => (

@@ -153,7 +153,7 @@ export function BalanceBar() {
   const open = account.data?.open_pct ?? null;
 
   return (
-    <div className="glow grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
+    <div className="x-balance glow grain enter relative mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 overflow-hidden rounded-xl border border-pebble bg-bone px-4 py-2.5 dark:border-white/10 dark:bg-white/5">
       {/* Marked, not whispered: metric-label is the voice for the word above a figure, and
           this one names the whole strip. The ember tick is what says so everywhere else. */}
       <span className="section-title mr-1">Balance</span>

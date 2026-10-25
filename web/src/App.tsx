@@ -18,7 +18,7 @@ import { OverviewView } from './overview.tsx';
 import { ClientWorkspace } from './client-workspace.tsx';
 import { ClientList } from './views.tsx';
 import { SettingsView } from './settings.tsx';
-import { Landing } from './landing.tsx';
+import { Landing, LogoMark } from './landing.tsx';
 import { IposPanel } from './ipos.tsx';
 import { IposAdmin } from './ipos-admin.tsx';
 import { EmailAdmin } from './email-admin.tsx';
@@ -151,7 +151,7 @@ function Login({ mode, onDone, onMode, onBack }: {
     // this is measured against give the left half to who they are and the right half to
     // the one thing being asked. It also means the brand is doing the reassuring, so the
     // form can stay short.
-    <div className="auth-screen grid h-full grid-cols-1 bg-obsidian lg:grid-cols-[1.05fr_1fr]">
+    <div className="auth-screen app-x grid h-full grid-cols-1 bg-obsidian lg:grid-cols-[1.05fr_1fr]">
 
       {/* ---------------------------------------------------------- the brand half */}
       <aside className="relative hidden overflow-hidden border-r border-white/10 bg-onyx p-12 lg:flex lg:flex-col lg:justify-between">
@@ -173,8 +173,7 @@ function Login({ mode, onDone, onMode, onBack }: {
             ← back
           </button>
           <p className="mt-10">
-            <span className="font-display text-[30px] text-vellum">Pantera GP</span>
-            <span className="font-mono text-sm text-ember-ink"> ///</span>
+            <span className="x-brand x-brand-lg"><LogoMark size={34} /><span>Pantera GP</span><span className="x-slashes" aria-hidden>///</span></span>
           </p>
           <p className="mt-5 max-w-sm text-[15px] leading-relaxed text-mist">
             Rest an order at a price and close the tab. The engine prices every instrument
@@ -213,8 +212,7 @@ function Login({ mode, onDone, onMode, onBack }: {
               ← back
             </button>
             <p className="mt-6">
-              <span className="font-display text-[26px] text-vellum">Pantera GP</span>
-              <span className="font-mono text-sm text-ember-ink"> ///</span>
+              <span className="x-brand x-brand-lg"><LogoMark size={30} /><span>Pantera GP</span><span className="x-slashes" aria-hidden>///</span></span>
             </p>
           </div>
 
@@ -393,19 +391,16 @@ function Shell({ dark, setDark, onLogout }: {
   }, [menu]);
 
   return (
-    <div className="flex h-full flex-col bg-vellum text-obsidian lg:flex-row dark:bg-obsidian dark:text-vellum">
+    <div className={`flex h-full flex-col bg-vellum text-obsidian lg:flex-row dark:bg-obsidian dark:text-vellum ${trading ? 'app-x' : ''}`} onPointerMove={spotlight}>
       {/* The dark palette lives in the nav chrome, so tables and forms stay readable
           while the app keeps the same visual DNA as the marketing hero. The rail reads
           as instrument panel rather than website menu: numbered slots, mono labels, a
           scanline wash, and an accent bar that slides between items. */}
-      <TerminalGround />
+      <TerminalGround globe={trading} />
 
       {/* The bar a phone or a tablet gets instead of the rail. */}
       <header className="nav-rail relative z-20 flex shrink-0 items-center gap-3 overflow-hidden bg-obsidian px-4 py-3 lg:hidden dark:bg-onyx">
-        <div className="relative z-10 flex items-baseline gap-1">
-          <span className="font-display text-lg text-vellum">Pantera GP</span>
-          <span className="text-ember-ink">///</span>
-        </div>
+        <div className="relative z-10"><span className="x-brand"><LogoMark size={24} /><span>Pantera GP</span><span className="x-slashes" aria-hidden>///</span></span></div>
         <p className="relative z-10 ml-1 hidden items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-mist uppercase sm:flex">
           <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-ember" aria-hidden />
           {crm ? 'Client desk' : 'Terminal'}
@@ -429,9 +424,8 @@ function Shell({ dark, setDark, onLogout }: {
         className={`nav-rail fixed inset-y-0 left-0 z-40 flex w-72 max-w-[86vw] shrink-0 flex-col overflow-hidden bg-obsidian transition-transform duration-300 ease-out lg:static lg:z-10 lg:w-56 lg:max-w-none lg:translate-x-0 lg:transition-none dark:bg-onyx ${menu ? 'translate-x-0' : '-translate-x-full'}`}
         aria-hidden={!menu ? undefined : false}>
         <div className="relative z-10 px-5 py-5">
-          <div className="flex items-baseline gap-1">
-            <span className="font-display text-lg text-vellum">Pantera GP</span>
-            <span className="text-ember-ink">///</span>
+          <div className="flex items-center gap-1">
+            <span className="x-brand"><LogoMark size={24} /><span>Pantera GP</span><span className="x-slashes" aria-hidden>///</span></span>
             <button type="button" onClick={() => setMenu(false)} aria-label="Close the menu"
               className="focus-ring ml-auto -mr-2 flex h-9 w-9 items-center justify-center rounded-full text-mist transition-colors hover:text-vellum lg:hidden">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
@@ -520,6 +514,16 @@ function Shell({ dark, setDark, onLogout }: {
   );
 }
 
+/** A soft ember light follows the pointer across whichever tile it is over. */
+function spotlight(e: React.PointerEvent) {
+  if (e.pointerType !== 'mouse') return;
+  const tile = (e.target as HTMLElement).closest<HTMLElement>('.tile');
+  if (!tile) return;
+  const r = tile.getBoundingClientRect();
+  tile.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  tile.style.setProperty('--my', `${e.clientY - r.top}px`);
+}
+
 const Denied = () => <p className="text-sm text-slate-ink">You do not have access to this page.</p>;
 
 /** Head and shoulders, drawn rather than an emoji so it takes the rail's colour. */
@@ -547,9 +551,11 @@ const Person = () => (
  */
 const GROUND_BARS = [24, 48, 34, 66, 44, 82, 56, 90, 60, 76, 40, 58];
 
-const TerminalGround = () => (
+const TerminalGround = ({ globe = false }: { globe?: boolean }) => (
   <div aria-hidden className="pointer-events-none fixed inset-y-0 right-0 left-0 z-0 overflow-hidden lg:left-56">
     <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_100%,var(--ground-glow),transparent_72%)]" />
+    {/* The client area takes the public page's night globe, faint, in the far corner. */}
+    {globe && <div className="x-globe" />}
     {/* The bars are the light theme's. Dark sets --ground-bar transparent and keeps the
         bloom alone, because on the terminal ground twelve more lit shapes are a second
         thing to look at behind the charts; on paper they read as a watermark. */}

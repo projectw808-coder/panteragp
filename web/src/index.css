@@ -1565,3 +1565,78 @@ input:-webkit-autofill:active {
   .lp .lp-hero-art { animation-duration: 60s; }
   .lp .lp-hover:hover { transform: none; }
 }
+
+/* ==========================================================================
+   The client area in the public page's look (October 2026). Scoped to .app-x, which
+   the shell sets for an account holder and the sign-in screen carries, so the desk's
+   own screens are unchanged. Same layout, data and controls on every page; what
+   changes is the type (the public page's sans for titles and figures), the grounds
+   and cards (the page's near-black and its hairline cards), the brand mark, and the
+   light: the night globe in the corner, a sheen on the primary action, tiles that glow
+   under the pointer. In light mode only the type and the shapes change.
+   ========================================================================== */
+.app-x {
+  --font-display: 'Segoe UI', 'Figtree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: 'Segoe UI', 'Figtree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --radius-lg: 9px;
+  --radius-xl: 14px;
+  font-family: var(--font-ui);
+  letter-spacing: -0.005em;
+}
+.dark .app-x, .app-x.auth-screen {
+  --color-obsidian: #07090c;
+  --color-onyx: #0d1116;
+  --color-ember: #ff7a12;
+  --color-ember-ink: #ff8a2a;
+  --color-up: #18c879;
+  --color-down: #ff4b55;
+  --color-mist: #9ca3af;
+  --color-slate-ink: #9ca3af;
+  --ground-glow: rgba(255, 110, 20, 0.2);
+  --shadow-inset-dark: rgba(255, 255, 255, 0.08) 0 0 0 1px inset;
+}
+.app-x .font-display { font-weight: 700; letter-spacing: -0.02em; }
+.app-x h1.font-display { font-size: 32px; line-height: 1.1; }
+
+/* The brand, as on the public page: the mark, the name, the ember slashes. */
+.x-brand { display: inline-flex; align-items: center; gap: 9px; font-family: 'Segoe UI', 'Figtree', ui-sans-serif, system-ui, sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #fff; white-space: nowrap; }
+.x-brand-lg { font-size: 28px; gap: 12px; }
+.x-slashes { color: #ff7a12; font-weight: 800; font-style: italic; letter-spacing: -0.06em; }
+
+/* The rail: the public page's bar, run down the side. */
+.app-x .nav-rail { background: linear-gradient(180deg, #0b0e12, #07090c); border-right: 1px solid rgba(255, 255, 255, 0.07); }
+.app-x .nav-rail::before { opacity: 0.35; }
+.app-x .nav-item { margin: 1px 10px; padding: 0.6rem 0.9rem; border-radius: 7px; color: rgba(255, 255, 255, 0.72); }
+.app-x .nav-item:hover { background: rgba(255, 255, 255, 0.045); color: #fff; }
+.app-x .nav-item.is-active { color: #fff; background: linear-gradient(90deg, rgba(255, 122, 18, 0.16), rgba(255, 122, 18, 0.03)); box-shadow: inset 0 0 0 1px rgba(255, 122, 18, 0.22); }
+.app-x .nav-item::before { left: 0; border-radius: 2px; width: 3px; }
+.app-x .nav-label { font-size: 13.5px; }
+
+/* Cards and tiles: hairline, a lift and an ember light under the pointer. */
+.dark .app-x .tile { box-shadow: var(--shadow-inset-dark); }
+.app-x .tile:hover { box-shadow: inset 0 0 0 1px rgba(255, 122, 18, 0.45), 0 12px 30px rgba(0, 0, 0, 0.35); transform: translateY(-2px); }
+.dark .app-x .tile:hover { background-image: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 122, 18, 0.12), transparent 70%); }
+.app-x .tile > p.font-mono { font-family: var(--font-ui); font-weight: 600; letter-spacing: -0.01em; }
+.dark .app-x .metric-label { font-size: 11px; color: rgba(255, 255, 255, 0.62); }
+.app-x .section-title { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; }
+.app-x .section-title::before { width: 3px; height: 13px; border-radius: 2px; }
+
+/* The balance strip: dark glass with an ember underline. */
+.dark .app-x .x-balance { background: linear-gradient(180deg, rgba(16, 20, 26, 0.92), rgba(10, 13, 17, 0.92)); border-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 -1px 0 rgba(255, 122, 18, 0.45), 0 10px 30px rgba(0, 0, 0, 0.35); }
+
+/* The primary action: the public page's button, its glow and the passing sheen. */
+.app-x .sheen.bg-ember { border-radius: 6px; font-family: var(--font-ui); font-weight: 600; letter-spacing: 0; box-shadow: 0 6px 22px rgba(255, 122, 18, 0.28); }
+.app-x .sheen.bg-ember:hover { filter: brightness(1.08); box-shadow: 0 8px 30px rgba(255, 122, 18, 0.45); }
+@keyframes x-sheen { 0%, 70% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
+.app-x .sheen.bg-ember::after { animation: x-sheen 5.5s ease-in-out infinite; }
+
+/* The night globe in the far corner, drifting, behind everything readable. */
+.x-globe {
+  position: absolute; right: -6%; bottom: -18%; width: 62%; aspect-ratio: 1.6; opacity: 0.32;
+  background: url('/landing/hero-globe.webp') 80% 60% / cover no-repeat;
+  mask-image: radial-gradient(60% 60% at 70% 60%, #000 30%, transparent 75%);
+  animation: x-drift 30s ease-in-out infinite alternate;
+}
+html:not(.dark) .x-globe { display: none; }
+@keyframes x-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.08) translate3d(-2%, -1.5%, 0); } }
+@media (max-width: 1023px) { .x-globe { width: 120%; opacity: 0.2; } }
