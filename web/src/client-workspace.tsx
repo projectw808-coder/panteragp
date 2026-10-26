@@ -1,5 +1,10 @@
 import { useState } from 'react';
+import {
+  Activity as ActivityIcon, ArrowDownLeft, ArrowDownUp, ChartCandlestick, Clock, FileText, Flag, Headset, History, KeyRound, Landmark,
+  LayoutGrid, ListTodo, Mail, Pencil, Plus, ShieldCheck, User, Wallet,
+} from 'lucide-react';
 import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
+import type { Book } from './balance.tsx';
 import { ClientEmail } from './client-email.tsx';
 import { ClientAutoTrader } from './client-autotrader.tsx';
 import { api, useApi, type Activity, type Client, type Stage, type Staff, type Task } from './api.ts';
@@ -19,7 +24,7 @@ type Holdings = {
   orders: { id: string; symbol: string; side: string; type: string; qty: number; limit_price: number | null; stop_price: number | null; status: string; placed_at: string }[];
   trades: { id: number; symbol: string; side: string; qty: number; price: number; filled_at: string }[];
   cash: { id: number; kind: string; amount: number; status: string; created_at: string }[];
-  totals: { holdings_usd: number; unpriced: string[]; open_pnl: number; equity_usd: number };
+  totals: { holdings_usd: number; unpriced: string[]; open_pnl: number; equity_usd: number; book?: Book };
 };
 /** The client record as the workspace reads it: the CRM row plus their personal details. */
 type Person = Client & {
@@ -41,13 +46,16 @@ const TABS = ['overview', 'assets', 'trading', 'funding', 'documents', 'tickets'
 const TIERS = ['standard', 'silver', 'gold', 'platinum'];
 type Tab = (typeof TABS)[number];
 
-const KYC: Record<string, string> = {
-  approved: 'bg-pebble text-obsidian dark:bg-white/10 dark:text-vellum',
-  pending: 'bg-ember text-graphite',
-  rejected: 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist',
-  expired: 'bg-ember text-graphite',
-  none: 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist',
+
+const TAB_META: Record<Tab, { label: string; Icon: typeof User }> = {
+  overview: { label: 'Overview', Icon: LayoutGrid }, assets: { label: 'Assets', Icon: Wallet },
+  trading: { label: 'Trading', Icon: ChartCandlestick }, funding: { label: 'Funding', Icon: ArrowDownUp },
+  documents: { label: 'Documents', Icon: FileText }, tickets: { label: 'Tickets', Icon: Headset },
+  activity: { label: 'Activity', Icon: ActivityIcon }, audit: { label: 'Audit', Icon: History },
 };
+
+const KYC_BADGE: Record<string, string> = { approved: '', pending: 'is-locked', rejected: 'is-bad', expired: 'is-warn', none: 'is-muted' };
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
 /** One client, everything about them, for staff. */
 export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; role?: string } | null }) {
@@ -67,26 +75,35 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
   const canWrite = me?.role === 'sales' || me?.role === 'support' || admin;
 
   if (client.error) return <p role="alert" className={`${alertBox} `}>{client.error}</p>;
-  if (!client.data) return <p className="text-sm text-slate-ink">Loading…</p>;
+  if (!client.data) return <div className="mx-auto max-w-[1440px] space-y-4"><div className="skeleton h-48 rounded-xl" /><div className="skeleton h-10 rounded-lg" /></div>;
   const c = client.data;
   const t = holdings.data?.totals;
+  const h = holdings.data;
+  // What each tab holds, on the tab, so nobody has to open one to find it is empty.
+  const count: Partial<Record<Tab, number>> = {
+    trading: h?.positions.length, funding: h?.cash.filter((x) => x.status === 'pending').length,
+    tickets: tickets.data?.filter((x) => x.status === 'open' || x.status === 'pending').length,
+  };
+  const go = (next: Tab) => { setTab(next); document.getElementById('record-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <Header client={c} holdings={holdings.data ?? undefined} onSaved={refresh}
-        compliance={compliance} admin={admin} />
+    <div className="mx-auto max-w-[1440px] space-y-4">
+      <Header client={c} holdings={h ?? undefined} onSaved={refresh}
+        compliance={compliance} admin={admin} flags={flags.data?.length ?? 0} onGo={go} />
 
-      <div className="flex flex-wrap gap-1 text-xs">
-        {TABS.map((name) => (
-          <button key={name} onClick={() => setTab(name)} aria-pressed={tab === name}
-            className={`rounded-full px-3 py-1 capitalize ${tab === name
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-            {name}
-            {name === 'tickets' && tickets.data?.some((x) => x.status === 'open') ? ' •' : ''}
-            {name === 'overview' && flags.data?.length ? ' •' : ''}
-          </button>
-        ))}
+      <div id="record-tabs" className="x-rtabs" role="tablist" aria-label="Client record">
+        {TABS.map((name) => {
+          const { label, Icon } = TAB_META[name];
+          const n = count[name];
+          return (
+            <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => setTab(name)}
+              className={tab === name ? 'is-on' : ''}>
+              <Icon size={15} aria-hidden />{label}
+              {!!n && <span className="x-rtab-n">{n}</span>}
+              {name === 'overview' && !!flags.data?.length && <span className="x-rtab-n is-alert">{flags.data.length}</span>}
+            </button>
+          );
+        })}
       </div>
 
       <div key={version}>
@@ -108,51 +125,39 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
 // ------------------------------------------------------------------ header
 
 /**
- * Every currency the client actually holds, one chip each, and the USD total on the right.
- *
- * Cash accounts, crypto wallets and portfolios are three tables but one balance sheet, so
- * they are summed per currency — a USD account and a USD portfolio are one USD number, not
- * two chips that look like a bug. Zero balances are left out: a wallet that exists but is
- * empty is noise here. The total is the same figure the stats row calls Holdings, so if a
- * currency has no price source it is named rather than silently dropped.
+ * Where the client's money sits, from the same book their own screens read: cash, crypto,
+ * savings, staked and IPOs, then open P&L, adding up to the equity at the top. A part
+ * they hold nothing in is left out; a currency with no price source is named.
  */
-function Balances({ holdings }: { holdings?: Holdings }) {
-  if (!holdings) return null;
-  const by = new Map<string, number>();
-  const add = (code: string, amount: number) => by.set(code, (by.get(code) ?? 0) + Number(amount));
-  for (const a of holdings.accounts) add(a.currency, a.balance);
-  for (const w of holdings.wallets) add(w.asset, w.balance);
-  for (const p of holdings.portfolios) add(p.currency, p.balance);
-  const held = [...by].filter(([, amount]) => amount !== 0).sort((a, b) => a[0].localeCompare(b[0]));
-
+function Breakdown({ totals }: { totals?: Holdings['totals'] }) {
+  if (!totals?.book) return null;
+  const b = totals.book;
+  const parts = ([
+    ['Cash', b.cash_usd], ['Crypto', b.crypto_usd], ['Savings', b.savings_usd], ['Staked', b.staked_usd], ['IPOs', b.ipos_usd],
+  ] as const).filter(([, v]) => v !== 0);
   return (
-    <>
-      <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-pebble pt-3 dark:border-white/10">
-        {held.length === 0 ? (
-          <div className="text-sm text-slate-ink">No balances yet.</div>
-        ) : held.map(([code, amount]) => (
-          <div key={code}>
-            <dt className="font-mono text-[11px] tracking-[0.12em] text-slate-ink uppercase">{code}</dt>
-            <dd className="font-mono text-sm font-medium tabular-nums">{num(amount)}</dd>
-          </div>
-        ))}
-        <div className="ml-auto text-right">
-          <dt className="font-mono text-[11px] tracking-[0.12em] text-slate-ink uppercase">Total</dt>
-          <dd className="font-mono text-base font-medium tabular-nums">{usd(holdings.totals.holdings_usd)}</dd>
-        </div>
-      </dl>
-      {!!holdings.totals.unpriced.length && (
-        <p className="text-xs text-slate-ink">
-          Total excludes {holdings.totals.unpriced.join(', ')} — no price source.
-        </p>
+    <div className="x-book">
+      {parts.length === 0 && <span className="text-sm text-slate-ink">No balances yet.</span>}
+      {parts.map(([label, v]) => (
+        <span key={label} className="x-book-part">
+          <span className="text-[11.5px] text-mist">{label}</span>
+          <span className="text-[14px] font-semibold tabular-nums">{usd(v)}</span>
+        </span>
+      ))}
+      {b.open_pnl !== 0 && (
+        <span className="x-book-part">
+          <span className="text-[11.5px] text-mist">Open P&amp;L</span>
+          <span className={`text-[14px] font-semibold tabular-nums ${pnlColour(b.open_pnl)}`}>{b.open_pnl > 0 ? '+' : ''}{usd(b.open_pnl)}</span>
+        </span>
       )}
-    </>
+      {!!totals.unpriced.length && <span className="text-xs text-slate-ink">Excludes {totals.unpriced.join(', ')} — no price source.</span>}
+    </div>
   );
 }
 
-function Header({ client: c, holdings, onSaved, compliance, admin }: {
+function Header({ client: c, holdings, onSaved, compliance, admin, flags, onGo }: {
   client: Person;
-  holdings?: Holdings; onSaved: () => void; compliance: boolean; admin: boolean;
+  holdings?: Holdings; onSaved: () => void; compliance: boolean; admin: boolean; flags: number; onGo: (t: Tab) => void;
 }) {
   const totals = holdings?.totals;
   const [editing, setEditing] = useState(false);
@@ -167,76 +172,73 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
       onSaved();
     } catch (err) { setError((err as Error).message); }
   };
+  const stage = stages.data?.find((s) => s.id === c.stage_id)?.name;
 
   return (
-    <div className={`${card} space-y-3`}>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 sm:min-w-64">
-          {/* The serif starts at 28px; below that the system uses the sans. */}
-          <h1 className="font-display text-[28px] leading-none tracking-tight">{c.name}</h1>
-          {/* Contact details are read aloud off this screen, so they are set at the full
-              ink rather than the muted grey the rest of the metadata uses. */}
-          {/* The account number first: it is what the client quotes and what the desk
-              searches by, and it does not change when an email does. */}
-          {c.account_number && (
-            <p className="mt-2 flex flex-wrap items-center gap-2 font-mono text-sm text-obsidian dark:text-vellum">
-              <span className="text-xs tracking-[0.14em] text-slate-ink uppercase">Account</span>
-              {c.account_number}
-              <CopyButton text={c.account_number} />
-            </p>
-          )}
-          <p className="mt-1 flex flex-wrap items-center gap-2 font-mono text-sm text-ember-ink">
-            {c.email}
-            <CopyButton text={c.email} />
-          </p>
-          <p className="font-mono text-sm text-obsidian dark:text-vellum">
-            {c.phone ?? 'no phone'}
-            <span className="text-slate-ink"> · </span>{c.country ?? '—'}
-            <span className="text-slate-ink"> · </span>{c.tier}
-          </p>
-          {(c.date_of_birth || c.address) && (
-            <p className="font-mono text-sm text-obsidian dark:text-vellum">
-              {c.date_of_birth ? new Date(c.date_of_birth).toLocaleDateString() : '—'}
-              {c.address && <><span className="text-slate-ink"> · </span>{c.address}</>}
-            </p>
-          )}
-          <p className="mt-2 flex items-center gap-2 text-xs">
-            <span className={`rounded-full px-2 py-0.5 ${KYC[c.kyc_status] ?? ''}`}>KYC {c.kyc_status}</span>
-            <span className="text-slate-ink">risk {c.risk_profile ?? 'not set'}</span>
-          </p>
+    <div className="space-y-4">
+      <div className="x-card x-holo p-5">
+        <div className="flex flex-wrap items-start gap-5">
+          <span className="x-avatar !size-16 !text-[22px] shrink-0" aria-hidden>{initials(c.name)}</span>
+          <div className="min-w-0 flex-1 sm:min-w-72">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-[26px] leading-tight font-bold tracking-[-0.02em]">{c.name}</h1>
+              <span className={`x-badge ${KYC_BADGE[c.kyc_status] ?? 'is-muted'}`}><ShieldCheck size={12} className="mr-1" aria-hidden />KYC {c.kyc_status}</span>
+              <span className="x-badge is-locked capitalize">{c.tier}</span>
+              {stage && <span className="x-badge is-muted">{stage}</span>}
+              {flags > 0 && <span className="x-badge is-bad"><Flag size={12} className="mr-1" aria-hidden />{flags} open flag{flags === 1 ? '' : 's'}</span>}
+            </div>
+            {/* The details the desk reads aloud and searches by, each one click to copy. */}
+            <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[13.5px] sm:grid-cols-2">
+              {c.account_number && (
+                <div className="flex items-center gap-2"><dt className="w-16 shrink-0 text-mist">Account</dt><dd className="font-mono">{c.account_number}</dd><CopyButton text={c.account_number} /></div>
+              )}
+              <div className="flex min-w-0 items-center gap-2"><dt className="w-16 shrink-0 text-mist">Email</dt><dd className="truncate text-ember-ink">{c.email}</dd><CopyButton text={c.email} /></div>
+              <div className="flex items-center gap-2"><dt className="w-16 shrink-0 text-mist">Phone</dt><dd>{c.phone ?? '—'}</dd>{c.phone && <CopyButton text={c.phone} />}</div>
+              <div className="flex items-center gap-2"><dt className="w-16 shrink-0 text-mist">Country</dt><dd>{c.country ?? '—'}</dd></div>
+              <div className="flex items-center gap-2"><dt className="w-16 shrink-0 text-mist">Born</dt><dd>{c.date_of_birth ? new Date(c.date_of_birth).toLocaleDateString() : '—'}</dd></div>
+              <div className="flex items-center gap-2"><dt className="w-16 shrink-0 text-mist">Since</dt><dd>{new Date(c.created_at).toLocaleDateString()}</dd></div>
+              {c.address && <div className="flex min-w-0 items-center gap-2 sm:col-span-2"><dt className="w-16 shrink-0 text-mist">Address</dt><dd className="truncate">{c.address}</dd></div>}
+            </dl>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a href={`mailto:${c.email}`} className="x-btn-sm inline-flex items-center gap-1.5"><Mail size={14} aria-hidden />Email</a>
+            <button type="button" className="x-btn-sm inline-flex items-center gap-1.5" onClick={() => onGo('trading')}><ChartCandlestick size={14} aria-hidden />Trading</button>
+            <button type="button" className="x-btn-sm inline-flex items-center gap-1.5" onClick={() => onGo('documents')}><FileText size={14} aria-hidden />Documents</button>
+            <button type="button" className={`x-btn-sm inline-flex items-center gap-1.5 ${editing ? 'is-on' : ''}`} onClick={() => setEditing((v) => !v)}>
+              <Pencil size={14} aria-hidden />{editing ? 'Close' : 'Edit details'}
+            </button>
+          </div>
         </div>
 
-        {/* The dark sidebar takes 224px, so four stat columns need a wide viewport. */}
-        <dl className="grid min-w-full flex-1 grid-cols-2 gap-x-6 gap-y-2 text-sm sm:min-w-0 xl:grid-cols-4">
-          <Stat label="Holdings" value={totals ? usd(totals.holdings_usd) : '—'} />
-          <Stat label="Open P&L" value={totals ? usd(totals.open_pnl) : '—'}
-            className={totals ? pnlColour(totals.open_pnl) : ''} />
-          <Stat label="Equity" value={totals ? usd(totals.equity_usd) : '—'} />
-          <Stat label="Since" value={new Date(c.created_at).toLocaleDateString()} />
-        </dl>
-
-        <button className="rounded-full border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite"
-          onClick={() => setEditing((v) => !v)}>{editing ? 'Done' : 'Edit'}</button>
+        {/* The money, the same figures the client sees on their own overview. */}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Figure label="Equity" Icon={Landmark} value={totals ? usd(totals.equity_usd) : null} note="Holdings plus open P&L" lead />
+          <Figure label="Holdings" Icon={Wallet} value={totals ? usd(totals.holdings_usd) : null} note="Cash, crypto, savings, staked, IPOs" />
+          <Figure label="Open P&L" Icon={ChartCandlestick} value={totals ? `${totals.open_pnl > 0 ? '+' : ''}${usd(totals.open_pnl)}` : null}
+            tone={totals ? pnlColour(totals.open_pnl) : ''} note={holdings ? `${holdings.positions.length} open position${holdings.positions.length === 1 ? '' : 's'}` : ''} />
+          <Figure label="Pending" Icon={Clock} value={holdings ? String(holdings.cash.filter((x) => x.status === 'pending').length) : null}
+            note="Deposits and withdrawals waiting on a decision" />
+        </div>
+        <div className="mt-3"><Breakdown totals={totals} /></div>
       </div>
 
-      <Balances holdings={holdings} />
-
-      <div className="flex flex-wrap items-end gap-2">
+      {/* Who looks after them and where they stand: always one change away. */}
+      <div className="x-card x-manage">
         <Labelled label="Stage">
-          <select className={`${field} w-36`} value={c.stage_id}
+          <select className={field} value={c.stage_id}
             onChange={(e) => patch({ stage_id: Number(e.target.value) })}>
             {stages.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Labelled>
         <Labelled label="Owner">
-          <select className={`${field} w-40`} value={c.owner_staff_id ?? ''}
+          <select className={field} value={c.owner_staff_id ?? ''}
             onChange={(e) => patch({ owner_staff_id: e.target.value || null })}>
             <option value="">Unassigned</option>
             {staff.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Labelled>
         <Labelled label="Risk">
-          <select className={`${field} w-28`} value={c.risk_profile ?? ''}
+          <select className={field} value={c.risk_profile ?? ''}
             onChange={(e) => patch({ risk_profile: e.target.value || null })}>
             <option value="">not set</option>
             {['low', 'medium', 'high'].map((r) => <option key={r}>{r}</option>)}
@@ -244,11 +246,10 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
         </Labelled>
         {admin && (
           <Labelled label="Tier">
-            {/* A select rather than the free-text box in the edit form: a tier is one of a
-                known set, and "Gold " with a trailing space is a tier nothing matches. The
-                client's existing value is kept as an option so an older record set by hand
-                is not silently rewritten by opening this menu. */}
-            <select className={`${field} w-32`} value={c.tier}
+            {/* A select rather than free text: a tier is one of a known set, and "Gold " with
+                a trailing space is a tier nothing matches. The client's existing value is kept
+                as an option so an older record set by hand is not silently rewritten. */}
+            <select className={field} value={c.tier}
               onChange={(e) => patch({ tier: e.target.value })}>
               {[...new Set([...TIERS, c.tier])].map((t) => <option key={t}>{t}</option>)}
             </select>
@@ -256,7 +257,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
         )}
         {compliance && (
           <Labelled label="KYC (override)">
-            <select className={`${field} w-32`} value={c.kyc_status}
+            <select className={field} value={c.kyc_status}
               onChange={(e) => patch({ kyc_status: e.target.value })}>
               {['none', 'pending', 'approved', 'rejected', 'expired'].map((s) => <option key={s}>{s}</option>)}
             </select>
@@ -265,7 +266,7 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
       </div>
 
       {editing && (
-        <form className="flex flex-wrap items-end gap-2 border-t border-pebble pt-3 dark:border-white/10"
+        <form className="x-card x-holo space-y-4 p-5"
           onSubmit={async (e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
@@ -277,23 +278,46 @@ function Header({ client: c, holdings, onSaved, compliance, admin }: {
               .map(([k, v]) => [k, v === '' ? null : v])));
             setEditing(false);
           }}>
-          <p className="w-full metric-label">Personal details</p>
-          <Labelled label="Name"><input name="name" defaultValue={c.name} className={`${field} w-48`} /></Labelled>
-          <Labelled label="Email"><input name="email" type="email" defaultValue={c.email} className={`${field} w-56`} /></Labelled>
-          <Labelled label="Phone"><input name="phone" defaultValue={c.phone ?? ''} className={`${field} w-40`} /></Labelled>
-          <Labelled label="Date of birth">
-            <input name="date_of_birth" type="date" defaultValue={c.date_of_birth?.slice(0, 10) ?? ''} className={`${field} w-40`} />
-          </Labelled>
-          <Labelled label="Country"><input name="country" maxLength={2} placeholder="GB" defaultValue={c.country ?? ''} className={`${field} w-16`} /></Labelled>
-          <Labelled label="Tier"><input name="tier" defaultValue={c.tier} className={`${field} w-28`} /></Labelled>
-          <Labelled label="Address">
-            <input name="address" defaultValue={c.address ?? ''} placeholder="Street, city, postcode"
-              className={`${field} w-full min-w-72`} />
-          </Labelled>
-          <button className={btn}>Save</button>
+          <h2 className="section-title">Personal details</h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Labelled label="Name"><input name="name" defaultValue={c.name} className={`${field} w-full`} /></Labelled>
+            <Labelled label="Email"><input name="email" type="email" defaultValue={c.email} className={`${field} w-full`} /></Labelled>
+            <Labelled label="Phone"><input name="phone" defaultValue={c.phone ?? ''} className={`${field} w-full`} /></Labelled>
+            <Labelled label="Date of birth">
+              <input name="date_of_birth" type="date" defaultValue={c.date_of_birth?.slice(0, 10) ?? ''} className={`${field} w-full`} />
+            </Labelled>
+            <Labelled label="Country"><input name="country" maxLength={2} placeholder="GB" defaultValue={c.country ?? ''} className={`${field} w-full`} /></Labelled>
+            <Labelled label="Tier"><input name="tier" defaultValue={c.tier} className={`${field} w-full`} /></Labelled>
+            <div className="sm:col-span-2 xl:col-span-3">
+              <Labelled label="Address">
+                <input name="address" defaultValue={c.address ?? ''} placeholder="Street, city, postcode" className={`${field} w-full`} />
+              </Labelled>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className={btn}>Save details</button>
+            <button type="button" className="x-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
         </form>
       )}
       {error && <p role="alert" className={`${alertBox} `}>{error}</p>}
+    </div>
+  );
+}
+
+function Figure({ label, Icon, value, note, tone = '', lead }: {
+  label: string; Icon: typeof User; value: string | null; note?: string; tone?: string; lead?: boolean;
+}) {
+  return (
+    <div className={`x-figure ${lead ? 'is-lead' : ''}`}>
+      <div className="flex items-center gap-2.5">
+        <span className="x-chip !size-8"><Icon size={16} strokeWidth={1.9} aria-hidden /></span>
+        <span className="text-[13px] text-mist">{label}</span>
+      </div>
+      {value === null
+        ? <span className="skeleton mt-3 block h-6 w-32" />
+        : <p className={`mt-3 truncate text-[22px] leading-none font-bold tabular-nums ${tone}`}>{value}</p>}
+      {note && <p className="mt-2 text-xs text-slate-ink">{note}</p>}
     </div>
   );
 }
@@ -306,7 +330,7 @@ const Stat = ({ label, value, className = '' }: { label: string; value: string; 
   </div>
 );
 const Labelled = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <label className="text-xs text-slate-ink">{label}{children}</label>
+  <label className="flex flex-col gap-1 text-xs text-mist">{label}{children}</label>
 );
 
 // ----------------------------------------------------------------- panels
@@ -332,12 +356,19 @@ const Tr = ({ children }: { children: React.ReactNode }) =>
 const Td = ({ children, className = '' }: { children: React.ReactNode; className?: string }) =>
   <td className={`px-3 py-1.5 ${className}`}>{children}</td>;
 
+const ACTIONS = [
+  ['deposit', 'Record deposit', ArrowDownLeft], ['credit', 'Credit / debit', Plus],
+  ['pnl', 'Adjust P&L', ChartCandlestick], ['password', 'Password', KeyRound],
+] as const;
+
 function Overview({ id, client: c, totals, flags, admin, onChanged }: {
   id: string; client: Client; totals?: Holdings['totals']; flags: any; admin: boolean; onChanged: () => void;
 }) {
   const tasks = useApi<Task[]>(`/tasks?client_id=${id}&scope=all`);
+  const [action, setAction] = useState<(typeof ACTIONS)[number][0]>('deposit');
+  const open = tasks.data?.filter((t) => t.status !== 'done' && t.status !== 'cancelled') ?? [];
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
       <div className="space-y-4">
         {!!flags.data?.length && <FlagList rows={flags.data} review={false} onDone={flags.reload} />}
         {!!totals?.unpriced.length && (
@@ -345,24 +376,54 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
             Holdings exclude {totals.unpriced.join(', ')} — no price source for those assets.
           </p>
         )}
-        <div className={`${card} space-y-2`}>
-          <h2 className="text-sm font-semibold">Open tasks</h2>
-          {tasks.data?.map((t) => (
-            <p key={t.id} className="text-sm">
-              {t.title} <span className="text-xs text-slate-ink">· {t.assignee_name}</span>
-            </p>
-          ))}
-          {tasks.data?.length === 0 && <p className="text-sm text-slate-ink">None.</p>}
-        </div>
+        <ClientAutoTrader clientId={id} admin={admin} />
         <ClientEmail clientId={id} clientName={c.name} clientEmail={c.email}
           optedOut={c.email_opt_out} />
-        <ClientAutoTrader clientId={id} admin={admin} />
       </div>
       <div className="space-y-4">
-        {admin && <DepositForm clientId={id} onDone={onChanged} />}
-        {admin && <CreditForm clientId={id} onDone={onChanged} />}
-        {admin && <PnlForm clientId={id} onDone={onChanged} />}
-        {admin && <ClientPassword id={id} name={c.name} />}
+        {/* One place for everything that moves this client's money, picked rather than
+            stacked: four forms down the side made the one you wanted a scroll away. */}
+        {admin && (
+          <div className="x-card x-holo space-y-4 p-5">
+            <div>
+              <h2 className="section-title">Money actions</h2>
+              <p className="mt-1 text-xs text-slate-ink">Audited, written to the client's timeline, and the client is notified.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2" role="tablist">
+              {ACTIONS.map(([k, label, Icon]) => (
+                <button key={k} type="button" role="tab" aria-selected={action === k} onClick={() => setAction(k)}
+                  className={`x-action ${action === k ? 'is-on' : ''}`}>
+                  <Icon size={15} aria-hidden />{label}
+                </button>
+              ))}
+            </div>
+            <div className="x-actions">
+              {action === 'deposit' && <DepositForm clientId={id} onDone={onChanged} />}
+              {action === 'credit' && <CreditForm clientId={id} onDone={onChanged} />}
+              {action === 'pnl' && <PnlForm clientId={id} onDone={onChanged} />}
+              {action === 'password' && <ClientPassword id={id} name={c.name} />}
+            </div>
+          </div>
+        )}
+        <div className="x-card space-y-3 p-5">
+          <div className="flex items-baseline gap-3">
+            <h2 className="section-title">Open tasks</h2>
+            <span className="text-xs text-slate-ink">{open.length || 'none'}</span>
+            <a href="#/tasks" className="ml-auto text-xs text-ember-ink hover:underline">All tasks</a>
+          </div>
+          {tasks.data && !open.length && <p className="text-sm text-slate-ink">Nothing open for this client.</p>}
+          <ul className="space-y-2">
+            {open.map((t) => (
+              <li key={t.id} className="flex items-center gap-3 rounded-lg border border-white/10 px-3 py-2.5">
+                <span className="x-chip !size-7" aria-hidden><ListTodo size={14} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-medium">{t.title}</span>
+                  <span className="block text-xs text-slate-ink">{t.assignee_name}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );
@@ -372,7 +433,7 @@ function Overview({ id, client: c, totals, flags, admin, onChanged }: {
 function ClientPassword({ id, name }: { id: string; name: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={`${card} space-y-2`}>
+    <div className="space-y-2">
       <h2 className="text-sm font-medium">Sign-in</h2>
       {open
         ? <ResetPassword path={`/clients/${id}/password`} who={name} onDone={() => setOpen(false)} />

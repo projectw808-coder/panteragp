@@ -1887,3 +1887,41 @@ html:not(.dark) .x-note:hover { background: var(--color-bone); }
 .x-msg.is-note { border-style: dashed; border-color: var(--color-ember); }
 .x-msg.is-system { max-width: 100%; border-radius: 999px; padding: 6px 14px; font-size: 12px; text-align: center; }
 html:not(.dark) .x-msg { border-color: var(--color-pebble); background: var(--color-bone); }
+
+/* Admin dashboard: the pipeline as stepped bars, and the activity feed. */
+.x-stage { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 9px; transition: background-color 0.2s; }
+.x-stage:hover { background: rgba(255, 117, 24, 0.06); }
+.x-stage-track { position: relative; flex: 1; height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
+.x-stage-track > span { position: absolute; inset: 0 auto 0 0; min-width: 6px; border-radius: 999px; background: linear-gradient(90deg, #b8480a, var(--color-ember) 70%, #ffb066); box-shadow: 0 0 12px rgba(255, 117, 24, 0.35); transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+html:not(.dark) .x-stage-track { background: var(--color-bone); }
+.x-feed { display: flex; flex-direction: column; }
+.x-feed > li { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-radius: 9px; font-size: 13.5px; transition: background-color 0.15s; }
+.x-feed > li + li { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.x-feed > li:hover { background: rgba(255, 255, 255, 0.025); }
+html:not(.dark) .x-feed > li + li { border-top-color: var(--color-pebble); }
+
+/* The client record: figures, where the money sits, the management row, the tab bar and
+   the money actions panel. */
+.x-figure { padding: 14px 16px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.x-figure.is-lead { border-color: rgba(255, 117, 24, 0.45); background: linear-gradient(160deg, rgba(255, 117, 24, 0.14), rgba(255, 117, 24, 0.02) 70%); box-shadow: 0 0 24px rgba(255, 117, 24, 0.08); }
+html:not(.dark) .x-figure { border-color: var(--color-pebble); background: #fff; }
+.x-book { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.x-book-part { display: inline-flex; align-items: baseline; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.025); }
+html:not(.dark) .x-book-part { border-color: var(--color-pebble); }
+.x-book-part { align-items: center; }
+.x-manage { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; padding: 14px 16px; }
+.x-manage select { width: 100%; }
+.x-rtabs { position: sticky; top: 64px; z-index: 20; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 5px; border-radius: 12px; border: 1px solid #222a2e; background: color-mix(in srgb, var(--color-onyx) 92%, transparent); backdrop-filter: blur(10px); scroll-margin-top: 70px; }
+.x-rtabs::-webkit-scrollbar { display: none; }
+html:not(.dark) .x-rtabs { border-color: var(--color-pebble); background: #fff; }
+.x-rtabs > button { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13.5px; font-weight: 600; white-space: nowrap; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-rtabs > button:hover { color: var(--color-vellum); background: rgba(255, 255, 255, 0.04); }
+html:not(.dark) .x-rtabs > button:hover { color: var(--color-obsidian); }
+.x-rtabs > button.is-on { color: #140802; background: var(--color-ember); box-shadow: 0 4px 16px rgba(255, 117, 24, 0.3); }
+.x-rtab-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; line-height: 18px; text-align: center; color: var(--color-vellum); background: rgba(255, 255, 255, 0.12); }
+.x-rtab-n.is-alert { color: #fff; background: var(--color-down); }
+.x-rtabs > button.is-on .x-rtab-n { color: var(--color-ember); background: #140802; }
+.x-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--color-mist); border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.02); transition: all 0.2s; }
+.x-action:hover { color: var(--color-vellum); border-color: rgba(255, 117, 24, 0.45); }
+.x-action.is-on { color: var(--color-ember-ink); border-color: var(--color-ember); background: rgba(255, 117, 24, 0.1); }
+.x-actions > form, .x-actions > div { padding: 0 !important; background: transparent !important; box-shadow: none !important; }

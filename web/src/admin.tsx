@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Coins, Flag, Inbox, ListTodo, ShieldCheck, Users } from 'lucide-react';
-import { alertBox, btn, card, field, mono, PageTitle } from './App.tsx';
+import {
+  Activity as ActivityIcon, ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Ban, ChartCandlestick, ChevronDown, CircleCheck, Coins, Flag,
+  Inbox, Landmark, Layers, ListTodo, Lock, LogIn, MessageSquare, Plus, RefreshCw, Rocket, Settings2, ShieldCheck, StickyNote,
+  TrendingUp, Users, Wallet, Workflow, X,
+} from 'lucide-react';
+import { alertBox, btn, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 
 type Overview = {
@@ -50,11 +54,37 @@ const SEVERITY: Record<string, string> = {
   high: 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite', medium: 'text-obsidian dark:text-vellum', low: 'text-slate-ink',
 };
 
+// What a line in the activity feed is about, so the feed can be read by shape before words.
+const KIND_ICON: Record<string, typeof Users> = {
+  'order.filled': CircleCheck, 'order.placed': ArrowRightLeft, 'order.cancelled': X, 'order.rejected': Ban,
+  deposit: ArrowDownLeft, withdrawal: ArrowUpRight, credit: Plus, kyc: ShieldCheck, flag: Flag,
+  ticket: MessageSquare, ipo: Rocket, stake: Coins, note: StickyNote, login: LogIn, stage: Workflow, security: Lock, pnl: TrendingUp,
+};
+const KIND_GROUP: Record<string, 'trading' | 'money' | 'compliance'> = {
+  'order.filled': 'trading', 'order.placed': 'trading', 'order.cancelled': 'trading', 'order.rejected': 'trading', pnl: 'trading',
+  deposit: 'money', withdrawal: 'money', credit: 'money', ipo: 'money', stake: 'money',
+  kyc: 'compliance', flag: 'compliance', security: 'compliance',
+};
+const FEEDS = [['all', 'All'], ['trading', 'Trading'], ['money', 'Money'], ['compliance', 'Compliance'], ['other', 'CRM']] as const;
+
+const SERIES = [
+  { key: 'volume', label: 'Traded volume', short: 'Volume', unit: 'USD', money: true },
+  { key: 'net_flow', label: 'Net flows', short: 'Net flows', unit: 'USD', money: true },
+  { key: 'fills', label: 'Fills', short: 'Fills', unit: 'fills', money: false },
+  { key: 'new_clients', label: 'New clients', short: 'New clients', unit: 'accounts', money: false },
+] as const;
+
+const usd0 = (n: number) => `${n < 0 ? '−' : ''}$${Math.round(Math.abs(n)).toLocaleString()}`;
+const usd2 = (n: number) => `${n < 0 ? '−' : n > 0 ? '+' : ''}$${n2(Math.abs(n))}`;
+
 export function AdminView() {
   const overview = useApi<Overview>('/admin/overview');
-  const activity = useApi<Activity[]>('/activity?limit=25');
+  const activity = useApi<Activity[]>('/activity?limit=40');
   const config = useApi<Config>('/admin/config');
   const [at, setAt] = useState<number>(() => Date.now());
+  const [series, setSeries] = useState<(typeof SERIES)[number]['key']>('volume');
+  const [feed, setFeed] = useState<(typeof FEEDS)[number][0]>('all');
+  const [funding, setFunding] = useState(false);
 
   // Numbers move as the engine fills orders; a slow refresh keeps this honest without
   // making the dashboard a live terminal. The time it last happened is on screen, because
@@ -75,22 +105,66 @@ export function AdminView() {
   const c = config.data;
   const maxStage = Math.max(1, ...(o?.pipeline ?? []).map((p) => Number(p.clients)));
   const total = (o?.pipeline ?? []).reduce((n, p) => n + Number(p.clients), 0);
+  const chosen = SERIES.find((s) => s.key === series)!;
+  const days = o?.series ?? [];
+  const sum = days.reduce((n, d) => n + Number(d[chosen.key]), 0);
+  const items = (activity.data ?? []).filter((a) =>
+    feed === 'all' || (feed === 'other' ? !KIND_GROUP[a.kind] : KIND_GROUP[a.kind] === feed));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Dashboard</PageTitle>
-        <span className="flex items-center gap-2 font-mono text-[11px] text-slate-ink">
-          <span className="nav-live inline-block h-1.5 w-1.5 rounded-full bg-up" aria-hidden />
-          updated {new Date(at).toLocaleTimeString()}
-        </span>
-        <button onClick={refresh}
-          className="ml-auto rounded-full border border-pebble px-3 py-1.5 text-xs text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum">
-          Refresh
-        </button>
+        <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Live · updated {new Date(at).toLocaleTimeString()}</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <a href="#/clients" className="x-btn-sm inline-flex items-center gap-1.5"><Users size={14} aria-hidden />Clients</a>
+          <button type="button" onClick={() => setFunding((v) => !v)} className={`x-btn-sm inline-flex items-center gap-1.5 ${funding ? 'is-on' : ''}`}>
+            <Plus size={14} aria-hidden />Add funds
+          </button>
+          <button type="button" onClick={refresh} className="x-btn-sm inline-flex items-center gap-1.5"><RefreshCw size={14} aria-hidden />Refresh</button>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {funding && <AddFunds onClose={() => setFunding(false)} />}
+
+      {/* The desk at a glance: fourteen days of one figure, and the book's money beside it. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="x-card x-holo tile p-5">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] text-mist">{chosen.label} · last 14 days</p>
+              <p className="mt-1 flex items-center gap-3 text-[34px] leading-none font-bold tracking-[-0.02em] tabular-nums">
+                <span className="h-[28px] w-[3px] rounded bg-ember" aria-hidden />
+                {o ? (chosen.money ? usd0(sum) : n0(sum)) : <span className="skeleton inline-block h-8 w-48" />}
+              </p>
+              <p className="mt-2 text-[12px] text-slate-ink">
+                {days.length ? `${days[0]!.day} → ${days[days.length - 1]!.day}` : ''}
+              </p>
+            </div>
+            <div role="tablist" aria-label="Series" className="x-tabs ml-auto">
+              {SERIES.map((s) => (
+                <button key={s.key} role="tab" aria-selected={series === s.key} className={series === s.key ? 'is-on' : ''}
+                  onClick={() => setSeries(s.key)}>{s.short}</button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4"><DeskChart days={days} pick={(d) => Number(d[chosen.key])} money={chosen.money} label={chosen.label} /></div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <MoneyTile label="Client balances" Icon={Landmark} value={o ? usd0(o.cash.balances) : null} note="Net of withdrawals debited, not yet paid" />
+          <MoneyTile label="Client exposure" Icon={Layers} value={o ? usd0(o.trading.exposure) : null}
+            note={o ? `${n0(o.trading.open_positions)} open position${Number(o.trading.open_positions) === 1 ? '' : 's'}` : ''} />
+          <MoneyTile label="Open P&L" Icon={ChartCandlestick} value={o ? usd2(o.trading.open_pnl) : null}
+            tone={o ? (o.trading.open_pnl < 0 ? 'text-down' : o.trading.open_pnl > 0 ? 'text-up' : '') : ''} note="Clients' unrealised, at live prices" />
+          <MoneyTile label="Withdrawals to pay" Icon={Wallet} value={o ? usd0(o.cash.pending_amount) : null}
+            tone={o && o.cash.pending_withdrawals > 0 ? 'text-ember-ink' : ''}
+            note={o ? `${n0(o.cash.pending_withdrawals)} waiting · net flows 30d ${usd0(o.cash.net_30d)}` : ''} href="#/requests" />
+        </div>
+      </div>
+
+      {/* What is waiting on somebody. Each tile opens the queue it counts. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Tile label="Clients" value={o ? n0(o.clients.total) : '—'}
           sub={o ? `${n0(o.clients.new_7d)} new this week · ${n0(o.clients.dormant)} dormant` : ''}
           href="#/clients" />
@@ -114,112 +188,201 @@ export function AdminView() {
           href="#/staking" />
       </div>
 
-      <Metrics days={o?.series ?? []} />
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <div className={`${card} space-y-3`}>
-          <h2 className="section-title">Pipeline</h2>
-          {o?.pipeline.map((p) => (
-            <a key={p.stage} href={`#/clients`}
-              className="flex items-center gap-3 rounded-md px-1 py-0.5 text-sm transition-colors hover:bg-bone dark:hover:bg-white/5">
-              <span className="w-28 shrink-0 text-slate-ink">{p.stage}</span>
-              <span className="h-2 rounded-md bg-ember"
-                style={{ width: `${(Number(p.clients) / maxStage) * 100}%`, minWidth: Number(p.clients) ? 8 : 0 }} />
-              <span className="ml-auto font-mono tabular-nums">{n0(Number(p.clients))}</span>
-              <span className="w-10 text-right font-mono text-[11px] text-slate-ink">
-                {total ? `${Math.round((Number(p.clients) / total) * 100)}%` : ''}
-              </span>
-            </a>
-          ))}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="x-card x-holo space-y-4 p-5">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="section-title">Pipeline</h2>
+            <span className="text-xs text-slate-ink">{n0(total)} clients across {o?.pipeline.length ?? 0} stages</span>
+          </div>
+          <ul className="space-y-2.5">
+            {o?.pipeline.map((p, i) => {
+              const share = total ? Number(p.clients) / total : 0;
+              return (
+                <li key={p.stage}>
+                  <a href="#/clients" className="x-stage focus-ring">
+                    <span className="x-step !size-7 !text-[11px]" aria-hidden>{i + 1}</span>
+                    <span className="w-28 shrink-0 truncate text-[13.5px] font-medium">{p.stage}</span>
+                    <span className="x-stage-track"><span style={{ width: `${(Number(p.clients) / maxStage) * 100}%` }} /></span>
+                    <span className="w-12 text-right text-[14px] font-semibold tabular-nums">{n0(Number(p.clients))}</span>
+                    <span className="w-10 text-right text-[11.5px] text-mist tabular-nums">{Math.round(share * 100)}%</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
-        <div className={`${card} space-y-3`}>
-          <h2 className="section-title">Trading &amp; funds</h2>
-          <p className="text-xs text-slate-ink">
-            Client balances are net of withdrawals already debited but not yet paid out.
-          </p>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <Row label="Volume today" value={o ? n0(o.trading.volume_today) : '—'} />
-            <Row label="Volume 7d" value={o ? n0(o.trading.volume_7d) : '—'} />
-            <Row label="Fills today" value={o ? n0(o.trading.fills_today) : '—'} />
-            <Row label="Working orders" value={o ? n0(o.trading.working_orders) : '—'} />
-            <Row label="Open positions" value={o ? n0(o.trading.open_positions) : '—'} />
-            <Row label="Client exposure" value={o ? n0(o.trading.exposure) : '—'} />
-            <Row label="Open P&L" value={o ? n2(o.trading.open_pnl) : '—'}
-              className={o && o.trading.open_pnl < 0 ? 'text-down' : 'text-up'} />
-            <Row label="Client balances" value={o ? n0(o.cash.balances) : '—'} />
-            <Row label="Net flows 30d" value={o ? n0(o.cash.net_30d) : '—'} />
-            <Row label="Withdrawals to pay" value={o ? `${n0(o.cash.pending_withdrawals)} (${n0(o.cash.pending_amount)})` : '—'}
-              className={o && o.cash.pending_withdrawals > 0 ? 'font-medium text-obsidian dark:text-vellum' : ''} />
-          </dl>
+        <div className="x-card space-y-4 p-5">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="section-title">Trading today</h2>
+            <span className="text-xs text-slate-ink">Every client, manual and auto trader</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Mini label="Volume today" value={o ? usd0(o.trading.volume_today) : '—'} />
+            <Mini label="Volume 7 days" value={o ? usd0(o.trading.volume_7d) : '—'} />
+            <Mini label="Fills today" value={o ? n0(o.trading.fills_today) : '—'} />
+            <Mini label="Working orders" value={o ? n0(o.trading.working_orders) : '—'} />
+            <Mini label="Open positions" value={o ? n0(o.trading.open_positions) : '—'} />
+            <Mini label="Net flows 30d" value={o ? usd0(o.cash.net_30d) : '—'}
+              tone={o ? (o.cash.net_30d < 0 ? 'text-down' : 'text-up') : ''} />
+          </div>
         </div>
       </div>
 
-      <AddFunds />
-
-      <div className={`${card} space-y-2`}>
-        <div className="flex flex-wrap items-baseline gap-3">
+      <div className="x-card space-y-3 p-5">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="section-title">Everything happening, everywhere</h2>
-          <span className="ml-auto font-mono text-[11px] text-slate-ink">
-            {activity.data?.length ?? 0} most recent
-          </span>
+          <span className="text-xs text-slate-ink">{items.length} of the {activity.data?.length ?? 0} most recent</span>
+          <div className="x-qgroups ml-auto w-full sm:w-auto" role="tablist">
+            {FEEDS.map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={feed === k} className={`!px-3 whitespace-nowrap ${feed === k ? 'is-on' : ''}`}
+                onClick={() => setFeed(k)}>{label}</button>
+            ))}
+          </div>
         </div>
-        <ol className="divide-y divide-pebble dark:divide-white/10">
-          {activity.data?.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-              <span className={`w-24 shrink-0 rounded-md px-1.5 py-0.5 text-center font-mono text-[10px] tracking-wide uppercase ${
-                a.kind === 'flag'
-                  ? 'bg-ember/15 text-ember-ink'
-                  : 'bg-bone text-slate-ink dark:bg-white/5 dark:text-mist'}`}>
-                {pretty(a.kind)}
-              </span>
-              <a className="font-medium text-ember-ink hover:underline" href={`#/clients/${a.client_id}`}>
-                {a.client_name}
-              </a>
-              <span className="min-w-0 text-slate-ink dark:text-mist">{a.summary}</span>
-              <span className={`ml-auto shrink-0 text-xs text-slate-ink ${mono}`} title={when(a.at)}>
-                {ago(a.at)}
-              </span>
-            </li>
-          ))}
+        <ol className="x-feed">
+          {items.map((a) => {
+            const Icon = KIND_ICON[a.kind] ?? ActivityIcon;
+            const tone = a.kind === 'flag' || a.kind === 'order.rejected' ? 'is-down' : a.kind === 'deposit' || a.kind === 'credit' || a.kind === 'order.filled' ? 'is-up' : '';
+            return (
+              <li key={a.id}>
+                <span className={`x-note-icon !size-8 ${tone}`} aria-hidden><Icon size={15} strokeWidth={1.9} /></span>
+                <span className="min-w-0 flex-1">
+                  <a className="font-semibold text-ember-ink hover:underline" href={`#/clients/${a.client_id}`}>{a.client_name}</a>
+                  <span className="ml-2 text-slate-ink">{a.summary}</span>
+                </span>
+                <span className="x-badge is-muted hidden md:inline-flex">{pretty(a.kind)}</span>
+                <span className="w-16 shrink-0 text-right text-xs text-mist" title={when(a.at)}>{ago(a.at)}</span>
+              </li>
+            );
+          })}
         </ol>
-        {activity.data?.length === 0 && (
+        {activity.data && items.length === 0 && (
           <p className="py-6 text-center text-sm text-slate-ink">
-            Nothing yet. Every credit, fill, upload and decision lands here as it happens.
+            {activity.data.length ? 'Nothing of this kind among the most recent.' : 'Nothing yet. Every credit, fill, upload and decision lands here as it happens.'}
           </p>
         )}
       </div>
 
-      <div className={`${card} space-y-3`}>
-        <h2 className="section-title">System configuration</h2>
-        <p className="text-xs text-slate-ink">
-          Read-only. These are code constants, not settings — changing a threshold is a
-          deploy, which is also what makes it auditable.
-        </p>
-        <div className="grid gap-4 text-sm sm:grid-cols-2">
+      {/* Reference, not work: folded away until somebody needs it. */}
+      <details className="x-card group p-5">
+        <summary className="flex cursor-pointer list-none items-center gap-3">
+          <span className="x-chip !size-8" aria-hidden><Settings2 size={16} /></span>
+          <h2 className="section-title">System configuration</h2>
+          <span className="text-xs text-slate-ink">Read-only · changing a threshold is a deploy, which is what makes it auditable</span>
+          <ChevronDown size={16} className="ml-auto text-mist transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs font-medium text-slate-ink">Execution</h3>
-            <dl className="grid grid-cols-2 gap-y-1">
+            <h3 className="metric-label mb-2">Execution</h3>
+            <dl className="grid grid-cols-2 gap-y-1.5">
               <Row label="Live trading" value={c ? (c.live_trading_enabled ? 'ENABLED' : 'disabled') : '—'}
-                className={c?.live_trading_enabled ? 'rounded-full bg-ember px-2 py-0.5 text-xs font-medium text-graphite' : 'text-slate-ink'} />
+                className={c?.live_trading_enabled ? 'text-ember-ink' : 'text-slate-ink'} />
               <Row label="Demo balance" value={c ? n0(c.demo_starting_balance) : '—'} />
               <Row label="Instruments" value={c ? String(c.instruments.length) : '—'} />
               <Row label="Pipeline stages" value={c ? String(c.pipeline_stages.length) : '—'} />
             </dl>
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-medium text-slate-ink">Flag thresholds</h3>
-            <dl className="grid grid-cols-2 gap-y-1">
+            <h3 className="metric-label mb-2">Flag thresholds</h3>
+            <dl className="grid grid-cols-2 gap-y-1.5">
               {Object.entries(c?.flag_rules ?? {}).map(([k, v]) => (
                 <Row key={k} label={pretty(k)} value={exact(Number(v))} />
               ))}
             </dl>
           </div>
         </div>
-        <p className="text-xs text-slate-ink">
+        <p className="mt-3 text-xs text-slate-ink">
           Required KYC: {c?.required_kyc_documents.map(pretty).join(', ') ?? '—'} ·
           Accepted uploads: {c?.accepted_uploads.join(', ') ?? '—'}
         </p>
+      </details>
+    </div>
+  );
+}
+
+function MoneyTile({ label, Icon, value, note, tone = '', href }: {
+  label: string; Icon: typeof Users; value: string | null; note?: string; tone?: string; href?: string;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center gap-3">
+        <span className="x-chip"><Icon size={18} strokeWidth={1.9} aria-hidden /></span>
+        <span className="text-[13px] text-mist">{label}</span>
+      </div>
+      {value === null
+        ? <span className="skeleton mt-4 block h-6 w-32" />
+        : <p className={`mt-4 truncate text-[22px] leading-none font-bold tabular-nums ${tone}`}>{value}</p>}
+      {note && <p className="mt-2 text-xs text-slate-ink">{note}</p>}
+    </>
+  );
+  return href
+    ? <a href={href} className="x-card x-holo tile lift flex flex-col p-4">{body}</a>
+    : <div className="x-card x-holo tile flex flex-col p-4">{body}</div>;
+}
+
+const Mini = ({ label, value, tone = '' }: { label: string; value: string; tone?: string }) => (
+  <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3.5 py-3">
+    <p className="text-[12px] text-mist">{label}</p>
+    <p className={`mt-1.5 truncate text-[17px] font-semibold tabular-nums ${tone}`}>{value}</p>
+  </div>
+);
+
+/**
+ * Fourteen days of one desk figure as an area, the same drawing as the client's earnings.
+ *
+ * Every number is counted from the tables, not modelled: an empty desk draws fourteen
+ * empty days rather than a plausible-looking line, which is the point — a dashboard that
+ * always looks busy is one nobody checks. Money moving both ways draws from zero, so a
+ * withdrawal-heavy day reads as down.
+ */
+function DeskChart({ days, pick, money, label }: { days: Day[]; pick: (d: Day) => number; money: boolean; label: string }) {
+  const W = 720, H = 170;
+  const [hover, setHover] = useState<number | null>(null);
+  if (days.length < 2) return <p className="py-12 text-center text-sm text-slate-ink">Not enough history yet.</p>;
+  const values = days.map(pick);
+  const top = Math.max(...values, 0), bottom = Math.min(...values, 0), span = top - bottom || 1;
+  const x = (i: number) => (i / (values.length - 1)) * W;
+  const y = (v: number) => 8 + (H - 16) - ((v - bottom) / span) * (H - 16);
+  let line = `M 0 ${y(values[0]!)}`;
+  for (let i = 1; i < values.length; i++) {
+    const mid = (x(i - 1) + x(i)) / 2;
+    line += ` C ${mid} ${y(values[i - 1]!)}, ${mid} ${y(values[i]!)}, ${x(i)} ${y(values[i]!)}`;
+  }
+  const area = `${line} L ${W} ${y(bottom)} L 0 ${y(bottom)} Z`;
+  const fmt = (v: number) => (money ? usd0(v) : n0(v));
+  const h = hover ?? values.length - 1;
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" role="img"
+        aria-label={`${label} over ${days.length} days`}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHover(Math.max(0, Math.min(values.length - 1, Math.round(((e.clientX - r.left) / r.width) * (values.length - 1)))));
+        }}>
+        <defs>
+          <linearGradient id="desk-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-ember)" stopOpacity="0.38" />
+            <stop offset="100%" stopColor="var(--color-ember)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((f) => <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="rgba(255,255,255,0.05)" />)}
+        {bottom < 0 && <line x1="0" y1={y(0)} x2={W} y2={y(0)} className="stroke-slate-ink/40" strokeDasharray="3 4" />}
+        <path d={area} fill="url(#desk-area)" />
+        <path d={line} fill="none" stroke="var(--color-ember)" strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+        <line x1={x(h)} x2={x(h)} y1="0" y2={H} stroke="rgba(255,117,24,0.35)" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
+        <circle cx={x(h)} cy={y(values[h]!)} r="4.5" fill="var(--color-ember)" stroke="#080d10" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="pointer-events-none absolute top-0 rounded-md border border-white/10 bg-onyx/95 px-2.5 py-1.5 text-[12px] shadow-lg"
+        style={{ left: `clamp(0px, calc(${(h / (values.length - 1)) * 100}% - 60px), calc(100% - 130px))` }}>
+        <span className="block text-mist">{new Date(days[h]!.day).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+        <span className={`block font-semibold tabular-nums ${values[h]! < 0 ? 'text-down' : ''}`}>{fmt(values[h]!)}</span>
+      </div>
+      <div className="mt-2 flex justify-between text-[11.5px] text-mist">
+        {[0, Math.floor(days.length / 2), days.length - 1].map((i) => (
+          <span key={i}>{new Date(days[i]!.day).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+        ))}
       </div>
     </div>
   );
@@ -233,7 +396,7 @@ export function AdminView() {
  * comes to have anything at all — which is why it is admin-only and lands on their
  * timeline, not a quiet balance edit.
  */
-function AddFunds() {
+function AddFunds({ onClose }: { onClose?: () => void }) {
   const clients = useApi<{ id: string; name: string; email: string }[]>('/clients?limit=200');
   const currencies = useApi<{ code: string; name: string; kind: 'fiat' | 'crypto' }[]>('/currencies');
   const [clientId, setClientId] = useState('');
@@ -275,13 +438,17 @@ function AddFunds() {
   }
 
   return (
-    <form onSubmit={submit} className={`${card} space-y-3`}>
-      <div>
+    <form onSubmit={submit} className="x-card x-holo space-y-3 p-5">
+      <div className="flex items-start gap-3">
+        <span className="x-chip" aria-hidden><Plus size={18} /></span>
+        <div className="min-w-0 flex-1">
         <h2 className="section-title">Add funds to a client</h2>
         <p className="mt-1 text-xs text-slate-ink">
           Accounts open with nothing in them. Crypto lands in the client's wallet, currencies
           in their cash account. Audited, and written to their timeline.
         </p>
+        </div>
+        {onClose && <button type="button" onClick={onClose} className="x-btn-sm" aria-label="Close">Close</button>}
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -333,77 +500,6 @@ function AddFunds() {
         </p>
       )}
     </form>
-  );
-}
-
-/**
- * Fourteen days of the figures the tiles show as a single instant.
- *
- * Every number here is counted from the tables, not modelled: an empty desk draws
- * fourteen empty days rather than a plausible-looking line, which is the point — a
- * dashboard that always looks busy is one nobody checks.
- */
-function Metrics({ days }: { days: Day[] }) {
-  const total = (k: keyof Day) => days.reduce((n, d) => n + Number(d[k]), 0);
-  return (
-    <div className={`${card} space-y-4`}>
-      <div className="flex flex-wrap items-baseline gap-3">
-        <h2 className="section-title">Metrics · last 14 days</h2>
-        <span className="ml-auto font-mono text-[11px] text-slate-ink">
-          {days.length ? `${days[0].day} → ${days[days.length - 1].day}` : ''}
-        </span>
-      </div>
-      <div className="grid gap-6 md:grid-cols-3">
-        <Graph label="Traded volume" days={days} pick={(d) => d.volume}
-          total={n0(total('volume'))} unit="USD" />
-        <Graph label="Net flows" days={days} pick={(d) => d.net_flow}
-          total={n0(total('net_flow'))} unit="USD" signed />
-        <Graph label="New clients" days={days} pick={(d) => d.new_clients}
-          total={n0(total('new_clients'))} unit="accounts" />
-      </div>
-    </div>
-  );
-}
-
-/**
- * A bar per day, scaled to the largest bar in its own series.
- *
- * Each graph carries its own scale because they are different units — sharing one would
- * flatten client counts into nothing next to volume. A signed series (money moving both
- * ways) is drawn from a middle baseline so a withdrawal-heavy day reads as down, not small.
- */
-function Graph({ label, days, pick, total, unit, signed }: {
-  label: string; days: Day[]; pick: (d: Day) => number; total: string; unit: string; signed?: boolean;
-}) {
-  const values = days.map(pick);
-  const peak = Math.max(1, ...values.map(Math.abs));
-  const W = 220, H = 56, gap = 3;
-  const w = days.length ? (W - gap * (days.length - 1)) / days.length : 0;
-  const base = signed ? H / 2 : H;
-
-  return (
-    <div>
-      <p className="metric-label">{label}</p>
-      <p className="mt-1 font-mono text-xl font-medium tabular-nums">{total}</p>
-      <p className="font-mono text-[10px] text-slate-ink">{unit}</p>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" role="img"
-        aria-label={`${label}: ${total} ${unit} over ${days.length} days`}>
-        <line x1="0" y1={base} x2={W} y2={base} strokeWidth="1"
-          className="stroke-slate-ink/30" />
-        {values.map((v, i) => {
-          const h = (Math.abs(v) / peak) * (signed ? H / 2 : H);
-          return (
-            <rect key={i} className="bar" x={i * (w + gap)} width={w}
-              y={v < 0 ? base : base - h} height={Math.max(h, v ? 1 : 0)}
-              fill={signed && v < 0 ? 'var(--color-down)' : 'var(--color-ember)'}
-              opacity={i === values.length - 1 ? 1 : 0.55}
-              style={{ animationDelay: `${i * 22}ms` }}>
-              <title>{`${days[i].day}: ${exact(v)}`}</title>
-            </rect>
-          );
-        })}
-      </svg>
-    </div>
   );
 }
 
