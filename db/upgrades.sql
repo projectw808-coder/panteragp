@@ -391,7 +391,7 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order)
 VALUES
   ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
-   'Filed confidentially on 1 June 2026 for a Nasdaq listing. The float has slipped from October to the days after the 3 November midterms, per Reuters; no date, price or share count is set.',
+   'Filed confidentially on 1 June 2026 for a Nasdaq listing. Bloomberg reports formal marketing could start as soon as the week of 9 November, with trading before Thanksgiving; no date, price or share count is set.',
    'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
    '$2tn', 10000000, 500, 0.0725, 180,
    NULL, NULL, NULL, 'upcoming', 1),
@@ -403,8 +403,8 @@ VALUES
    NULL, NULL, NULL, 'upcoming', 2),
 
   ('openai-2026', 'OpenAI', 'OAI', 'USD',
-   'S-1 submitted confidentially around 22 May 2026 and confirmed on 8 June, seeking above $1tn. The company is now reported to be weighing a delay into 2027.',
-   'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. The CFO is reported to favour a 2027 listing, and the company says no date has been set. The window opens once one is.',
+   'S-1 submitted confidentially around 22 May 2026 and confirmed on 8 June. CEO Sam Altman told Fortune on 12 September there will be no listing in 2026; 2027 is the reported target, with no year committed.',
+   'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. In October the company was reported by CNBC to be raising up to $30bn privately at a $1.25tn valuation ahead of the IPO. No date has been set; the window opens once one is.',
    '$1tn+', 25000000, 1000, 0.0640, 365,
    NULL, NULL, NULL, 'upcoming', 3),
 
@@ -997,5 +997,22 @@ DO $do$ BEGIN
       description = 'The combination was valued at about $7bn with around $1.5bn of annual recurring revenue; secondary marks ran near $4.7bn in June. The window opens once a date exists.',
       updated_at = now() WHERE slug = 'cohesity-2026';
     INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-10-17');
+  END IF;
+END $do$;
+
+-- The offerings, as the public record stood on 26 October 2026. No new listing date has been
+-- set: Anthropic's timetable is now reported (Bloomberg) as marketing from the week of
+-- 9 November and trading before Thanksgiving, and OpenAI has ruled out a 2026 listing
+-- (Altman to Fortune). Only their text changes; the dates stay unset. Once.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-real-dates-2026-10-26') THEN
+    UPDATE ipos SET
+      summary = 'Filed confidentially on 1 June 2026 for a Nasdaq listing. Bloomberg reports formal marketing could start as soon as the week of 9 November, with trading before Thanksgiving; no date, price or share count is set.',
+      updated_at = now() WHERE slug = 'anthropic-2026';
+    UPDATE ipos SET
+      summary = 'S-1 submitted confidentially around 22 May 2026 and confirmed on 8 June. CEO Sam Altman told Fortune on 12 September there will be no listing in 2026; 2027 is the reported target, with no year committed.',
+      description = 'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. In October the company was reported by CNBC to be raising up to $30bn privately at a $1.25tn valuation ahead of the IPO. No date has been set; the window opens once one is.',
+      updated_at = now() WHERE slug = 'openai-2026';
+    INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-10-26');
   END IF;
 END $do$;
