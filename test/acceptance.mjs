@@ -199,6 +199,29 @@ await step('the top bar price line returns the chosen instruments with their day
   assert.deepEqual(quotes.map((q) => q.symbol), ['SOLUSD', 'EURUSD'], 'known symbols only, once each, in the order asked');
   for (const q of quotes) assert.ok(q.price > 0 && Number.isFinite(q.change_pct) && q.spark.length > 1);
 });
+await step('an order bigger than the free margin is refused, and nothing opens', async () => {
+  const before = await get('/positions', { token: T });
+  const res = await fetch(B + '/orders', {
+    method: 'POST', headers: { authorization: `Bearer ${T}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ symbol: 'BTCUSD', side: 'buy', type: 'market', qty: 100000 }),
+  });
+  assert.equal(res.status, 422);
+  assert.match((await res.json()).error, /free margin/);
+  assert.deepEqual((await get('/positions', { token: T })).map((p) => [p.symbol, p.qty]), before.map((p) => [p.symbol, p.qty]));
+});
+await step('every screen reads one equity: the top bar, the overview and the staff record agree', async () => {
+  const acc = await get('/accounts', { token: T });
+  const perf = await get('/me/performance?days=30', { token: T });
+  const staff = await get(`/clients/${client.id}/holdings`, { token: A });
+  const b = acc.book;
+  const parts = b.cash_usd + b.crypto_usd + b.savings_usd + b.staked_usd + b.ipos_usd;
+  assert.ok(Math.abs(parts - b.holdings_usd) < 0.01, 'the parts add up to the holdings');
+  assert.ok(Math.abs(b.holdings_usd + b.open_pnl - b.equity_usd) < 0.01, 'equity is holdings plus open P&L');
+  // Prices move between the three requests, so they agree to within the move.
+  const near = (x, y) => Math.abs(x - y) <= Math.max(1, Math.abs(y) * 0.01);
+  assert.ok(near(perf.equity, b.equity_usd), `overview ${perf.equity} vs top bar ${b.equity_usd}`);
+  assert.ok(near(staff.totals.equity_usd, b.equity_usd), `staff ${staff.totals.equity_usd} vs client ${b.equity_usd}`);
+});
 await step('take-profit and stop-loss become linked exit orders', async () => {
   const px = (await get('/quotes', { token: T })).find((q) => q.symbol === 'BTCUSD').price;
   await get('/orders', { token: T, method: 'POST', body: {

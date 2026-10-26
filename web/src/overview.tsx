@@ -25,12 +25,13 @@ type Account = {
   balance: number; equity: number; unrealized: number; currency: string; leverage: number;
   /** The move on open positions over what they cost. Null when nothing is open. */
   open_pct: number | null;
+  exposure?: number; margin_used?: number; free_margin?: number;
 };
 type Position = { symbol: string; qty: number; avg_price: number; price: number; unrealized: number };
 type Point = { day: string; earned: number; cumulative: number; moved_in: number; moved_out: number };
 type Performance = {
   days: number; series: Point[]; earned: number; pct: number | null;
-  opening: number; equity: number; unpriced: string[];
+  opening: number; equity: number; unpriced: string[]; holdings?: number; open_pnl?: number;
   best: Point | null; worst: Point | null;
 };
 
@@ -68,9 +69,10 @@ export function OverviewView() {
   // between. One request supplies the amount and the percentage, and they are of the same
   // instant by construction.
   const openPnl = a ? Number(a.unrealized) : 0;
-  // Margin is what the leverage is actually carrying, not what it could.
-  const exposure = held.reduce((n, p) => n + Math.abs(Number(p.qty)) * Number(p.price), 0);
-  const margin = a?.leverage ? exposure / Number(a.leverage) : exposure;
+  // Margin is what the leverage is actually carrying, not what it could. The server's
+  // figure where it gives one, so this tile and the order ticket's refusal agree.
+  const exposure = a?.exposure ?? held.reduce((n, p) => n + Math.abs(Number(p.qty)) * Number(p.price), 0);
+  const margin = a?.margin_used ?? (a?.leverage ? exposure / Number(a.leverage) : exposure);
 
   // The same rule the balance strip uses, from the same endpoint, so the two cannot
   // disagree about what somebody has: one currency is reported as itself, several convert.
@@ -86,13 +88,19 @@ export function OverviewView() {
   const longs = held.filter((p) => Number(p.qty) > 0).length;
   const shorts = held.filter((p) => Number(p.qty) < 0).length;
   const equityFmt = native && acc ? headline(acc).format : usd;
-  const equityValue = native && acc ? headline(acc).value : perf.data ? perf.data.equity : a ? Number(a.equity) : null;
+  // One equity, the server's: everything held plus the open positions' P&L. The top bar,
+  // the allocation card and the staff record all read the same figure.
+  const equityValue = native && acc ? headline(acc).value
+    : acc?.equity_usd !== undefined ? Number(acc.equity_usd)
+    : perf.data ? perf.data.equity : a ? Number(a.equity) : null;
+  const book = acc?.book ?? null;
   const shownEquity = useCountUp(equityValue);
   const tiles: [string, typeof Wallet, number | null, (n: number) => string, string, ('up' | 'down')?][] = [
     ['Available Cash', Wallet, cashHeld ?? (a ? Number(a.balance) : null), native && u ? u.format : usd, native ? `Cash in ${native}` : a ? `Cash in ${a.currency}` : ''],
     ['Open P&L', ChartCandlestick, a ? openPnl : null, signed,
       openPct === null ? 'Nothing open' : pct(openPct), openPnl < 0 ? 'down' : openPnl > 0 ? 'up' : undefined],
-    ['Margin Used', Landmark, a ? margin : null, usd, a ? `${a.leverage}× exposure` : ''],
+    ['Margin Used', Landmark, a ? margin : null, usd,
+      a ? `${a.leverage}× · ${a.free_margin !== undefined ? `${usd(a.free_margin)} free` : 'exposure'}` : ''],
     ['Active Positions', Layers, positions.data ? held.length : null, (n) => String(Math.round(n)), `${longs} Long  ${shorts} Short`],
   ];
 
@@ -114,7 +122,15 @@ export function OverviewView() {
               {perf.data && (
                 <p className="mt-2 flex flex-wrap items-baseline gap-2 tabular-nums">
                   <span className={`text-[20px] font-semibold ${perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>{perf.data.pct === null ? '—' : pct(perf.data.pct)}</span>
-                  <span className={`text-[13px] ${perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>{signed(perf.data.earned)} ({range.label})</span>
+                  <span className={`text-[13px] ${perf.data.earned < 0 ? 'text-down' : 'text-up'}`}>{signed(perf.data.earned)} earned ({range.label})</span>
+                </p>
+              )}
+              {/* How the figure above is made, so it can be checked against every other card. */}
+              {book && !native && (
+                <p className="mt-1.5 text-[12px] text-slate-ink tabular-nums">
+                  Holdings {usd(book.holdings_usd)}
+                  <span className="mx-1.5 text-mist">{book.open_pnl < 0 ? '−' : '+'}</span>
+                  open P&amp;L <span className={book.open_pnl < 0 ? 'text-down' : book.open_pnl > 0 ? 'text-up' : ''}>{usd(Math.abs(book.open_pnl))}</span>
                 </p>
               )}
             </div>
@@ -362,10 +378,14 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
       { name: 'Crypto', value: sum(accounts.wallets), colour: 'var(--color-cat-2)' },
       { name: 'Savings', value: sum(accounts.portfolios), colour: 'var(--color-cat-3)' },
       { name: 'Staked', value: sum(accounts.stakes ?? []), colour: 'var(--color-cat-4)' },
+      { name: 'IPOs', value: sum(accounts.ipos ?? []), colour: 'var(--color-cat-5)' },
     ].filter((g) => g.value > 0);
   }, [accounts]);
 
   const total = groups.reduce((n, g) => n + g.value, 0);
+  // Open positions are not a place money sits, so they are not a slice; they are what
+  // takes the holdings to the equity at the top of the page, and are shown as exactly that.
+  const openPnl = accounts && unit(accounts).code === null ? Number(accounts.open_pnl ?? 0) : 0;
 
   return (
     <div className="x-card h-full space-y-4 p-5">
@@ -389,6 +409,20 @@ function Allocation({ accounts }: { accounts?: Accounts | null }) {
                 <span className="w-24 text-right font-mono tabular-nums">{fmt(g.value)}</span>
               </li>
             ))}
+            {openPnl !== 0 && (
+              <>
+                <li className="flex items-center gap-2 border-t border-white/10 pt-2 text-sm">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-mist" aria-hidden />
+                  <span>Open P&amp;L</span>
+                  <span className={`ml-auto w-24 text-right font-mono tabular-nums ${openPnl < 0 ? 'text-down' : 'text-up'}`}>{openPnl < 0 ? '−' : '+'}{fmt(Math.abs(openPnl))}</span>
+                </li>
+                <li className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                  <span>Total equity</span>
+                  <span className="ml-auto w-28 text-right font-mono tabular-nums">{fmt(total + openPnl)}</span>
+                </li>
+              </>
+            )}
           </ul>
         </div>
       )}

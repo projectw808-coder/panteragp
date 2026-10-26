@@ -4,7 +4,7 @@ import {
   LayoutGrid, ListTodo, LogOut, Mail, Moon, Plus, Rocket, Search, Settings, ShieldCheck, Sun, User, Users, Wallet, X,
 } from 'lucide-react';
 import { api, useApi } from './api.ts';
-import { headline, type Accounts } from './balance.tsx';
+import { headline, unit, type Accounts } from './balance.tsx';
 import { Coin } from './landing.tsx';
 import { NotificationBell } from './notifications.tsx';
 
@@ -288,6 +288,10 @@ function BalanceChip() {
   const a = acc.data;
   if (!a) return <span className="x-balance-chip"><span className="x-bal-label">Balance</span><span className="skeleton inline-block h-4 w-24" /></span>;
   const total = headline(a);
+  // The same equity the overview leads with: holdings plus open P&L. With one non-dollar
+  // currency the holding is shown as itself, as everywhere else.
+  const native = unit(a).code !== null;
+  const value = !native && a.equity_usd !== undefined ? Number(a.equity_usd) : total.value;
   const pot = a.portfolios.find((p) => p.featured);
   return (
     <>
@@ -297,9 +301,10 @@ function BalanceChip() {
           <span className="tabular-nums">{Number(pot.balance).toLocaleString('en-US', { maximumFractionDigits: 2 })} {pot.currency}</span>
         </a>
       )}
-      <a href="#/overview" className="x-balance-chip" title="Your total balance">
-        <span className="x-bal-label">Balance</span>
-        <span className="x-bal-value">{total.format(total.value)}</span>
+      <a href="#/overview" className="x-balance-chip"
+        title={a.book && !native ? `Holdings ${total.format(a.book.holdings_usd)} · open P&L ${total.format(a.book.open_pnl)}` : 'Your total balance'}>
+        <span className="x-bal-label">Equity</span>
+        <span className="x-bal-value">{total.format(value)}</span>
       </a>
     </>
   );

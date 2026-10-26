@@ -1064,6 +1064,7 @@ input:-webkit-autofill:active {
      first rule is that ember is the only chromatic colour better than a fourth hue did. */
   --color-cat-3: #766759;   /* warm stone */
   --color-cat-4: #7d5a0e;   /* amber */
+  --color-cat-5: #8a4f63;   /* plum-rose: IPO allocations, clear of ember, amber and stone */
 }
 
 .dark {
@@ -1071,6 +1072,7 @@ input:-webkit-autofill:active {
   --color-cat-2: #3fa7b8;
   --color-cat-3: #907e6d;
   --color-cat-4: #d8a33c;
+  --color-cat-5: #c9849a;
 }
 
 /* The frame an offering's mark sits in on its card.

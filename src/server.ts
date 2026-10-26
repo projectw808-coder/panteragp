@@ -22,7 +22,7 @@ startLiveMarket();
 import { demoShowcase } from './showcase-demo.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
-  accrue, applyFill, convert, isTriggered, progress, project, round8, trailStop, unrealized,
+  accrue, applyFill, convert, isTriggered, marginCheck, progress, project, round8, trailStop, unrealized,
   type OrderType, type Position, type Side,
 } from './trading.ts';
 import { RULES, subscriptionFlags, toCSV, volumeFlags, withdrawalFlags, type Flag } from './compliance.ts';
@@ -408,21 +408,7 @@ async function listClients(q: z.infer<typeof clientListQuery>, page = true) {
  */
 async function assetsUsd(ids: string[]) {
   const out = new Map<string, { usd: number; unpriced: boolean }>();
-  if (!ids.length) return out;
-  const { rows } = await pool.query<{ client_id: string; code: string; amount: number }>(
-    `SELECT client_id, currency AS code, balance AS amount FROM trading_accounts WHERE client_id = ANY($1)
-     UNION ALL SELECT client_id, asset, balance FROM wallets WHERE client_id = ANY($1)
-     UNION ALL SELECT client_id, currency, balance FROM portfolios WHERE client_id = ANY($1) AND status = 'open'
-     UNION ALL SELECT s.client_id, p.asset, s.amount + s.rewards FROM stakes s JOIN staking_products p ON p.code = s.product_code
-                WHERE s.client_id = ANY($1) AND s.status = 'active'`, [ids]);
-  const rates = new Map<string, number | null>();
-  for (const r of rows) {
-    if (!rates.has(r.code)) rates.set(r.code, await rateToUsd(r.code));
-    const rate = rates.get(r.code)!;
-    const cur = out.get(r.client_id) ?? { usd: 0, unpriced: false };
-    if (rate === null) cur.unpriced = true; else cur.usd += Number(r.amount) * rate;
-    out.set(r.client_id, cur);
-  }
+  for (const [id, b] of await clientBooks(ids)) out.set(id, { usd: b.holdings_usd, unpriced: b.unpriced.length > 0 });
   return out;
 }
 
@@ -951,6 +937,7 @@ type OrderRow = {
   side: Side; type: OrderType; qty: number;
   limit_price: number | null; stop_price: number | null; trail_amount: number | null;
   take_profit: number | null; stop_loss: number | null; parent_order_id: string | null;
+  source?: 'manual' | 'auto';
 };
 
 let settling = false;
@@ -987,12 +974,55 @@ async function settle(prices: Map<string, number>) {
  * cancel the sibling exit, attach take-profit / stop-loss, and write the CRM timeline.
  * All of it in one transaction — a fill the timeline never saw is not acceptable.
  */
+/**
+ * What an order needs against what the account has free, read inside the fill's own
+ * transaction. The auto trader sizes its own entries against its allocation and leverage
+ * setting, so only the client's own orders are held to this here.
+ */
+async function marginOn(c: pg.PoolClient | typeof pool, o: Pick<OrderRow, 'account_id' | 'symbol' | 'side' | 'qty'>, price: number) {
+  const { rows: [acct] } = await c.query<{ balance: number; leverage: number }>(
+    'SELECT balance, leverage FROM trading_accounts WHERE id = $1', [o.account_id]);
+  const { rows: book } = await c.query<{ symbol: string; qty: number; avg_price: number }>(
+    'SELECT symbol, qty, avg_price FROM positions WHERE account_id = $1', [o.account_id]);
+  return marginCheck({
+    cash: Number(acct?.balance ?? 0), leverage: Number(acct?.leverage ?? 1),
+    book: book.map((p) => ({ qty: Number(p.qty), avg_price: Number(p.avg_price), price: spot(p.symbol) })),
+    symbolQty: Number(book.find((p) => p.symbol === o.symbol)?.qty ?? 0),
+    side: o.side, qty: Number(o.qty), price,
+  });
+}
+
+const moneyFmt = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
-  await tx('engine', async (c) => {
+  const outcome = await tx('engine', async (c) => {
     // Re-read under a lock: the request path can fill a market order at the same moment.
     const { rows: [live] } = await c.query<{ status: string }>(
       `SELECT status FROM orders WHERE id = $1 FOR UPDATE`, [o.id]);
-    if (!live || (live.status !== 'new' && live.status !== 'working')) return;
+    if (!live || (live.status !== 'new' && live.status !== 'working')) return 'skipped' as const;
+
+    // Margin, checked when the order fills rather than only when it was placed: a resting
+    // order placed with room to spare can find the room gone by the time it triggers.
+    if (o.source !== 'auto') {
+      const m = await marginOn(c, o, price);
+      if (!m.ok) {
+        await c.query(`UPDATE orders SET status = 'rejected' WHERE id = $1`, [o.id]);
+        const why = `needs ${moneyFmt(m.required)} of margin and ${moneyFmt(m.free)} is free`;
+        await logActivity(c, {
+          client_id: o.client_id, kind: 'order.rejected', actor: 'engine',
+          summary: `Rejected ${o.side} ${o.qty} ${o.symbol}: ${why}`,
+          ref_table: 'orders', ref_id: o.id, data: { required: m.required, free: m.free },
+        });
+        if (viaEngine) {
+          await notifyClientOf(c, {
+            client_id: o.client_id, kind: 'order.rejected',
+            title: `${o.side === 'buy' ? 'Buy' : 'Sell'} ${o.qty} ${o.symbol} not filled`,
+            body: `Not enough free margin: the order ${why}.`,
+          });
+        }
+        return 'rejected' as const;
+      }
+    }
 
     // What this client pays to trade. Read inside the transaction so a term changed a
     // moment ago applies to this fill rather than to the one after it.
@@ -1067,8 +1097,11 @@ async function fillOrder(o: OrderRow, price: number, viaEngine = false) {
         ref_table: 'orders', ref_id: o.id,
       });
     }
+    return 'filled' as const;
   });
 
+  if (outcome === 'rejected') { notify(o.client_id, { type: 'order', order: { ...o, status: 'rejected' } }); flushNotifications(); return; }
+  if (outcome !== 'filled') return;
   notify(o.client_id, { type: 'fill', order_id: o.id, symbol: o.symbol, side: o.side, qty: o.qty, price });
   flushNotifications();
   await checkVolume(o.client_id).catch((err: unknown) => app.log.error({ err }, 'volume check failed'));
@@ -1328,6 +1361,14 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
        AND a.at >= s.from_day AND (a.data->>'reward') IS NOT NULL
      GROUP BY 1, 2, 3
     UNION ALL
+    -- ROI on IPO allocations, in the subscription's currency, on the day it was credited.
+    SELECT a.at::date::text, 'earned', s.currency, sum((a.data->>'roi')::numeric)
+      FROM activity_log a
+      JOIN ipo_subscriptions s ON s.id::text = a.data->>'subscription', span sp
+     WHERE a.client_id = $1 AND a.kind = 'ipo' AND a.actor = 'system'
+       AND a.at >= sp.from_day AND (a.data->>'roi') IS NOT NULL
+     GROUP BY 1, 2, 3
+    UNION ALL
     -- Money in and out, in the currency of the account it moved through.
     SELECT c.created_at::date::text,
            CASE WHEN c.amount > 0 THEN 'in' ELSE 'out' END,
@@ -1389,40 +1430,21 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
   // used, and adding a GBP deposit to a dollar total without converting it is how a
   // percentage ends up describing nothing — the first version of this did exactly that
   // and produced a negative opening balance.
-  const a = await demoAccount(req.principal.sub);
-  const [accounts, wallets, pots, stakes, positions] = await Promise.all([
-    pool.query<{ currency: string; balance: number }>(
-      "SELECT currency, balance FROM trading_accounts WHERE client_id = $1 AND mode = 'demo'",
-      [req.principal.sub]),
-    pool.query<{ asset: string; balance: number }>(
-      'SELECT asset, balance FROM wallets WHERE client_id = $1', [req.principal.sub]),
-    pool.query<{ currency: string; balance: number }>(
-      "SELECT currency, balance FROM portfolios WHERE client_id = $1 AND status = 'open'",
-      [req.principal.sub]),
-    pool.query<{ asset: string; balance: number }>(
-      "SELECT asset, (amount + rewards) AS balance FROM stakes WHERE client_id = $1 AND status = 'active'",
-      [req.principal.sub]),
-    pool.query<{ symbol: string; qty: number; avg_price: number }>(
-      'SELECT symbol, qty, avg_price FROM positions WHERE account_id = $1', [a.id]),
-  ]);
-
-  const held = await totalUsd([
-    ...accounts.rows.map((r) => ({ code: r.currency, amount: Number(r.balance) })),
-    ...wallets.rows.map((r) => ({ code: r.asset, amount: Number(r.balance) })),
-    ...pots.rows.map((r) => ({ code: r.currency, amount: Number(r.balance) })),
-    ...stakes.rows.map((r) => ({ code: r.asset, amount: Number(r.balance) })),
-  ]);
-  const openPnl = positions.rows.reduce((n, x) => n + unrealized(x, spot(x.symbol)), 0);
-  const equity = round8(held.usd + openPnl);
+  // What is held and what is open, from the one book every screen reads.
+  const book = await clientBook(req.principal.sub);
+  const equity = book.equity_usd;
 
   // Net flow over the window, from the series that is already converted per currency. It
   // used to be a second query doing its own conversion, which was one more place for the
   // two to disagree about the same money.
   const movedUsd = round8(series.reduce((n, p) => n + p.moved_in - p.moved_out, 0));
 
-  const opening = round8(equity - earned - movedUsd);
+  // Against what was held, not against today's open P&L: earnings here are what has been
+  // realised and credited, so the base they are a return on is the holdings they came
+  // from. With open P&L in the base, a large paper gain made every real return look tiny.
+  const opening = round8(book.holdings_usd - earned - movedUsd);
   // Anything the figures could not price, from either the holdings or the flows.
-  const unpriced = [...new Set([...held.unpriced, ...unpricedFlow])];
+  const unpriced = [...new Set([...book.unpriced, ...unpricedFlow])];
 
   return {
     days: q.days,
@@ -1437,6 +1459,8 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
     unpriced,
     opening,
     equity,
+    holdings: book.holdings_usd,
+    open_pnl: book.open_pnl,
     best: best && best.earned > 0 ? best : null,
     worst: worst && worst.earned < 0 ? worst : null,
   };
@@ -1452,11 +1476,17 @@ app.get('/account', { preHandler: trader }, async (req) => {
   // Null when nothing is open: a percentage of no basis is not zero, it is nothing — the
   // same rule /me/performance uses for its own pct.
   const cost = pos.reduce((sum, p) => sum + Math.abs(Number(p.qty)) * Number(p.avg_price), 0);
+  const exposure = pos.reduce((sum, p) => sum + Math.abs(Number(p.qty)) * spot(p.symbol), 0);
+  const lev = Math.max(1, Number(a.leverage) || 1);
+  const equity = round8(Number(a.balance) + open);
   return {
     ...a,
     unrealized: round8(open),
-    equity: round8(Number(a.balance) + open),
+    equity,
     open_pct: cost > 0 ? round8(open / cost) : null,
+    exposure: round8(exposure),
+    margin_used: round8(exposure / lev),
+    free_margin: round8(Math.max(0, equity - exposure / lev)),
   };
 });
 
@@ -1485,6 +1515,17 @@ app.post('/orders', { preHandler: trader }, async (req: any, reply) => {
   // Belt and braces: nothing in this build may touch a live account.
   if (account.mode !== 'demo') return reply.code(403).send({ error: 'live trading is disabled' });
 
+  // Refused up front when it plainly cannot fit, priced where it would fill: a limit at its
+  // limit, anything else at the market. Checked again when it fills.
+  const at = b.type === 'limit' || b.type === 'stop_limit' ? b.limit_price! : b.type === 'stop' ? b.stop_price! : spot(b.symbol);
+  const m = await marginOn(pool, { account_id: account.id, symbol: b.symbol, side: b.side, qty: b.qty }, at);
+  if (!m.ok) {
+    return reply.code(422).send({
+      error: `Not enough free margin: this order needs ${moneyFmt(m.required)} and ${moneyFmt(m.free)} is free.`,
+      required: m.required, free: m.free,
+    });
+  }
+
   const order = await tx(req.principal.sub, async (c) => {
     const { rows } = await c.query<OrderRow>(
       `INSERT INTO orders (account_id, client_id, symbol, side, type, qty, limit_price, stop_price,
@@ -1503,7 +1544,12 @@ app.post('/orders', { preHandler: trader }, async (req: any, reply) => {
 
   notify(req.principal.sub, { type: 'order', order });
   // Market orders shouldn't wait for the next tick.
-  if (order.type === 'market') await fillOrder(order, spot(order.symbol));
+  if (order.type === 'market') {
+    await fillOrder(order, spot(order.symbol));
+    const { rows: [now] } = await pool.query('SELECT * FROM orders WHERE id = $1', [order.id]);
+    if (now?.status === 'rejected') return reply.code(422).send({ error: 'Not enough free margin for this order at the current price.', order: now });
+    return reply.code(201).send(now ?? order);
+  }
   return reply.code(201).send(order);
 });
 
@@ -2557,14 +2603,7 @@ app.get('/clients/:id/holdings', { preHandler: auth('trade:read') }, async (req:
   // Only live allocations count: a refunded or settled one is already back in the cash
   // above, and counting both would show the same money twice.
   // ponytail: stakes are still missing from this total, which predates the IPO work.
-  const liveIpos = ipos.filter((x: any) => x.status === 'active');
-  const priced = await totalUsd([
-    ...accounts.map((a) => ({ code: a.currency, amount: Number(a.balance) })),
-    ...wallets.map((w) => ({ code: w.asset, amount: Number(w.balance) })),
-    ...portfolios.map((p) => ({ code: p.currency, amount: Number(p.balance) })),
-    ...liveIpos.map((x: any) => ({ code: x.currency, amount: Number(x.balance) })),
-  ]);
-  const openPnl = positions.reduce((sum, p) => sum + unrealized(p, spot(p.symbol)), 0);
+  const book = await clientBook(id);
 
   return {
     accounts, wallets, portfolios, cash, ipos,
@@ -2574,10 +2613,11 @@ app.get('/clients/:id/holdings', { preHandler: auth('trade:read') }, async (req:
     }),
     orders, trades,
     totals: {
-      holdings_usd: priced.usd,
-      unpriced: priced.unpriced,
-      open_pnl: round8(openPnl),
-      equity_usd: round8(priced.usd + openPnl),
+      holdings_usd: book.holdings_usd,
+      unpriced: book.unpriced,
+      open_pnl: book.open_pnl,
+      equity_usd: book.equity_usd,
+      book,
     },
   };
 });
@@ -2837,6 +2877,70 @@ async function totalUsd(rows: { code: string; amount: number }[]) {
   return { usd: round8(usd), unpriced: [...new Set(unpriced)] };
 }
 
+/**
+ * What a client has, in dollars, split the way every screen shows it — the one sum the
+ * whole platform reads.
+ *
+ * Before this there were five. The overview's Total Equity left IPO allocations out, so a
+ * subscription read as money vanishing; the top bar left open positions out, so it never
+ * matched the overview; the staff record left staking out and counted closed pots; the
+ * client list left IPOs out. Each was right about something and they disagreed with each
+ * other about the same person. Now each of them asks here.
+ *
+ * holdings_usd is what is held: cash, crypto, savings, staked (with rewards) and IPO
+ * allocations (with ROI). equity_usd is that plus the open positions' unrealised P&L —
+ * what the account would be worth if everything open were closed at the current price.
+ */
+type Book = {
+  cash_usd: number; crypto_usd: number; savings_usd: number; staked_usd: number; ipos_usd: number;
+  holdings_usd: number; open_pnl: number; equity_usd: number; exposure_usd: number; unpriced: string[];
+};
+
+async function clientBooks(ids: string[]): Promise<Map<string, Book>> {
+  const out = new Map<string, Book>();
+  if (!ids.length) return out;
+  const { rows } = await pool.query<{ client_id: string; part: keyof Book; code: string; amount: string }>(
+    `SELECT client_id, 'cash_usd' AS part, currency AS code, balance AS amount FROM trading_accounts
+      WHERE client_id = ANY($1) AND mode = 'demo'
+     UNION ALL SELECT client_id, 'crypto_usd', asset, balance FROM wallets WHERE client_id = ANY($1)
+     UNION ALL SELECT client_id, 'savings_usd', currency, balance FROM portfolios WHERE client_id = ANY($1) AND status = 'open'
+     UNION ALL SELECT client_id, 'staked_usd', asset, amount + rewards FROM stakes WHERE client_id = ANY($1) AND status = 'active'
+     UNION ALL SELECT client_id, 'ipos_usd', currency, amount + accrued FROM ipo_subscriptions WHERE client_id = ANY($1) AND status = 'active'`,
+    [ids]);
+  const { rows: positions } = await pool.query<{ client_id: string; symbol: string; qty: number; avg_price: number }>(
+    `SELECT a.client_id, p.symbol, p.qty, p.avg_price FROM positions p
+       JOIN trading_accounts a ON a.id = p.account_id
+      WHERE a.client_id = ANY($1) AND a.mode = 'demo'`, [ids]);
+
+  const blank = (): Book => ({
+    cash_usd: 0, crypto_usd: 0, savings_usd: 0, staked_usd: 0, ipos_usd: 0,
+    holdings_usd: 0, open_pnl: 0, equity_usd: 0, exposure_usd: 0, unpriced: [],
+  });
+  for (const id of ids) out.set(id, blank());
+  const rates = new Map<string, number | null>();
+  for (const r of rows) {
+    if (!rates.has(r.code)) rates.set(r.code, await rateToUsd(r.code));
+    const rate = rates.get(r.code)!;
+    const b = out.get(r.client_id)!;
+    if (rate === null) { if (Number(r.amount) !== 0 && !b.unpriced.includes(r.code)) b.unpriced.push(r.code); continue; }
+    (b[r.part] as number) += Number(r.amount) * rate;
+  }
+  for (const p of positions) {
+    const b = out.get(p.client_id)!;
+    const price = spot(p.symbol);
+    b.open_pnl += unrealized(p, price);
+    b.exposure_usd += Math.abs(Number(p.qty)) * price;
+  }
+  for (const b of out.values()) {
+    for (const k of ['cash_usd', 'crypto_usd', 'savings_usd', 'staked_usd', 'ipos_usd', 'open_pnl', 'exposure_usd'] as const) b[k] = round8(b[k]);
+    b.holdings_usd = round8(b.cash_usd + b.crypto_usd + b.savings_usd + b.staked_usd + b.ipos_usd);
+    b.equity_usd = round8(b.holdings_usd + b.open_pnl);
+  }
+  return out;
+}
+
+const clientBook = async (id: string) => (await clientBooks([id])).get(id)!;
+
 app.get('/currencies', { preHandler: auth() }, async () =>
   [...(await currencies()).values()]);
 
@@ -2888,9 +2992,12 @@ app.get('/accounts', { preHandler: trader }, async (req: any) => {
     ...stakes.map((x) => ({ code: x.currency, amount: x.balance })),
     ...ipos.map((x) => ({ code: x.currency, amount: x.balance })),
   ]);
+  const book = await clientBook(req.principal.sub);
   return {
     cash, wallets: crypto, portfolios: pots, stakes: staked, ipos: offerings,
     total_usd: total.usd, unpriced: total.unpriced,
+    // The same split and the same equity every other screen reads (see clientBooks).
+    book, open_pnl: book.open_pnl, equity_usd: book.equity_usd,
   };
 });
 
@@ -6040,7 +6147,7 @@ async function accrueIpos(): Promise<{ subscriptions: number; posted: number }> 
         client_id: s.client_id, kind: 'ipo', actor: 'system',
         summary: `ROI of ${roi} ${s.currency} on ${s.name}`,
         ref_table: 'ipos', ref_id: null as unknown as string,
-        data: { days, rate: Number(s.rate), roi, subscription: s.id },
+        data: { days, rate: Number(s.rate), roi, subscription: s.id, currency: s.currency },
       });
       await notifyClientOf(c, {
         client_id: s.client_id, kind: 'ipo',

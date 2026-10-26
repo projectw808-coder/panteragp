@@ -39,8 +39,18 @@ export type Accounts = {
   wallets: (Held & { id: string; asset: string; address: string })[];
   portfolios: (Held & { id: string; name: string; currency: string; featured: boolean })[];
   stakes: (Held & { id: string; name: string; currency: string })[];
+  ipos?: (Held & { id: string; name: string; currency: string })[];
   total_usd: number;
   unpriced: string[];
+  /** The one split of what the client has, the same on every screen (server: clientBooks). */
+  book?: Book;
+  open_pnl?: number;
+  equity_usd?: number;
+};
+
+export type Book = {
+  cash_usd: number; crypto_usd: number; savings_usd: number; staked_usd: number; ipos_usd: number;
+  holdings_usd: number; open_pnl: number; equity_usd: number; exposure_usd: number; unpriced: string[];
 };
 
 const usd = (n: number) =>
@@ -67,6 +77,7 @@ export function held(a: Accounts) {
   for (const x of a.wallets) add(x.asset, x.balance);
   for (const x of a.portfolios) add(x.currency, x.balance);
   for (const x of a.stakes ?? []) add(x.currency, x.balance);
+  for (const x of a.ipos ?? []) add(x.currency, x.balance);
   return [...by].filter(([, n]) => n !== 0).sort((x, y) => x[0].localeCompare(y[0]));
 }
 

@@ -42,6 +42,36 @@ export function applyFill(pos: Position | null, f: Fill): { position: Position; 
 /** Unrealised P&L of an open position at the current price. */
 export const unrealized = (pos: Position, price: number) => round8((price - pos.avg_price) * pos.qty);
 
+/**
+ * Whether the account can carry what an order adds.
+ *
+ * Opening a position takes no cash here — it is settled on close — so without this an
+ * account holding $500k could open $128m of bitcoin, and when the price moved the open
+ * P&L dwarfed everything the client actually had. The rule is a broker's: the margin an
+ * order needs (what it adds, divided by the leverage) must fit in what is free (cash plus
+ * open P&L, less the margin already in use). Closing or shrinking a position adds nothing
+ * and is always allowed; flipping through zero needs margin for the new side only.
+ */
+export function marginCheck({ cash, leverage, book, symbolQty, side, qty, price }: {
+  cash: number; leverage: number;
+  /** Every open position on the account, at its current price. */
+  book: { qty: number; avg_price: number; price: number }[];
+  /** The position already held in the symbol being traded, signed. */
+  symbolQty: number;
+  side: Side; qty: number; price: number;
+}) {
+  const lev = Math.max(1, Number(leverage) || 1);
+  const after = symbolQty + (side === 'buy' ? qty : -qty);
+  const adds = after === 0 ? 0
+    : Math.sign(after) !== Math.sign(symbolQty) ? Math.abs(after)
+    : Math.max(0, Math.abs(after) - Math.abs(symbolQty));
+  const equity = cash + book.reduce((n, p) => n + unrealized(p, p.price), 0);
+  const used = book.reduce((n, p) => n + Math.abs(p.qty) * p.price, 0) / lev;
+  const required = round8((adds * price) / lev);
+  const free = round8(equity - used);
+  return { ok: adds === 0 || required <= free + 1e-9, required, free: Math.max(0, free), adds };
+}
+
 export type Triggerable = {
   side: Side; type: OrderType;
   limit_price: number | null; stop_price: number | null;
