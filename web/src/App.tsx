@@ -579,7 +579,7 @@ const navOff = '';
 
 // `field` carries no width so a caller can size it; `input` is the full-width default.
 // (A `w-32` next to `w-full` does not win — same specificity, and w-full is defined later.)
-export const field = 'rounded-md border border-pebble bg-vellum px-3 py-2 text-sm text-obsidian outline-none placeholder:text-mist focus:border-ember focus:ring-1 focus:ring-ember dark:border-white/15 dark:bg-onyx dark:text-vellum';
+export const field = 'x-field';
 export const input = `w-full ${field}`;
 
 // Primary action: filled ember with black text, mono label — the spec's "act on this".
@@ -589,12 +589,12 @@ export const btn = 'sheen focus-ring rounded-full bg-ember px-4 py-2 font-mono t
 // Secondary: bone fill, no colour. Same shape rules.
 export const btnGhost = 'rounded-full border border-pebble bg-bone px-4 py-2 font-mono text-sm font-medium text-obsidian hover:bg-pebble disabled:opacity-50 dark:border-white/15 dark:bg-vellum/5 dark:text-vellum dark:hover:bg-vellum/10';
 
-// Panels of grouped metadata: bone on the white canvas, so the tonal step does the work
-// a shadow would have done.
-export const card = 'rounded-lg bg-bone p-4 dark:bg-onyx dark:[box-shadow:var(--shadow-inset-dark)]';
-// Tables get their own container: vellum inside a pebble hairline, header row on bone.
-export const tableCard = 'table-card overflow-x-auto rounded-lg border border-pebble bg-vellum dark:border-white/10 dark:bg-onyx';
-export const thead = 'bg-bone text-left text-xs font-medium tracking-wide text-slate-ink dark:bg-vellum/5 dark:text-mist';
+// Panels of grouped metadata: the client area's card in both themes (index.css .x-card),
+// so every desk page and every client page is drawn from the same surface.
+export const card = 'x-card p-5';
+// Tables get their own container: a hairline frame, a tinted header, rows that light on hover (.x-table).
+export const tableCard = 'table-card x-table overflow-x-auto';
+export const thead = 'x-thead';
 
 // Ember is a fill and a mark, never small text on a light surface: measured, it is 2.64:1
 // on vellum and 2.22:1 on bone, so it fails even the 3:1 floor for large text and no

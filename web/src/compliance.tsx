@@ -88,7 +88,7 @@ export function ComplianceView({ role }: { role?: string }) {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Compliance</PageTitle>
         {!review && (
@@ -98,7 +98,7 @@ export function ComplianceView({ role }: { role?: string }) {
         )}
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+      <div className="x-strip">
         <div>
           <p className="metric-label">Waiting for review</p>
           <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${docs.length ? 'text-ember-ink' : ''}`}>
@@ -127,18 +127,12 @@ export function ComplianceView({ role }: { role?: string }) {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Compliance queues" className="flex flex-wrap gap-1 text-xs">
+      <div role="tablist" aria-label="Compliance queues" className="x-ptabs">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${tab === t.id
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
+            className={tab === t.id ? 'is-on' : ''}>
             {t.label}
-            <span className={`rounded-full px-1.5 font-mono tabular-nums ${tab === t.id
-              ? 'bg-graphite/15'
-              : 'bg-black/10 text-obsidian dark:bg-white/10 dark:text-vellum'}`}>
-              {t.count}
-            </span>
+            <span className="x-ptab-n tabular-nums">{t.count}</span>
           </button>
         ))}
       </div>
@@ -352,7 +346,7 @@ export function ReportsView() {
     setSort((s) => (s?.col === col ? { col, desc: !s.desc } : { col, desc: true }));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Reports</PageTitle>
         <div className="ml-auto flex flex-wrap gap-2">
@@ -382,7 +376,7 @@ export function ReportsView() {
 
       {/* Totals over everything that matched, not over the page on screen. */}
       {!!matched.length && (
-        <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+        <div className="x-strip">
           <div>
             <p className="metric-label">{term ? 'Matching rows' : 'Rows'}</p>
             <p className="font-mono text-2xl leading-tight font-medium tabular-nums">

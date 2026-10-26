@@ -59,7 +59,7 @@ export function IposAdmin({ admin }: { admin: boolean }) {
   const refresh = () => rows.reload();
 
   return (
-    <div className="stagger mx-auto max-w-6xl space-y-4">
+    <div className="stagger mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageTitle>IPO offerings</PageTitle>
         {admin && (
@@ -70,6 +70,16 @@ export function IposAdmin({ admin }: { admin: boolean }) {
       </div>
 
       {rows.error && <p role="alert" className={alertBox}>{rows.error}</p>}
+
+      {rows.data && (
+        <div className="x-strip">
+          <div><p className="metric-label">Offerings</p><p>{list.length}</p></div>
+          <div><p className="metric-label">Live on the site</p><p>{list.filter((i) => i.group !== 'hidden').length}</p></div>
+          <div><p className="metric-label">Subscribers</p><p>{list.reduce((n, i) => n + Number(i.subscribers ?? 0), 0)}</p></div>
+          <div><p className="metric-label">Fully raised</p><p>{list.filter((i) => (i.progress ?? 0) >= 1).length}</p></div>
+          <p>Status follows the dates: an offering opens, closes and matures on its own. ROI accrues from the close.</p>
+        </div>
+      )}
 
       {creating && admin && (
         <IpoForm onDone={() => { setCreating(false); refresh(); }} onCancel={() => setCreating(false)} />

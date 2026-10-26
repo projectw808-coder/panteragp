@@ -144,7 +144,8 @@ await step('an authenticated socket receives moving prices', async () => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(raw);
       if (msg.type !== 'tick') return;
-      seen.push(msg.ticks.find((t) => t.symbol === 'EURUSD').price);
+      // Every symbol's price, so a quiet moment in one market cannot fail the check.
+      seen.push(JSON.stringify(msg.ticks.map((t) => t.price)));
       if (seen.length === 3) { clearTimeout(timer); ws.close(); resolve(seen); }
     });
   });
@@ -208,6 +209,18 @@ await step('an order bigger than the free margin is refused, and nothing opens',
   assert.equal(res.status, 422);
   assert.match((await res.json()).error, /free margin/);
   assert.deepEqual((await get('/positions', { token: T })).map((p) => [p.symbol, p.qty]), before.map((p) => [p.symbol, p.qty]));
+});
+await step('the desk sets leverage, and margin follows it', async () => {
+  const before = await get('/account', { token: T });
+  const bad = await fetch(`${B}/clients/${client.id}/leverage`, {
+    method: 'PUT', headers: { authorization: `Bearer ${A}`, 'content-type': 'application/json' }, body: JSON.stringify({ leverage: 7 }),
+  });
+  assert.equal(bad.status, 400, 'only offered leverages');
+  await get(`/clients/${client.id}/leverage`, { token: A, method: 'PUT', body: { leverage: 10 } });
+  const after = await get('/account', { token: T });
+  assert.equal(Number(after.leverage), 10);
+  assert.ok(after.margin_used <= before.margin_used / 10 + 1, 'the same positions need a tenth of the margin');
+  await get(`/clients/${client.id}/leverage`, { token: A, method: 'PUT', body: { leverage: 1 } });
 });
 await step('every screen reads one equity: the top bar, the overview and the staff record agree', async () => {
   const acc = await get('/accounts', { token: T });

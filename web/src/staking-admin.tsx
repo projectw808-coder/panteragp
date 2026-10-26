@@ -43,7 +43,7 @@ export function StakingAdmin() {
   for (const s of open) byAsset.set(s.asset, (byAsset.get(s.asset) ?? 0) + Number(s.amount) + Number(s.rewards));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Staking</PageTitle>
         <button className={`${btn} ml-auto`} onClick={() => { setAdding((v) => !v); setEditing(null); }}>
@@ -51,7 +51,7 @@ export function StakingAdmin() {
         </button>
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-8 gap-y-3`}>
+      <div className="x-strip">
         <div>
           <p className="metric-label">Open stakes</p>
           <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{open.length}</p>

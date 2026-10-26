@@ -71,7 +71,7 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
   const s = status.data;
 
   return (
-    <div className="stagger mx-auto max-w-5xl space-y-4">
+    <div className="stagger mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageTitle>Client email</PageTitle>
         {admin && s?.configured && (
@@ -128,7 +128,7 @@ export function EmailAdmin({ admin }: { admin: boolean }) {
           </p>
         </div>
       ) : (
-        <div className={`${card} flex flex-wrap items-center gap-x-8 gap-y-3`}>
+        <div className="x-strip">
           <span>
             <span className="metric-label block">Sending as</span>
             <span className="font-mono text-sm">{s.from}</span>

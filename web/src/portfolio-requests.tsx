@@ -49,10 +49,10 @@ export function PortfolioRequests() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <PageTitle>Withdrawal requests</PageTitle>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+      <div className="x-strip">
         <div>
           <p className="metric-label">Waiting on a decision</p>
           <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${queue.length ? 'text-ember-ink' : ''}`}>
@@ -71,12 +71,10 @@ export function PortfolioRequests() {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Request status" className="flex flex-wrap gap-1 text-xs">
+      <div role="tablist" aria-label="Request status" className="x-ptabs">
         {['pending', 'approved', 'declined', 'all'].map((s) => (
           <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
-            className={`rounded-full px-3 py-1.5 capitalize transition-colors ${status === s
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
+            className={`capitalize ${status === s ? 'is-on' : ''}`}>
             {s}
           </button>
         ))}

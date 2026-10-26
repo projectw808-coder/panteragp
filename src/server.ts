@@ -788,6 +788,39 @@ app.post('/clients/:id/notes', { preHandler: auth('crm:write') }, async (req: an
   return reply.code(201).send({ ok: true });
 });
 
+/**
+ * How far a client's trading may be leveraged: what an order needs in margin is its value
+ * divided by this (trading.ts marginCheck). Set on every demo account they hold, since
+ * margin is read from whichever account the order is placed against. Changing what a
+ * client's money can do needs the same permission as crediting it.
+ */
+const LEVERAGE_CHOICES = [1, 2, 3, 5, 10, 20, 30, 50, 100] as const;
+app.put('/clients/:id/leverage', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = z.object({ leverage: z.number().int().refine((n) => (LEVERAGE_CHOICES as readonly number[]).includes(n), 'not an offered leverage') })
+    .safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const { rowCount } = await pool.query('SELECT 1 FROM clients WHERE id = $1', [req.params.id]);
+  if (!rowCount) return reply.code(404).send({ error: 'no such client' });
+  await demoAccount(req.params.id);
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows } = await c.query<{ leverage: number }>(
+      `UPDATE trading_accounts SET leverage = $2 WHERE client_id = $1 AND mode = 'demo' RETURNING leverage`,
+      [req.params.id, body.data.leverage]);
+    await logActivity(c, {
+      client_id: req.params.id, kind: 'note', actor: req.principal.sub,
+      summary: `Leverage set to ${body.data.leverage}×`, data: { leverage: body.data.leverage },
+    });
+    await notifyClientOf(c, {
+      client_id: req.params.id, kind: 'message',
+      title: `Your leverage is now ${body.data.leverage}×`,
+      body: `Orders now need ${body.data.leverage === 1 ? 'their full value' : `1/${body.data.leverage} of their value`} in free margin.`,
+    });
+    return { leverage: rows[0]?.leverage ?? body.data.leverage, accounts: rows.length };
+  });
+  flushNotifications();
+  return out;
+});
+
 // ------------------------------------------------------------------- tasks
 
 app.post('/tasks', { preHandler: auth('crm:write') }, async (req: any, reply) => {

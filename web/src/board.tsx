@@ -73,7 +73,7 @@ export function TaskBoard() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Tasks</PageTitle>
         <button className={`${btn} ml-auto`} onClick={() => setAdding((v) => !v)}>
@@ -81,7 +81,7 @@ export function TaskBoard() {
         </button>
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+      <div className="x-strip">
         <div>
           <p className="metric-label">Open</p>
           <p className="font-mono text-2xl leading-tight font-medium tabular-nums">{live.length}</p>

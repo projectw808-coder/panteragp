@@ -245,6 +245,21 @@ function Header({ client: c, holdings, onSaved, compliance, admin, flags, onGo }
           </select>
         </Labelled>
         {admin && (
+          <Labelled label="Leverage">
+            {/* Orders need their value over this in free margin. Every account starts at 1×. */}
+            <select className={field} value={holdings?.accounts.find((a) => a.mode === 'demo')?.leverage ?? 1}
+              onChange={async (e) => {
+                setError(null);
+                try {
+                  await api(`/clients/${c.id}/leverage`, { method: 'PUT', body: JSON.stringify({ leverage: Number(e.target.value) }) });
+                  onSaved();
+                } catch (err) { setError((err as Error).message); }
+              }}>
+              {[1, 2, 3, 5, 10, 20, 30, 50, 100].map((n) => <option key={n} value={n}>{n}×</option>)}
+            </select>
+          </Labelled>
+        )}
+        {admin && (
           <Labelled label="Tier">
             {/* A select rather than free text: a tier is one of a known set, and "Gold " with
                 a trailing space is a tier nothing matches. The client's existing value is kept

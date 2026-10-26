@@ -322,7 +322,7 @@ function MoneyTile({ label, Icon, value, note, tone = '', href }: {
 }
 
 const Mini = ({ label, value, tone = '' }: { label: string; value: string; tone?: string }) => (
-  <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3.5 py-3">
+  <div className="x-mini-tile">
     <p className="text-[12px] text-mist">{label}</p>
     <p className={`mt-1.5 truncate text-[17px] font-semibold tabular-nums ${tone}`}>{value}</p>
   </div>
@@ -374,7 +374,7 @@ function DeskChart({ days, pick, money, label }: { days: Day[]; pick: (d: Day) =
         <line x1={x(h)} x2={x(h)} y1="0" y2={H} stroke="rgba(255,117,24,0.35)" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
         <circle cx={x(h)} cy={y(values[h]!)} r="4.5" fill="var(--color-ember)" stroke="#080d10" strokeWidth="2" vectorEffect="non-scaling-stroke" />
       </svg>
-      <div className="pointer-events-none absolute top-0 rounded-md border border-white/10 bg-onyx/95 px-2.5 py-1.5 text-[12px] shadow-lg"
+      <div className="x-tip pointer-events-none absolute top-0 rounded-md px-2.5 py-1.5 text-[12px] shadow-lg"
         style={{ left: `clamp(0px, calc(${(h / (values.length - 1)) * 100}% - 60px), calc(100% - 130px))` }}>
         <span className="block text-mist">{new Date(days[h]!.day).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
         <span className={`block font-semibold tabular-nums ${values[h]! < 0 ? 'text-down' : ''}`}>{fmt(values[h]!)}</span>

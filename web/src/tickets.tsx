@@ -337,7 +337,7 @@ export function SupportQueue({ role }: { role?: string }) {
 
   if (openId) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-[1100px]">
         <TicketThread id={openId} staff canReply={canReply}
           onBack={() => { setOpenId(null); tickets.reload(); live.reload(); }} />
       </div>
@@ -352,7 +352,7 @@ export function SupportQueue({ role }: { role?: string }) {
   const waiting = [...ours].sort((a, b) => +new Date(a.updated_at) - +new Date(b.updated_at))[0];
 
   return (
-    <div className="stagger mx-auto max-w-5xl space-y-4">
+    <div className="stagger mx-auto max-w-[1440px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Support</PageTitle>
         {!canReply && (
@@ -362,7 +362,7 @@ export function SupportQueue({ role }: { role?: string }) {
         )}
       </div>
 
-      <div className={`${card} flex flex-wrap items-center gap-x-10 gap-y-3`}>
+      <div className="x-strip">
         <div>
           <p className="metric-label">Waiting on us</p>
           <p className={`font-mono text-2xl leading-tight font-medium tabular-nums ${ours.length ? 'text-ember-ink' : ''}`}>
@@ -391,19 +391,16 @@ export function SupportQueue({ role }: { role?: string }) {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Ticket status" className="flex flex-wrap gap-1 text-xs">
-        {FILTERS.map((f) => (
-          <button key={f.id} role="tab" aria-selected={status === f.id} onClick={() => setStatus(f.id)}
-            title={f.note}
-            className={`rounded-full px-3 py-1.5 transition-colors ${status === f.id
-              ? 'bg-ember font-medium text-graphite'
-              : 'bg-bone text-slate-ink hover:text-obsidian dark:bg-white/10 dark:text-mist dark:hover:text-vellum'}`}>
-            {f.label}
-          </button>
-        ))}
-        <span className="ml-2 self-center text-slate-ink">
-          {FILTERS.find((f) => f.id === status)?.note}
-        </span>
+      <div className="flex flex-wrap items-center gap-3">
+        <div role="tablist" aria-label="Ticket status" className="x-ptabs">
+          {FILTERS.map((f) => (
+            <button key={f.id} role="tab" aria-selected={status === f.id} onClick={() => setStatus(f.id)}
+              title={f.note} className={status === f.id ? 'is-on' : ''}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-slate-ink">{FILTERS.find((f) => f.id === status)?.note}</span>
       </div>
 
       {rows.length === 0 ? (

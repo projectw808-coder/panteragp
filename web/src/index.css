@@ -1925,3 +1925,107 @@ html:not(.dark) .x-rtabs > button:hover { color: var(--color-obsidian); }
 .x-action:hover { color: var(--color-vellum); border-color: rgba(255, 117, 24, 0.45); }
 .x-action.is-on { color: var(--color-ember-ink); border-color: var(--color-ember); background: rgba(255, 117, 24, 0.1); }
 .x-actions > form, .x-actions > div { padding: 0 !important; background: transparent !important; box-shadow: none !important; }
+
+/* ---------------------------------------------------------------------------------------
+   Shared desk surfaces: tables, fields and the summary strip, in both themes. Every admin
+   page builds from these (App.tsx: tableCard, thead, field, card), so styling them here is
+   what puts the whole desk in one design.
+   --------------------------------------------------------------------------------------- */
+.x-table { border-radius: 10px; border: 1px solid #222a2e; background: var(--color-onyx); }
+.x-table table { border-collapse: separate; border-spacing: 0; }
+.x-thead { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--color-mist); background: rgba(255, 255, 255, 0.025); }
+.x-thead th { padding-top: 11px !important; padding-bottom: 11px !important; white-space: nowrap; border-bottom: 1px solid #222a2e; }
+.x-thead th:first-child { padding-left: 16px !important; }
+.x-table tbody tr { transition: background-color 0.15s; }
+.x-table tbody tr + tr td, .x-table tbody tr td { border-top: 0; }
+.x-table tbody tr:not(:last-child) td { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.x-table tbody tr:hover { background: rgba(255, 117, 24, 0.05) !important; }
+.x-table tbody td { padding-top: 10px !important; padding-bottom: 10px !important; }
+.x-table tbody td:first-child { padding-left: 16px !important; }
+.x-table tbody tr { border-top: 0 !important; }
+.x-field { border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.03); padding: 8px 12px; font-size: 13.5px; color: var(--color-vellum); outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.x-field::placeholder { color: var(--color-mist); }
+.x-field:focus { border-color: var(--color-ember); box-shadow: 0 0 0 3px rgba(255, 117, 24, 0.15); }
+select.x-field { padding-right: 30px; }
+.x-field option, .x-field optgroup { background: var(--color-onyx); color: var(--color-vellum); }
+
+/* The pill tab rows the desk pages use, as one segmented control. */
+.x-ptabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 10px; border: 1px solid #222a2e; background: rgba(255, 255, 255, 0.03); }
+.x-ptabs > button { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--color-mist); transition: color 0.2s, background-color 0.2s; }
+.x-ptabs > button:hover { color: var(--color-vellum); }
+.x-ptabs > button.is-on { color: #140802; background: var(--color-ember); box-shadow: 0 4px 16px rgba(255, 117, 24, 0.28); }
+.x-ptabs .x-ptab-n { min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; font-size: 11px; line-height: 18px; text-align: center; background: rgba(255, 255, 255, 0.1); color: var(--color-vellum); }
+.x-ptabs > button.is-on .x-ptab-n { background: #140802; color: var(--color-ember); }
+.x-tip { border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(11, 17, 21, 0.95); color: var(--color-vellum); }
+
+/* ---------------------------------------------------------------------------------------
+   Light theme. The dark theme was designed first and the light one inherited its surfaces:
+   grey cards on white, a dark top bar, labels in a grey too pale to read. Here it gets its
+   own: a soft grey page, white cards lifted by a hairline and a shadow, text greys that
+   pass contrast, and every dark-only surface given a light counterpart.
+   --------------------------------------------------------------------------------------- */
+html:not(.dark) .app-x main, html:not(.dark) .x-notes, html:not(.dark) .x-qpick {
+  --color-mist: #6b7280;
+  --color-slate-ink: #566070;
+  --color-ember-ink: #c2510a;
+  --color-up: #0f9d63;
+  --color-down: #d92d3a;
+}
+html:not(.dark) .app-x main { background: #f3f4f7; }
+html:not(.dark) .x-topbar { background: rgba(255, 255, 255, 0.88); border-bottom-color: #e4e7ec; box-shadow: 0 1px 0 rgba(16, 24, 40, 0.02); }
+html:not(.dark) .x-card { background: #fff; box-shadow: 0 0 0 1px #e4e7ec, 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.1); }
+html:not(.dark) .app-x .x-holo { background-image: radial-gradient(120% 90% at 100% 0%, rgba(255, 117, 24, 0.07), transparent 55%), linear-gradient(rgba(16, 24, 40, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 24, 40, 0.025) 1px, transparent 1px); background-size: auto, 22px 22px, 22px 22px; }
+html:not(.dark) .x-card.is-alert, html:not(.dark) .x-figure.is-lead { box-shadow: 0 0 0 1px rgba(255, 117, 24, 0.45), 0 8px 24px -12px rgba(255, 117, 24, 0.25); }
+html:not(.dark) .x-chip { color: #d9600d; background: rgba(255, 117, 24, 0.1); border-color: rgba(255, 117, 24, 0.28); }
+html:not(.dark) .x-btn-sm { background: #fff; border-color: #dfe3e8; color: #1f2933; }
+html:not(.dark) .x-btn-sm:hover { border-color: rgba(255, 117, 24, 0.6); }
+html:not(.dark) .x-btn-sm.is-on { color: #c2510a; background: rgba(255, 117, 24, 0.08); border-color: var(--color-ember); }
+html:not(.dark) .x-tabs, html:not(.dark) .x-segs, html:not(.dark) .x-qgroups, html:not(.dark) .x-notes-tabs, html:not(.dark) .x-ptabs { background: #eef0f3; border-color: #e4e7ec; }
+html:not(.dark) .x-tabs > button, html:not(.dark) .x-segs > button, html:not(.dark) .x-qgroups > button, html:not(.dark) .x-notes-tabs > button, html:not(.dark) .x-ptabs > button { color: #566070; }
+html:not(.dark) .x-tabs > button:hover, html:not(.dark) .x-segs > button:hover, html:not(.dark) .x-qgroups > button:hover, html:not(.dark) .x-ptabs > button:hover { color: #111827; }
+html:not(.dark) .x-tabs > button.is-on, html:not(.dark) .x-segs > button.is-on, html:not(.dark) .x-qgroups > button.is-on, html:not(.dark) .x-notes-tabs > button.is-on, html:not(.dark) .x-ptabs > button.is-on { color: #fff; background: var(--color-ember); }
+html:not(.dark) .x-ptabs .x-ptab-n { background: rgba(16, 24, 40, 0.08); color: #1f2933; }
+html:not(.dark) .x-ptabs > button.is-on .x-ptab-n { background: #fff; color: #c2510a; }
+html:not(.dark) .x-rtabs > button.is-on .x-rtab-n { background: #fff; color: #c2510a; }
+html:not(.dark) .x-rtabs > button.is-on { color: #fff; }
+html:not(.dark) .x-rtab-n { color: #1f2933; background: rgba(16, 24, 40, 0.08); }
+html:not(.dark) .x-table { border-color: #e4e7ec; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+html:not(.dark) .x-thead { background: #f8f9fb; color: #566070; }
+html:not(.dark) .x-thead th { border-bottom-color: #e4e7ec; }
+html:not(.dark) .x-table tbody tr:not(:last-child) td { border-bottom-color: #eef0f3; }
+html:not(.dark) .x-field { border-color: #dfe3e8; background: #fff; color: #111827; }
+html:not(.dark) .x-field option, html:not(.dark) .x-field optgroup { background: #fff; color: #111827; }
+html:not(.dark) .x-tip { border-color: #e4e7ec; background: rgba(255, 255, 255, 0.97); color: #111827; box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
+html:not(.dark) .x-mini-tile { border-color: #e4e7ec; background: #fbfbfc; }
+html:not(.dark) .x-badge.is-muted { color: #566070; background: rgba(16, 24, 40, 0.05); border-color: #dfe3e8; }
+html:not(.dark) .x-badge.is-warn { color: #a16207; }
+html:not(.dark) .x-badge { color: #0f8a57; }
+html:not(.dark) .x-badge.is-locked { color: #c2510a; }
+html:not(.dark) .x-badge.is-bad { color: #c8202d; }
+html:not(.dark) .x-help-row:hover, html:not(.dark) .x-stage:hover, html:not(.dark) .x-qlist button:hover:not(:disabled) { background: rgba(255, 117, 24, 0.06); }
+html:not(.dark) .x-feed > li:hover, html:not(.dark) .x-team-row:hover { background: #f8f9fb; }
+html:not(.dark) .x-action { color: #566070; border-color: #dfe3e8; background: #fff; }
+html:not(.dark) .x-action.is-on { color: #c2510a; background: rgba(255, 117, 24, 0.07); border-color: var(--color-ember); }
+html:not(.dark) .x-manage, html:not(.dark) .x-rtabs { background: #fff; }
+html:not(.dark) .x-qchip .x-qsym, html:not(.dark) .x-qchip .x-qpx { color: #111827; }
+html:not(.dark) .x-qtick { border-color: #dfe3e8; }
+html:not(.dark) .x-bell-count { box-shadow: 0 0 0 2px #fff, 0 0 12px rgba(255, 117, 24, 0.5); }
+html:not(.dark) .x-balance-chip { background: linear-gradient(160deg, rgba(255, 117, 24, 0.12), rgba(255, 117, 24, 0.03)); }
+html:not(.dark) .app-x main .text-mist { color: #6b7280; }
+.x-mini-tile { border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); padding: 12px 14px; }
+html:not(.dark) .app-x main .border-white\/10, html:not(.dark) .app-x main .border-white\/5 { border-color: #e4e7ec; }
+html:not(.dark) .app-x main .bg-white\/5, html:not(.dark) .app-x main .bg-white\/\[0\.02\] { background-color: #f8f9fb; }
+
+/* The summary strip at the top of each desk page: every figure a tile, the explanation a
+   quiet cell at the end. The markup is the pages' own (a label over a number); this only
+   decides how it is drawn, so the six pages that use it stay one design. */
+.x-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.x-strip > div { position: relative; overflow: hidden; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--color-onyx); box-shadow: var(--shadow-inset-dark); }
+.x-strip > div::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: linear-gradient(180deg, var(--color-ember), rgba(255, 117, 24, 0.15)); }
+.x-strip > div::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 100% 0%, rgba(255, 117, 24, 0.08), transparent 60%); pointer-events: none; }
+.x-strip .metric-label { font-size: 12.5px; color: var(--color-mist); letter-spacing: 0; text-transform: none; font-family: inherit; }
+.x-strip > div > p:last-child, .x-strip > div > p + p { margin-top: 8px; font-family: inherit; font-size: 26px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
+.x-strip > p { align-self: center; margin: 0; padding: 12px 16px; border-radius: var(--radius-lg); border: 1px dashed rgba(255, 255, 255, 0.12); font-size: 12px; line-height: 1.5; color: var(--color-slate-ink); max-width: none; grid-column: span 2; }
+@media (max-width: 640px) { .x-strip > p { grid-column: auto; } }
+html:not(.dark) .x-strip > div { background: #fff; box-shadow: 0 0 0 1px #e4e7ec, 0 1px 2px rgba(16, 24, 40, 0.04); }
+html:not(.dark) .x-strip > p { border-color: #dfe3e8; background: rgba(255, 255, 255, 0.6); }
