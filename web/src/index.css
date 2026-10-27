@@ -2159,3 +2159,21 @@ html:not(.dark) .at-state.is-halted, html:not(.dark) .at-feed-item.is-warn, html
 
 /* Coins with no brand colour of their own are a translucent white chip, which disappears on a light page. */
 html:not(.dark) .x-qcoin > span.bg-white\/10 { background: #e4e7ec; color: #1f2933; }
+
+/* Fundamentals: the market picker, the coin at a glance, its figures and the comparison. */
+.fa-pick { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 5px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.09); background: rgba(255, 255, 255, 0.03); transition: border-color 0.2s, background-color 0.2s; }
+.fa-pick:hover { border-color: rgba(255, 117, 24, 0.45); }
+.fa-pick.is-on { border-color: var(--color-ember); background: rgba(255, 117, 24, 0.1); box-shadow: 0 0 0 3px rgba(255, 117, 24, 0.12); }
+.fa-card, .fa-fig { padding: 18px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.fa-card { background: linear-gradient(160deg, rgba(255, 117, 24, 0.08), rgba(255, 255, 255, 0.01) 60%); animation: at-in 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+.fa-move { padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); }
+.fa-range { position: relative; height: 6px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--color-down) 55%, transparent), color-mix(in srgb, var(--color-up) 55%, transparent)); }
+.fa-range > span { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 999px; background: #fff; border: 3px solid var(--color-ember); box-shadow: 0 0 10px rgba(255, 117, 24, 0.6); transition: left 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+.fa-ath { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.fa-ath > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #b8480a, var(--color-ember) 70%, #ffb066); }
+.fa-row-on { background: rgba(255, 117, 24, 0.07); }
+html:not(.dark) .fa-pick, html:not(.dark) .fa-fig { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .fa-card { border-color: #e4e7ec; background: linear-gradient(160deg, rgba(255, 117, 24, 0.07), #fff 60%); }
+html:not(.dark) .fa-move { background: #f6f7f9; }
+html:not(.dark) .fa-ath { background: #eef0f3; }
+@media (prefers-reduced-motion: reduce) { .fa-card { animation: none; } }

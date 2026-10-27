@@ -8,6 +8,7 @@ import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
 import { price } from './format.ts';
 import { Coin } from './landing.tsx';
+import { FundamentalsPanel } from './fundamentals.tsx';
 import { StatTile } from './x-shell.tsx';
 
 /**
@@ -177,6 +178,8 @@ export function AutoTraderView() {
           {d.strategies.map((s) => <StrategyCard key={s.id} s={s} live={live} busy={busy} onChange={run} />)}
         </div>
       </section>
+
+      <FundamentalsPanel symbols={d.strategies.flatMap((s) => s.symbols)} />
 
       <section className="x-card space-y-3 p-5" aria-label="Open positions">
         <div className="flex flex-wrap items-baseline gap-3">

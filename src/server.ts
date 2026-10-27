@@ -20,6 +20,7 @@ import { candles, isLive, liveOpen, quote, spot, startLiveMarket, TIMEFRAMES, ty
 // Real crypto prices across the platform: read from the market in the background from boot.
 startLiveMarket();
 import { demoShowcase } from './showcase-demo.ts';
+import { makeFundamentals } from './fundamentals.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, marginCheck, progress, project, round8, trailStop, unrealized,
@@ -7151,6 +7152,23 @@ function dayQuote(symbol: string) {
 app.get('/public/ticker', async (_req: any, reply) => {
   const { rows: [{ n }] } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM instruments');
   return reply.header('cache-control', 'public, max-age=5').send({ instruments: n, quotes: LANDING_TICKER.map(dayQuote) });
+});
+
+/**
+ * Fundamentals for the markets asked about: size, liquidity, supply and history for the
+ * coins, from the market's own public figures (src/fundamentals.ts). Forex, metals and
+ * ETFs come back as not covered rather than with figures made up to fill the gap.
+ */
+const fundamentals = makeFundamentals();
+app.get('/market/fundamentals', { preHandler: auth() }, async (req, reply) => {
+  const q = z.object({ symbols: z.string().max(600) }).safeParse(req.query);
+  if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
+  const asked = [...new Set(q.data.symbols.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 30);
+  const { rows } = await pool.query<{ symbol: string; asset_class: string | null }>(
+    'SELECT symbol, asset_class FROM instruments WHERE symbol = ANY($1)', [asked]);
+  const cls = new Map(rows.map((r) => [r.symbol, r.asset_class]));
+  const known = asked.filter((s) => cls.has(s));
+  return { markets: await fundamentals.forSymbols(known, (s) => cls.get(s) === 'crypto') };
 });
 
 /** The signed-in top bar's price line: whichever instruments the user chose, up to twelve. */
