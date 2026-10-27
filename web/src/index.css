@@ -2182,3 +2182,32 @@ html:not(.dark) .fa-ath { background: #eef0f3; }
 .ch-slot { display: flex; min-height: 0; flex-direction: column; }
 .ch-slot > div { flex: 1 1 auto; transition: box-shadow 0.2s; }
 .ch-slot.is-focus > div { box-shadow: 0 0 0 1px var(--color-ember), 0 0 18px rgba(255, 117, 24, 0.18); }
+
+/* ---------------------------------------------------------------- client profile */
+.pf-initials { color: #ffcf9e; background: radial-gradient(circle at 30% 25%, rgba(255, 170, 90, 0.5), rgba(255, 122, 18, 0.28) 50%, rgba(90, 36, 0, 0.55)); box-shadow: inset 0 0 0 1px rgba(255, 150, 60, 0.4); }
+.pf-ring { filter: drop-shadow(0 0 6px rgba(255, 117, 24, 0.45)); }
+.pf-gap { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--color-ember-ink); background: rgba(255, 117, 24, 0.08); border: 1px dashed rgba(255, 117, 24, 0.45); transition: background-color 0.2s, border-color 0.2s; }
+.pf-gap:hover { background: rgba(255, 117, 24, 0.16); border-style: solid; }
+.pf-field { position: relative; }
+.pf-field-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--color-mist); pointer-events: none; transition: color 0.2s; }
+.pf-field:focus-within .pf-field-icon { color: var(--color-ember); }
+.pf-input { height: 40px; padding-left: 36px !important; }
+.pf-input[type="date"] { color-scheme: dark; }
+.pf-steps { position: relative; display: grid; gap: 6px; }
+.pf-steps::before { content: ''; position: absolute; left: 23px; top: 22px; bottom: 22px; width: 1px; background: rgba(255, 255, 255, 0.1); }
+.pf-step { position: relative; display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 9px; border: 1px solid transparent; }
+.pf-step.is-link { border-color: rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s; }
+.pf-step.is-link:hover { border-color: rgba(255, 117, 24, 0.5); }
+.pf-step-dot { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; border-radius: 999px; color: var(--color-mist); background: var(--color-onyx, #0c1117); border: 1px solid rgba(255, 255, 255, 0.16); }
+.pf-step-dot.is-done { color: #06130b; background: var(--color-up); border-color: var(--color-up); box-shadow: 0 0 10px color-mix(in srgb, var(--color-up) 45%, transparent); }
+.pf-step-dot.is-wait { color: var(--color-ember); border-color: rgba(255, 117, 24, 0.6); background: rgba(255, 117, 24, 0.12); }
+.pf-step-dot.is-bad { color: var(--color-down); border-color: color-mix(in srgb, var(--color-down) 60%, transparent); background: color-mix(in srgb, var(--color-down) 12%, transparent); }
+html:not(.dark) .pf-initials { color: #9a3d00; background: radial-gradient(circle at 30% 25%, #ffe2c4, #ffc28a 60%, #ffab61); box-shadow: inset 0 0 0 1px rgba(255, 117, 24, 0.35); }
+html:not(.dark) .pf-input[type="date"] { color-scheme: light; }
+html:not(.dark) .pf-steps::before { background: var(--color-pebble); }
+html:not(.dark) .pf-step.is-link { border-color: #e4e7ec; background: #fbfbfc; }
+html:not(.dark) .pf-step-dot { background: #fff; border-color: var(--color-pebble); }
+html:not(.dark) .pf-step-dot.is-done { color: #fff; }
+.pf-rows > * + * { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.pf-foot { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+html:not(.dark) .pf-rows > * + *, html:not(.dark) .pf-foot { border-color: var(--color-pebble); }
