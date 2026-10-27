@@ -2177,3 +2177,8 @@ html:not(.dark) .fa-card { border-color: #e4e7ec; background: linear-gradient(16
 html:not(.dark) .fa-move { background: #f6f7f9; }
 html:not(.dark) .fa-ath { background: #eef0f3; }
 @media (prefers-reduced-motion: reduce) { .fa-card { animation: none; } }
+
+/* Charts: each chart sits in a slot; the one in focus (the watchlist and fundamentals follow it) is outlined. */
+.ch-slot { display: flex; min-height: 0; flex-direction: column; }
+.ch-slot > div { flex: 1 1 auto; transition: box-shadow 0.2s; }
+.ch-slot.is-focus > div { box-shadow: 0 0 0 1px var(--color-ember), 0 0 18px rgba(255, 117, 24, 0.18); }

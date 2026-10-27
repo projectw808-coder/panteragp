@@ -162,6 +162,62 @@ export function FundamentalsPanel({ symbols }: { symbols: string[] }) {
   );
 }
 
+/**
+ * The same fundamentals for one market, cut to fit a side column: the chart page's view
+ * of whichever chart is in focus. Currencies, metals and funds say they are not covered.
+ */
+export function FundamentalsCard({ symbol }: { symbol: string }) {
+  const data = useApi<{ markets: Market[] }>(`/market/fundamentals?symbols=${encodeURIComponent(symbol)}`);
+  const m = data.data?.markets[0];
+  return (
+    <section className="x-card shrink-0 space-y-3 p-4" aria-label={`Fundamentals of ${base(symbol)}`}>
+      <div className="flex items-center gap-2">
+        <BookOpen size={15} className="text-ember" aria-hidden />
+        <h2 className="text-[13.5px] font-semibold">Fundamentals</h2>
+        <span className="ml-auto text-[11.5px] text-mist">{base(symbol)}</span>
+      </div>
+      {!data.data && <div className="skeleton h-40 rounded-lg" />}
+      {m && !m.available && (
+        <p className="text-xs text-slate-ink">
+          Market value, supply and history exist for coins. {base(symbol)} is a currency, metal or fund, so there is nothing of that kind to show.
+        </p>
+      )}
+      {m && m.available && (
+        <div className="fa-card !p-3.5 space-y-3">
+          <div className="flex items-center gap-2.5">
+            <span className="x-qcoin !size-8" aria-hidden><Coin symbol={m.symbol} /></span>
+            <span className="min-w-0">
+              <span className="block truncate text-[14px] font-bold">{m.name}</span>
+              <span className="block text-[11.5px] text-mist">{m.rank ? `Number ${m.rank} by market value` : 'Unranked'}</span>
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="x-badge is-locked">{m.read.size}</span>
+            <span className="x-badge is-muted">{m.read.liquidity}</span>
+            <span className={`x-badge ${m.change_30d !== null && m.change_30d < 0 ? 'is-bad' : ''}`}>{m.read.trend}</span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[12px]">
+            <div><dt className="text-mist">Market value</dt><dd className="text-[14px] font-bold tabular-nums">{big(m.market_cap)}</dd></div>
+            <div><dt className="text-mist">Traded 24h</dt><dd className="text-[14px] font-bold tabular-nums">{big(m.volume_24h)}</dd></div>
+            <div><dt className="text-mist">7 days</dt><dd className={`text-[14px] font-bold tabular-nums ${tone(m.change_7d)}`}>{chg(m.change_7d)}</dd></div>
+            <div><dt className="text-mist">30 days</dt><dd className={`text-[14px] font-bold tabular-nums ${tone(m.change_30d)}`}>{chg(m.change_30d)}</dd></div>
+          </dl>
+          <div>
+            <div className="flex justify-between text-[11.5px]"><span className="text-mist">Supply issued</span><span className="font-semibold tabular-nums">{m.issued === null ? 'No cap' : `${(m.issued * 100).toFixed(0)}%`}</span></div>
+            <div className="x-meter mt-1"><span style={{ width: `${(m.issued ?? 1) * 100}%` }} /></div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11.5px]"><span className="text-mist">From all-time high</span><span className={`font-semibold tabular-nums ${tone(m.from_ath)}`}>{chg(m.from_ath)}</span></div>
+            {m.from_ath !== null && <div className="fa-ath mt-1"><span style={{ width: `${Math.max(2, 100 + Math.max(-100, m.from_ath))}%` }} /></div>}
+            {m.ath !== null && <p className="mt-1 text-[11px] text-mist">High of ${price(m.ath)}{m.ath_date ? ` in ${new Date(m.ath_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</p>}
+          </div>
+        </div>
+      )}
+      <p className="text-[11px] text-mist">Market figures, not a forecast or advice.</p>
+    </section>
+  );
+}
+
 function Fig({ Icon, label, value, note }: { Icon: typeof BookOpen; label: string; value: string; note: string }) {
   return (
     <div className="fa-fig">

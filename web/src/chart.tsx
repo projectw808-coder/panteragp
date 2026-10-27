@@ -4,6 +4,7 @@ import {
   type IChartApi, type ISeriesApi, type UTCTimestamp,
 } from 'lightweight-charts';
 import { card, grouped } from './App.tsx';
+import { FundamentalsCard } from './fundamentals.tsx';
 
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
@@ -365,6 +366,9 @@ export function ChartsView({ dark }: { dark: boolean }) {
   const instruments = useApi<Instrument[]>('/instruments');
   const [count, setCount] = useState(4);
   const [symbols, setSymbols] = useState(['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD']);
+  // The chart the watchlist loads into and the fundamentals describe: the last one touched.
+  const [focus, setFocus] = useState(0);
+  const at = Math.min(focus, count - 1);
   const setAt = (i: number, s: string) => setSymbols((v) => v.map((x, j) => (j === i ? s : x)));
 
   return (
@@ -380,7 +384,8 @@ export function ChartsView({ dark }: { dark: boolean }) {
               </button>
             ))}
           </div>
-          <Watchlist onPick={(s) => setAt(0, s)} />
+          <Watchlist onPick={(s) => setAt(at, s)} />
+          <FundamentalsCard symbol={symbols[at]!} />
         </div>
 
       {/* The panels sequence in. Safe against lightweight-charts' autoSize, which sizes from
@@ -390,8 +395,10 @@ export function ChartsView({ dark }: { dark: boolean }) {
           whole rule. Changing the 1/2/4 count does remount and replay it, and should. */}
       <div className={`stagger grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'md:grid-cols-2'} ${count === 4 ? 'md:grid-rows-2' : ''}`}>
         {symbols.slice(0, count).map((s, i) => (
-          <ChartPanel key={i} symbol={s} onSymbol={(v) => setAt(i, v)}
-            instruments={instruments.data ?? []} dark={dark} />
+          <div key={i} className={`ch-slot ${count > 1 && at === i ? 'is-focus' : ''}`} onPointerDownCapture={() => setFocus(i)} onFocusCapture={() => setFocus(i)}>
+            <ChartPanel symbol={s} onSymbol={(v) => setAt(i, v)}
+              instruments={instruments.data ?? []} dark={dark} />
+          </div>
         ))}
       </div>
     </div>
