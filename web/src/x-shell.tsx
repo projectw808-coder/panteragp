@@ -36,7 +36,7 @@ export function useQuotes() {
   return q.data?.quotes ?? [];
 }
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || 'PG';
+const initials = (name: string) => name.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || 'PG';
 
 /** What sits on the price line until the user changes it. */
 const DEFAULT_LINE = ['BTCUSD', 'ETHUSD', 'XAUUSD'];

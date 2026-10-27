@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Activity as ActivityIcon, ArrowDownLeft, ArrowDownUp, ChartCandlestick, Clock, FileText, Flag, Headset, History, KeyRound, Landmark,
+  Activity as ActivityIcon, ArrowDownLeft, ArrowLeft, ArrowDownUp, ChartCandlestick, Clock, FileText, Flag, Headset, History, KeyRound, Landmark,
   LayoutGrid, ListTodo, Mail, Pencil, Plus, ShieldCheck, User, Wallet,
 } from 'lucide-react';
 import { alertBox, btn, card, field, input, tableCard, thead } from './App.tsx';
@@ -12,6 +12,7 @@ import { DocumentsPanel, FlagList } from './compliance.tsx';
 import { CreditForm, DepositForm, PnlForm } from './wallet.tsx';
 import { CopyButton } from './copy.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
+import { ClientWallets } from './wallet-connect.tsx';
 import { StakingPanel } from './staking.tsx';
 import { IposPanel } from './ipos.tsx';
 import { ResetPassword } from './settings.tsx';
@@ -55,7 +56,7 @@ const TAB_META: Record<Tab, { label: string; Icon: typeof User }> = {
 };
 
 const KYC_BADGE: Record<string, string> = { approved: '', pending: 'is-locked', rejected: 'is-bad', expired: 'is-warn', none: 'is-muted' };
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+const initials = (name: string) => name.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
 /** One client, everything about them, for staff. */
 export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; role?: string } | null }) {
@@ -88,6 +89,7 @@ export function ClientWorkspace({ id, me }: { id: string; me: { sub: string; rol
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-4">
+      <a href="#/clients" className="x-btn-sm inline-flex items-center gap-1.5"><ArrowLeft size={14} aria-hidden />Back to clients</a>
       <Header client={c} holdings={h ?? undefined} onSaved={refresh}
         compliance={compliance} admin={admin} flags={flags.data?.length ?? 0} onGo={go} />
 
@@ -489,6 +491,8 @@ function Assets({ id, h, admin, onChanged }: {
           ))}
         </Table>
       )}
+      {/* Wallets the client has proved are theirs by signing, from their own Wallet page. */}
+      <div className="x-card p-5"><ClientWallets clientId={id} /></div>
       {admin && <StakingPanel clientId={id} onChanged={onChanged} />}
       {admin && <IposPanel clientId={id} onChanged={onChanged} />}
       {admin

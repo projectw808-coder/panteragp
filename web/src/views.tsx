@@ -52,7 +52,6 @@ export function ClientList() {
   useEffect(() => { setPage(0); setPicked(new Set()); }, [saved.view, saved.stage, saved.kyc, saved.owner, saved.sort, saved.dir, saved.size, query]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -234,16 +233,11 @@ export function ClientList() {
               </thead>
               <tbody>
                 {rows.map((c) => (
-                  <ClientRow key={c.id} c={c} open={openId === c.id}
-                    onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+                  <ClientRow key={c.id} c={c}
                     onChanged={reload}
                     badge={(v) => <Badge value={v} />}
                     selected={picked.has(c.id)} onSelect={(on) => pick(c.id, on)}
                     assets={c.assets_usd ?? null}
-                    canReviewKyc={me?.role === 'compliance' || me?.role === 'admin'}
-                    canResetPassword={me?.role === 'admin'}
-                    canMoveFunds={me?.role === 'admin'}
-                    canWrite={canWrite}
                     stages={stages.data ?? []} />
                 ))}
               </tbody>

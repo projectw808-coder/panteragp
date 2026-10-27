@@ -1,154 +1,66 @@
-import { useState, type FormEvent } from 'react';
-import { alertBox, btn, field, mono } from './App.tsx';
-import { api, token, useApi, type ClientRow as Client, type Stage } from './api.ts';
-import { PortfoliosPanel } from './portfolio.tsx';
-import { ClientWallets } from './wallet-connect.tsx';
-import { ResetPassword } from './settings.tsx';
+import { useState } from 'react';
+import { mono } from './App.tsx';
+import { api, type ClientRow as Client, type Stage } from './api.ts';
 import { CopyButton } from './copy.tsx';
 
 /**
- * A client row that unfolds in place: the essentials and their money without leaving the
- * list, and the funding control right there. The full record is still one click away —
- * this is for the common case of "check them, credit them, move on".
+ * A client in the list. Clicking it opens their full record, where everything about them
+ * lives — money, documents, wallets, pots, password, notes. The row keeps only what is
+ * quicker done from the list: copying the email, moving the stage, picking for bulk.
  */
-
-type Holdings = {
-  accounts: { id: string; currency: string; balance: number }[];
-  wallets: { id: string; asset: string; balance: number }[];
-  totals: { holdings_usd: number; open_pnl: number; equity_usd: number; unpriced: string[] };
-};
-
-const when = (iso: string) => new Date(iso).toLocaleString();
-const usd = (n: number) =>
-  '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export function ClientRow({ c, open, onToggle, onChanged, badge, canReviewKyc, canResetPassword, canMoveFunds, canWrite, stages, selected, onSelect, assets }: {
+export function ClientRow({ c, onChanged, badge, stages, selected, onSelect, assets }: {
   c: Client;
-  open: boolean;
-  onToggle: () => void;
   onChanged: () => void;
   badge: (value: string) => React.ReactNode;
-  canReviewKyc: boolean;
-  canResetPassword: boolean;
-  canMoveFunds: boolean;
-  canWrite: boolean;
   stages: Stage[];
   /** Bulk selection, when the list offers it. */
   selected?: boolean; onSelect?: (on: boolean) => void;
   /** What they hold in dollars, when the list asked for it. */
   assets?: number | null;
 }) {
-  // Only fetched once the row is opened: a list of fifty clients should not pull fifty
-  // holdings summaries nobody asked to see.
-  const holdings = useApi<Holdings>(open ? `/clients/${c.id}/holdings` : '');
-  const t = holdings.data?.totals;
-
+  const open = () => { location.hash = `#/clients/${c.id}`; };
   return (
-    <>
-      <tr onClick={onToggle} aria-expanded={open}
-        className={`x-crm-row cursor-pointer border-t border-pebble hover:bg-bone dark:border-white/10 dark:hover:bg-white/5 ${selected ? 'is-picked' : ''}`}>
-        {onSelect && (
-          <td className="w-10 px-3 py-2" onClick={(e) => e.stopPropagation()}>
-            <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Select ${c.name}`} />
-          </td>
-        )}
-        <td className="px-4 py-2">
-          <span className="flex items-center gap-2">
-            <span className={`font-mono text-xs text-ember-ink transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
-              aria-hidden>›</span>
-            <span className="x-avatar x-avatar-sm" aria-hidden>{c.name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
-            <span className="font-medium">{c.name}</span>
-            {c.account_number && (
-              <span className="font-mono text-[11px] tracking-wide text-slate-ink" title="Account number">{c.account_number}</span>
-            )}
-            {/* A record without a password is a lead, not an account — and until this said
-                so, it was indistinguishable from a working login in every column here. */}
-            {!c.has_login && (
-              <span title="No password set — this client cannot sign in yet"
-                className="rounded-full bg-bone px-2 py-0.5 font-mono text-[10px] tracking-wide text-slate-ink uppercase dark:bg-white/10 dark:text-mist">
-                no login
-              </span>
-            )}
-          </span>
+    <tr onClick={open} tabIndex={0} role="link" aria-label={`Open ${c.name}`}
+      onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+      className={`x-crm-row cursor-pointer focus-ring ${selected ? 'is-picked' : ''}`}>
+      {onSelect && (
+        <td className="w-10 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Select ${c.name}`} />
         </td>
-        {/* Contact details and timestamps read as data, so they take the mono face. */}
-        {/* The address is the thing staff actually need off this screen — to paste into a
-            mail client, a ticket or a search. Selecting it out of a row that unfolds when
-            clicked is a fight, so there is a button. */}
-        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>
-          <span className="flex items-center gap-2">
-            <span className="min-w-0 truncate">{c.email}</span>
-            <CopyButton text={c.email} className="shrink-0" />
-          </span>
-        </td>
-        {/* A select, not a label: moving somebody down the pipeline is the commonest edit
-            on this screen, and it should not cost two navigations. The click is stopped
-            here so choosing a stage does not also unfold the row underneath it. */}
-        <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-          <StageCell c={c} stages={stages} onChanged={onChanged} />
-        </td>
-        <td className="px-4 py-2">{badge(c.kyc_status)}</td>
-        <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? <span className="text-ember-ink">Unassigned</span>}</td>
-        {assets !== undefined && <td className={`px-4 py-2 text-right ${mono}`}>{assets === null ? '—' : '$' + Math.round(assets).toLocaleString('en-US')}</td>}
-        <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-      </tr>
-
-      {open && (
-        <tr className="border-t border-pebble bg-bone/60 dark:border-white/10 dark:bg-white/5">
-          <td colSpan={6 + (onSelect ? 1 : 0) + (assets !== undefined ? 1 : 0)} className="px-4 py-5">
-            <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-              <div>
-                <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Position</h3>
-                {!holdings.data || !t ? (
-                  <p className="mt-3 text-sm text-slate-ink">Loading…</p>
-                ) : (
-                  <>
-                    <dl className="mt-3 grid grid-cols-3 gap-4">
-                      <Figure label="Holdings" value={usd(t.holdings_usd)} />
-                      <Figure label="Open P&L" value={usd(t.open_pnl)}
-                        className={t.open_pnl >= 0 ? 'text-up' : 'text-down'} />
-                      <Figure label="Equity" value={usd(t.equity_usd)} />
-                    </dl>
-                    <p className="mt-4 font-mono text-xs text-slate-ink">
-                      {holdings.data.accounts.length
-                        ? holdings.data.accounts.map((a) => `${a.balance.toLocaleString()} ${a.currency}`).join(' · ')
-                        : 'no cash balances'}
-                    </p>
-                    {!!holdings.data.wallets.length && (
-                      <p className="mt-1 font-mono text-xs text-slate-ink">
-                        {holdings.data.wallets.map((w) => `${w.balance} ${w.asset}`).join(' · ')}
-                      </p>
-                    )}
-                    {!!t.unpriced.length && (
-                      <p className="mt-2 text-xs text-slate-ink">
-                        Excludes {t.unpriced.join(', ')} — no price source.
-                      </p>
-                    )}
-                  </>
-                )}
-                <a href={`#/clients/${c.id}`}
-                  className="mt-5 inline-block rounded-md border border-ember px-3 py-1.5 text-sm font-medium text-ember-ink hover:bg-ember hover:text-graphite">
-                  Open the full record →
-                </a>
-              </div>
-
-              <div className="space-y-6">
-                {canWrite && <QuickNote clientId={c.id} onDone={onChanged} />}
-                <QuickCredit clientId={c.id} onDone={() => { holdings.reload(); onChanged(); }} />
-                <Documents clientId={c.id} canDownload={canReviewKyc} />
-                <ClientWallets clientId={c.id} />
-                {canMoveFunds && (
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <PortfoliosPanel clientId={c.id} />
-                  </div>
-                )}
-                {canResetPassword && <SignIn clientId={c.id} name={c.name} hasLogin={c.has_login} />}
-              </div>
-            </div>
-          </td>
-        </tr>
       )}
-    </>
+      <td className="px-4 py-2">
+        <span className="flex items-center gap-2">
+          <span className="x-avatar x-avatar-sm" aria-hidden>{c.name.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+          <span className="font-medium">{c.name}</span>
+          {c.account_number && (
+            <span className="font-mono text-[11px] tracking-wide text-slate-ink" title="Account number">{c.account_number}</span>
+          )}
+          {/* A record without a password is a lead, not an account — and until this said
+              so, it was indistinguishable from a working login in every column here. */}
+          {!c.has_login && (
+            <span title="No password set — this client cannot sign in yet" className="x-badge is-muted">No login</span>
+          )}
+        </span>
+      </td>
+      {/* The address is the thing staff actually need off this screen — to paste into a
+          mail client, a ticket or a search — so it has its own copy button, which does not
+          open the record. */}
+      <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`} onClick={(e) => e.stopPropagation()}>
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 truncate">{c.email}</span>
+          <CopyButton text={c.email} className="shrink-0" />
+        </span>
+      </td>
+      {/* A select, not a label: moving somebody down the pipeline is the commonest edit on
+          this screen. The click is stopped here so choosing a stage does not open the record. */}
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+        <StageCell c={c} stages={stages} onChanged={onChanged} />
+      </td>
+      <td className="px-4 py-2">{badge(c.kyc_status)}</td>
+      <td className="px-4 py-2 text-slate-ink">{c.owner_name ?? <span className="text-ember-ink">Unassigned</span>}</td>
+      {assets !== undefined && <td className={`px-4 py-2 text-right ${mono}`}>{assets === null ? '—' : '$' + Math.round(assets).toLocaleString('en-US')}</td>}
+      <td className={`px-4 py-2 text-xs text-slate-ink ${mono}`}>{new Date(c.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+    </tr>
   );
 }
 
@@ -172,228 +84,5 @@ function StageCell({ c, stages, onChanged }: { c: Client; stages: Stage[]; onCha
         ? stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
         : <option value={c.stage_id}>{c.stage}</option>}
     </select>
-  );
-}
-
-/**
- * A note on the client, from the list.
- *
- * The same audited route the full record uses, so a line typed here reads identically on
- * their timeline — the point is to save the trip, not to create a second kind of note.
- */
-function QuickNote({ clientId, onDone }: { clientId: string; onDone: () => void }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    setDone(false);
-    try {
-      await api(`/clients/${clientId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
-      setText('');
-      setDone(true);
-      onDone();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="space-y-2">
-      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Note</h3>
-      <div className="flex flex-wrap gap-2">
-        <input className={`${field} min-w-0 flex-1 sm:min-w-64`} required maxLength={4000}
-          placeholder="What happened — goes on their timeline"
-          value={text} onChange={(e) => setText(e.target.value)} />
-        <button className={btn} disabled={busy}>{busy ? 'Saving…' : 'Add note'}</button>
-      </div>
-      {error && <p role="alert" className={alertBox}>{error}</p>}
-      {done && <p role="status" className="font-mono text-xs text-slate-ink">Added to their timeline.</p>}
-    </form>
-  );
-}
-
-type Doc = { id: string; kind: string; status: string; uploaded_at: string; storage_key: string };
-
-/**
- * Documents sit behind auth, so a plain href would arrive without the bearer token and be
- * refused. Fetch it, then hand the browser a blob URL to save.
- */
-async function download(d: Doc) {
-  const res = await fetch(`/api/kyc/${d.id}/file`, {
-    headers: { authorization: `Bearer ${token.get()}` },
-  });
-  if (!res.ok) return alert('Could not download that document');
-  const url = URL.createObjectURL(await res.blob());
-  const a = document.createElement('a');
-  a.href = url;
-  // Keep the stored extension so the file opens in the right thing once saved.
-  a.download = d.storage_key || `${d.kind}-${d.id}`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
-/**
- * The client's uploaded documents, with a download for whoever is allowed to open one.
- *
- * Listing a document and reading it are different permissions on purpose: anyone with CRM
- * access can see that an ID was uploaded, but the file itself needs kyc:review. So the
- * link only appears for those who can actually use it — offering a download that answers
- * 403 is worse than not offering it.
- */
-function Documents({ clientId, canDownload }: { clientId: string; canDownload: boolean }) {
-  const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
-
-  return (
-    <div>
-      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Documents</h3>
-      {!docs.data ? (
-        <p className="mt-3 text-sm text-slate-ink">Loading…</p>
-      ) : docs.data.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-ink">Nothing uploaded yet.</p>
-      ) : (
-        <ul className="mt-3 divide-y divide-pebble dark:divide-white/10">
-          {docs.data.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-              <span className="font-medium">{d.kind.replace(/_/g, ' ')}</span>
-              <span className="rounded-full bg-pebble px-2 py-0.5 text-xs text-obsidian dark:bg-white/10 dark:text-vellum">
-                {d.status}
-              </span>
-              <span className={`text-xs text-slate-ink ${mono}`}>{when(d.uploaded_at)}</span>
-              {canDownload && (
-                <button type="button" onClick={() => download(d)}
-                  className="ml-auto font-mono text-xs text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum">
-                  Download ↓
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!canDownload && !!docs.data?.length && (
-        <p className="mt-2 text-xs text-slate-ink">
-          Opening a document needs KYC review permission.
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Set a new password on the client's account, for the locked-out client on the phone.
- *
- * Kept behind a click rather than sitting open: it is the control that hands over
- * somebody's account, and it should take a deliberate action to reach. The route it calls
- * needs password:reset, notifies the client, and writes to their timeline.
- */
-function SignIn({ clientId, name, hasLogin }: { clientId: string; name: string; hasLogin: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div>
-      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Sign-in</h3>
-      {open ? (
-        <ResetPassword path={`/clients/${clientId}/password`} who={name} onDone={() => setOpen(false)} />
-      ) : (
-        <>
-          <button className={`${btn} mt-3`} onClick={() => setOpen(true)}>
-            {hasLogin ? 'Change password' : 'Set a password'}
-          </button>
-          <p className="mt-2 text-xs text-slate-ink">
-            {hasLogin
-              ? 'Sets a new password on their account. They are notified, and it lands on their timeline.'
-              : 'This client has no password yet and cannot sign in. Setting one here is what gives them a login.'}
-          </p>
-        </>
-      )}
-    </div>
-  );
-}
-
-const Figure = ({ label, value, className = '' }: { label: string; value: string; className?: string }) => (
-  <div>
-    <dt className="text-xs text-slate-ink">{label}</dt>
-    <dd className={`font-mono text-sm font-medium tabular-nums ${className}`}>{value}</dd>
-  </div>
-);
-
-/** Credit a client without leaving the list. The same audited routes used everywhere else. */
-function QuickCredit({ clientId, onDone }: { clientId: string; onDone: () => void }) {
-  const currencies = useApi<{ code: string; name: string; kind: 'fiat' | 'crypto' }[]>('/currencies');
-  const [code, setCode] = useState('USD');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-
-  const chosen = currencies.data?.find((x) => x.code === code);
-  const fiat = currencies.data?.filter((x) => x.kind === 'fiat') ?? [];
-  const crypto = currencies.data?.filter((x) => x.kind === 'crypto') ?? [];
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setDone(null);
-    setBusy(true);
-    try {
-      // Crypto goes to the wallet, fiat to the cash account. Same button, right route.
-      const path = chosen?.kind === 'crypto'
-        ? `/clients/${clientId}/wallet-credit`
-        : `/clients/${clientId}/credit`;
-      const body = chosen?.kind === 'crypto'
-        ? { asset: code, amount: Number(amount) }
-        : { currency: code, amount: Number(amount), note: note || undefined };
-      await api(path, { method: 'POST', body: JSON.stringify(body) });
-      setDone(`Credited ${amount} ${code}`);
-      setAmount('');
-      setNote('');
-      onDone();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="space-y-3">
-      <h3 className="font-mono text-[11px] tracking-[0.16em] text-slate-ink uppercase">Add balance</h3>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-slate-ink">
-          Currency
-          <select className={`${field} mt-1 block w-48`} value={code} onChange={(e) => setCode(e.target.value)}>
-            <optgroup label="Crypto">
-              {crypto.map((x) => <option key={x.code} value={x.code}>{x.code} — {x.name}</option>)}
-            </optgroup>
-            <optgroup label="Currencies">
-              {fiat.map((x) => <option key={x.code} value={x.code}>{x.code} — {x.name}</option>)}
-            </optgroup>
-          </select>
-        </label>
-        <label className="text-xs text-slate-ink">
-          Amount
-          <input className={`${field} mt-1 block w-32`} type="number" step="any" min="0" required
-            placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        {chosen?.kind !== 'crypto' && (
-          <label className="text-xs text-slate-ink">
-            Reason
-            <input className={`${field} mt-1 block w-48`} placeholder="Appears on the timeline"
-              value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
-        )}
-        <button className={btn} disabled={busy}>{busy ? 'Crediting…' : 'Add balance'}</button>
-      </div>
-      <p className="text-xs text-slate-ink">
-        Credits are audited and written to the client's timeline, so the money always has a
-        reason attached to it.
-      </p>
-      {error && <p role="alert" className={alertBox}>{error}</p>}
-      {done && <p role="status" className="font-mono text-xs text-slate-ink">{done}</p>}
-    </form>
   );
 }
