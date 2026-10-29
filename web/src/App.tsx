@@ -488,7 +488,7 @@ function Shell({ dark, setDark, onLogout }: {
               : <Denied />)
           : hash === '/ipos' ? (crm ? <IposAdmin admin={!!admin} />
             : trading
-              ? <div className='mx-auto max-w-[1400px]'><IposPanel /></div>
+              ? <div className='mx-auto max-w-[1300px]'><IposPanel /></div>
               : <Denied />)
           : hash === '/email' ? (crm ? <EmailAdmin admin={!!admin} /> : <Denied />)
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)

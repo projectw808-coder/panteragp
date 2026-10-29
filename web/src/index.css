@@ -2309,3 +2309,36 @@ html:not(.dark) .pt-history, html:not(.dark) .pt-history > li + li, html:not(.da
 html:not(.dark) .pt-history-icon { background: #f3f4f6; }
 .pt-spark { opacity: 0.55; }
 html:not(.dark) .pt-card .x-pot-icon, html:not(.dark) .pt-rows .x-pot-icon { color: #b04a00; background: radial-gradient(circle at 30% 25%, #ffe6cc, #ffc896 60%, #ffb070); box-shadow: inset 0 0 0 1px rgba(255, 117, 24, 0.35); }
+
+/* ---------------------------------------------------------------- IPO offerings */
+.ip-card { overflow: hidden; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s, transform 0.2s; }
+.ip-card:hover { border-color: rgba(255, 117, 24, 0.4); }
+.ip-card > .shot { border-radius: 0; margin: 0; }
+.ip-thumb { display: grid; place-items: center; width: 72px; height: 44px; flex-shrink: 0; overflow: hidden; border-radius: 9px; color: var(--mark, #ff7518); background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--mark, #ff7518) 35%, transparent), rgba(0, 0, 0, 0.4)); border: 1px solid color-mix(in srgb, var(--mark, #ff7518) 40%, transparent); }
+.ip-thumb > svg { width: 100%; height: 100%; }
+.ip-thumb > svg * { vector-effect: non-scaling-stroke; stroke-width: 1.3px; }
+html:not(.dark) .ip-card { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .ip-thumb { background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--mark, #ff7518) 25%, #fff), color-mix(in srgb, var(--mark, #ff7518) 10%, #fff)); }
+.ip-hero { position: relative; }
+.ip-hero > .shot { aspect-ratio: 16 / 7; border: 0; border-radius: 0; }
+.ip-hero::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, transparent 35%, rgba(6, 8, 12, 0.85) 100%); }
+.ip-hero-top { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ip-hero-top .x-badge { backdrop-filter: blur(6px); background-color: rgba(10, 14, 20, 0.6); }
+.ip-chip { height: 22px; padding: 0 9px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(6px); }
+.ip-hero-foot { position: absolute; left: 14px; right: 14px; bottom: 10px; z-index: 1; }
+.ip-facts { display: grid; grid-template-columns: 1.2fr 1fr 1fr; padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.ip-facts > div { min-width: 0; padding: 0 10px; }
+.ip-facts > div:first-child { padding-left: 0; }
+.ip-facts > div + div { border-left: 1px solid rgba(255, 255, 255, 0.07); }
+.ip-facts dt { font-size: 11px; color: var(--color-mist); }
+.ip-facts dd { margin-top: 2px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ip-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px; }
+.ip-pos > li { padding: 10px 0; }
+.ip-pos > li + li { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+html:not(.dark) .ip-facts, html:not(.dark) .ip-facts > div + div, html:not(.dark) .ip-pos > li + li { border-color: var(--color-pebble); }
+.ip-tabs > button { flex: 1 1 0; white-space: nowrap; }
+@media (max-width: 639px) {
+  .ip-tabs > button { padding-left: 6px !important; padding-right: 6px !important; font-size: 12px; }
+  .ip-tiles .x-card { padding: 12px; }
+  .ip-tiles .x-card p.text-\[22px\] { font-size: 17px; }
+}

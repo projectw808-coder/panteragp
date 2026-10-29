@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { alertBox, btn, card, field, PageTitle } from './App.tsx';
+import { CalendarClock, CheckCircle2, Clock, FileText, Layers, Rocket, ShieldCheck, Timer, TrendingUp, Wallet } from 'lucide-react';
+import { alertBox, btn, field, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
+import { useCountUp } from './count-up.ts';
+import { StatTile } from './x-shell.tsx';
+import type { Accounts } from './balance.tsx';
 import { IpoMark, markTint } from './ipo-art.tsx';
 import { useAuthedImage } from './authed-image.ts';
 
@@ -106,14 +110,24 @@ function countdown(ms: number): string {
 export function IposPanel({ clientId, onChanged }: { clientId?: string; onChanged?: () => void } = {}) {
   const on: On = clientId ? { client_id: clientId } : {};
   const rows = useApi<Ipo[]>(`/ipos${clientId ? `?client_id=${clientId}` : ''}`);
+  // The client's own balances and verification, so the form can say what is available and
+  // whether a subscription will be accepted before anybody presses the button.
+  const accounts = useApi<Accounts>(clientId ? null : '/accounts');
+  const profile = useApi<{ kyc_status: string }>(clientId ? null : '/me/profile');
   const list = rows.data ?? [];
   const clock = useServerClock(list[0]?.server_time);
+  const verified = clientId ? true : profile.data ? profile.data.kyc_status === 'approved' : true;
+  const cash = Object.fromEntries((accounts.data?.cash ?? []).map((c) => [c.currency, Number(c.balance)]));
 
   const groups = useMemo(() => ({
+    open: list.filter((i) => i.group === 'incoming' && i.status === 'open'),
+    upcoming: list.filter((i) => i.group === 'incoming' && i.status !== 'open'),
     running: list.filter((i) => i.group === 'running'),
-    incoming: list.filter((i) => i.group === 'incoming'),
     finished: list.filter((i) => i.group === 'finished'),
   }), [list]);
+  const held = list.filter((i) => i.subscription?.status === 'active');
+  // A column beside the offerings, only when there is something to put in it.
+  const side = !verified || !!held.length;
 
   // When a countdown reaches zero the page re-reads rather than assuming: an offering whose
   // window just closed should show the state the server agrees to, not one invented here.
@@ -134,8 +148,7 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
    *
    * The money figure only appears when the client actually had something in these, and it
    * counts settled positions only — a cancelled offering refunded exactly what it took, so
-   * folding it in would report nothing as if it were something. With no positions at all it
-   * falls back to a count, because "0.00 returned above capital" reads as a loss.
+   * folding it in would report nothing as if it were something.
    */
   const closedOut = useMemo(() => {
     const settled = groups.finished.filter((i) => i.subscription?.status === 'settled');
@@ -147,67 +160,74 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
       : matured;
   }, [groups.finished]);
 
-  const refresh = () => { rows.reload(); onChanged?.(); };
-  // Which group is on show: whatever is upcoming first, else what is running, else the record.
-  const [picked, setTab] = useState<'incoming' | 'running' | 'finished' | null>(null);
-  const tab = picked ?? (groups.incoming.length ? 'incoming' : groups.running.length ? 'running' : 'finished');
+  const refresh = () => { rows.reload(); accounts.reload(); onChanged?.(); };
+  const TABS = [
+    ['open', 'Open now', groups.open.length], ['upcoming', 'Upcoming', groups.upcoming.length],
+    ['running', 'Running', groups.running.length], ['finished', 'Finished', groups.finished.length],
+  ] as const;
+  const [picked, setTab] = useState<(typeof TABS)[number][0] | null>(null);
+  const tab = picked ?? (TABS.find(([, , n]) => n > 0)?.[0] ?? 'open');
 
   if (rows.error) return <p role="alert" className={alertBox}>{rows.error}</p>;
 
   return (
     <div className="stagger space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <PageTitle>IPO Offerings</PageTitle>
+        {clientId ? <h3 className="section-title">IPO Offerings</h3> : <PageTitle>IPO Offerings</PageTitle>}
         {/* Live means the page is ticking against the server's clock, not that any one
             offering is open — the per-card status says that. */}
         <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Live</span>
-        {!clientId && (
-          <span className="text-xs text-slate-ink">
-            subscribe with money you hold — earnings are credited daily and paid at maturity
-          </span>
-        )}
+        {!clientId && <span className="ml-auto text-xs text-slate-ink">Earnings are credited daily and paid at maturity</span>}
       </div>
 
-      {!rows.data ? (
-        <p className="text-sm text-slate-ink">Loading…</p>
-      ) : !list.length ? (
-        <p className={`${card} py-10 text-center text-sm text-slate-ink`}>
-          Nothing on the shelf yet. The desk publishes offerings here.
-        </p>
-      ) : (
-        <>
-          <div role="tablist" aria-label="Offerings" className="x-segs">
-            {([['incoming', 'Upcoming', groups.incoming.length], ['running', 'Running', groups.running.length], ['finished', 'Finished', groups.finished.length]] as const).map(([key, label, n]) => (
-              <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={tab === key ? 'is-on' : ''}>
-                {label}{n ? <span className="ml-1.5 opacity-70">{n}</span> : null}
-              </button>
-            ))}
-          </div>
+      <Totals list={list} held={held} clock={clock} loading={!rows.data} />
 
-          {/* Running: money already working, each row unfolding into its offering. */}
-          {tab === 'running' && (groups.running.length ? (
-            <div className={`${card} tile grain relative`}>
-              {groups.running.map((i, n) => (
-                <Running key={i.id} ipo={i} clock={clock} first={n === 0} />
+      <div className={side ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]' : ''}>
+      <div className="min-w-0">
+      {!rows.data ? (
+        <div className="skeleton h-64 rounded-xl" />
+      ) : !list.length ? (
+        <div className="x-card x-holo grid place-items-center gap-2 py-12 text-center">
+          <span className="x-drop-icon" aria-hidden><Rocket size={24} /></span>
+          <p className="text-[15px] font-semibold">Nothing on the shelf yet</p>
+          <p className="max-w-sm text-xs text-slate-ink">The desk publishes offerings here. New ones appear as Upcoming first.</p>
+        </div>
+      ) : (
+        <section className="x-card x-holo space-y-4 p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="section-title">Offerings</h2>
+            <div role="tablist" aria-label="Offerings" className="x-segs ip-tabs w-full sm:ml-auto sm:w-auto">
+              {TABS.map(([key, label, n]) => (
+                <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={tab === key ? 'is-on' : ''}>
+                  {label}{n ? <span className="ml-1.5 opacity-70">{n}</span> : null}
+                </button>
               ))}
             </div>
-          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing running right now.</p>)}
+          </div>
 
-          {tab === 'incoming' && (groups.incoming.length ? (
-            <>
-              <p className="text-xs text-slate-ink">Earnings are credited daily and paid at maturity.</p>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {groups.incoming.map((i) => (
-                  <Offer key={i.id} ipo={i} on={on} clock={clock} onDone={refresh} staff={!!clientId} />
-                ))}
-              </div>
-            </>
-          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing upcoming right now. New offerings appear here first.</p>)}
+          {(tab === 'open' || tab === 'upcoming') && (groups[tab].length ? (
+            <div className={`grid gap-4 md:grid-cols-2 ${side ? '2xl:grid-cols-3' : 'xl:grid-cols-3'}`}>
+              {groups[tab].map((i) => (
+                <Offer key={i.id} ipo={i} on={on} clock={clock} onDone={refresh} staff={!!clientId}
+                  available={clientId ? null : cash[i.currency] ?? 0} verified={verified} />
+              ))}
+            </div>
+          ) : (
+            <Empty Icon={tab === 'open' ? Rocket : CalendarClock}
+              title={tab === 'open' ? 'Nothing taking subscriptions right now' : 'Nothing upcoming right now'}
+              note={tab === 'open' ? 'Offerings open here when their window starts. Upcoming ones are listed next door.' : 'New offerings appear here first.'} />
+          ))}
+
+          {tab === 'running' && (groups.running.length ? (
+            <div className={`grid gap-4 md:grid-cols-2 ${side ? '2xl:grid-cols-3' : 'xl:grid-cols-3'}`}>
+              {groups.running.map((i) => <RunningCard key={i.id} ipo={i} clock={clock} />)}
+            </div>
+          ) : <Empty Icon={Timer} title="Nothing running right now" note="An offering runs its term once its book closes." />)}
 
           {tab === 'finished' && (groups.finished.length ? (
             <>
               <p className="text-xs text-slate-ink">{closedOut}</p>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className={`grid gap-4 md:grid-cols-2 ${side ? '2xl:grid-cols-3' : 'xl:grid-cols-3'}`}>
                 {groups.finished.map((i) => <Done key={i.id} ipo={i} />)}
               </div>
               <p className="text-xs text-slate-ink">
@@ -215,147 +235,191 @@ export function IposPanel({ clientId, onChanged }: { clientId?: string; onChange
                 in the company's share price.
               </p>
             </>
-          ) : <p className="x-card py-10 text-center text-sm text-slate-ink">Nothing has finished yet.</p>)}
-        </>
+          ) : <Empty Icon={CheckCircle2} title="Nothing has finished yet" note="Matured and withdrawn offerings are kept here as a record." />)}
+        </section>
       )}
+      </div>
+
+      {side && (
+        <aside className="min-w-0 space-y-4">
+          {!verified && (
+            <div className="x-card x-holo space-y-3 p-4">
+              <div className="flex items-center gap-3">
+                <span className="x-chip" aria-hidden><ShieldCheck size={18} /></span>
+                <p className="text-[14px] font-semibold">Verify to subscribe</p>
+              </div>
+              <p className="text-xs text-slate-ink">Subscriptions are open to verified accounts. Send your identity documents and the desk will review them.</p>
+              <a href="#/documents" className={`${btn} inline-flex w-full items-center justify-center gap-2`}><FileText size={15} aria-hidden />Go to Documents</a>
+            </div>
+          )}
+          {!!held.length && <Positions held={held} clock={clock} />}
+        </aside>
+      )}
+      </div>
     </div>
   );
 }
 
-/** A position the client holds in an offering that is running. */
-function Running({ ipo, clock, first }: { ipo: Ipo; clock: number; first: boolean }) {
-  const mine = ipo.subscription;
-  const left = ipo.matures_at ? new Date(ipo.matures_at).getTime() - clock : null;
-  const elapsed = dayOfTerm(ipo.closes_at, ipo.term_days, clock);
-  const [open, setOpen] = useState(false);
-  const panel = `running-${ipo.id}`;
+const Empty = ({ Icon, title, note }: { Icon: typeof Rocket; title: string; note: string }) => (
+  <div className="grid place-items-center gap-2 py-10 text-center">
+    <span className="x-drop-icon" aria-hidden><Icon size={24} /></span>
+    <p className="text-[15px] font-semibold">{title}</p>
+    <p className="max-w-sm text-xs text-slate-ink">{note}</p>
+  </div>
+);
+
+/** When an offering pays out: its maturity date, or close plus term where none is set yet. */
+const maturesOf = (i: Ipo) => i.matures_at ? new Date(i.matures_at)
+  : i.closes_at ? new Date(new Date(i.closes_at).getTime() + i.term_days * 86_400_000) : null;
+
+/**
+ * The client's money across offerings, and the next thing that happens on the shelf.
+ * Amounts are summed per currency; offerings are priced in one currency in practice, and
+ * where they are not the tile says how many currencies it is counting rather than adding
+ * dollars to euros.
+ */
+function Totals({ list, held, clock, loading }: { list: Ipo[]; held: Ipo[]; clock: number; loading: boolean }) {
+  const ccys = [...new Set(held.map((i) => i.subscription!.currency))];
+  const one = ccys.length <= 1 ? ccys[0] ?? 'USD' : null;
+  const invested = held.reduce((n, i) => n + Number(i.subscription!.amount), 0);
+  const earned = held.reduce((n, i) => n + Number(i.subscription!.accrued), 0);
+  const inBook = held.filter((i) => i.group === 'incoming').length;
+  const events = list.flatMap((i) => {
+    const e: [number, string, string][] = [];
+    if (i.status === 'upcoming' && i.opens_at) e.push([new Date(i.opens_at).getTime(), `${i.name} opens`, i.opens_at]);
+    if (i.status === 'open' && i.closes_at) e.push([new Date(i.closes_at).getTime(), `${i.name} closes`, i.closes_at]);
+    if (i.subscription?.status === 'active' && i.matures_at) e.push([new Date(i.matures_at).getTime(), `${i.name} matures`, i.matures_at]);
+    return e;
+  }).filter(([t]) => t > clock).sort((a, b) => a[0] - b[0]);
+  const next = events[0];
+  const shownInvested = useCountUp(loading ? null : invested);
+  const skel = <span className="skeleton inline-block h-5 w-28" />;
 
   return (
-    <div className={first ? '' : 'mt-3 border-t border-pebble pt-3 dark:border-white/10'}>
-      {/* A real button, not a div with an onClick: the row is reachable by Tab and opens on
-          Enter or Space for free, which a div never does however it is styled. The whole row
-          is the target rather than a small chevron — the thing being clicked is the offering,
-          and a 14px hit area on a touch screen is not one. */}
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={panel}
-        className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-lg text-left transition-colors hover:bg-slate-ink/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ember dark:hover:bg-white/5">
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{ipo.name}</span>
-          <span className="rounded-full bg-ember/15 px-2 py-0.5 font-mono text-[10px] tracking-wide text-ember-ink uppercase">
-            {ipo.status}
-          </span>
-        </span>
-        {/* The rate is off the client page by decision of the desk: what a client holds,
-            what it has earned and when it matures are theirs to see; the rate behind it is
-            the desk's, the way a portfolio's and a stake's already were. The term stays,
-            because it says when the money comes back. */}
-        <span className="mt-0.5 block text-xs text-slate-ink">
-          Over {term(ipo.term_days)}
-          {ipo.closes_at && `, from the ${day(ipo.closes_at)} listing`}
-          {elapsed !== null && `. Day ${elapsed} of ${ipo.term_days}`}
-          {ipo.matures_at && ` — matures ${day(ipo.matures_at)}`}
-        </span>
-      </span>
-      {mine ? (
-        <>
-          <span className="text-right">
-            <span className="metric-label block">Subscribed</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums">
-              {money(mine.amount, mine.currency)}
-            </span>
-          </span>
-          <span className="text-right">
-            <span className="metric-label block">Earned</span>
-            <span className="block font-mono text-lg leading-tight font-medium tabular-nums text-up">
-              +{fixed(mine.accrued)}
-            </span>
-          </span>
-        </>
-      ) : (
-        <span className="text-xs text-slate-ink">You have nothing in this one.</span>
-      )}
-      <span className="text-right">
-        <span className="metric-label block">Matures in</span>
-        {/* aria-live off: a value changing every second must not be announced every second. */}
-        <span aria-live="off" className="block font-mono text-xs tabular-nums text-ember-ink">
-          {left === null ? '—' : left <= 0 ? 'settling…' : countdown(left)}
-        </span>
-      </span>
-      <span aria-hidden className={`font-mono text-ember-ink transition-transform duration-200 ${
-        open ? 'rotate-90' : ''}`}>›</span>
-      </button>
+    <div className="ip-tiles grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <StatTile label="Invested" Icon={Wallet} tone="text-ember-ink"
+        value={shownInvested === null ? skel : one ? money(shownInvested, one) : `${ccys.length} currencies`}
+        note={held.length ? `In ${held.length} offering${held.length === 1 ? '' : 's'}` : 'Nothing subscribed yet'} />
+      <StatTile label="Earned so far" Icon={TrendingUp} tone="text-up"
+        value={loading ? skel : one ? `+${fixed(earned)} ${one}` : '—'} note="Credited daily, paid at maturity" />
+      <StatTile label="Your positions" Icon={Layers} value={loading ? skel : `${held.length}`}
+        note={held.length ? `${held.length - inBook} running · ${inBook} in an open book` : 'Subscribe while a book is open'} />
+      <StatTile label="Next on the shelf" Icon={Timer}
+        value={loading ? skel : next ? <span aria-live="off" className="tabular-nums">{countdown(next[0] - clock)}</span> : 'Nothing scheduled'}
+        note={next ? `${next[1]} · ${day(next[2])}` : 'Dates are set by the desk'} />
+    </div>
+  );
+}
 
-      {/* Unfolded, a running offering reads like it did on the shelf: the same picture, the
-          same summary, the same facts. What is different is that it is no longer an offer —
-          the book is closed and the bar is what was raised, not what is still to be. */}
-      {open && (
-        <div id={panel} className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
-          <Picture ipo={ipo} />
-          <div className="space-y-3">
-            <p className="text-xs text-slate-ink">{ipo.summary}</p>
-            {ipo.description && <p className="text-xs text-slate-ink">{ipo.description}</p>}
-
-            <div className="flex items-baseline gap-2">
-              <span className="metric-label">Est. return</span>
-              <span className="font-mono text-lg leading-none font-medium tabular-nums text-ember-ink">
-                +{(ipo.estimated_return_pct * 100).toFixed(2)}%
-              </span>
-              <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
-            </div>
-
-            <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
-              <div>
-                <dt className="metric-label">Term</dt>
-                <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.term_days}d</dd>
+/** What the client holds: one compact row each, with the next thing that happens to it. */
+function Positions({ held, clock }: { held: Ipo[]; clock: number }) {
+  return (
+    <section className="x-card x-holo space-y-3 p-4">
+      <div className="flex items-center gap-2">
+        <h2 className="section-title">Your positions</h2>
+        <span className="x-badge is-muted ml-auto">{held.length}</span>
+      </div>
+      <ul className="ip-pos">
+        {held.map((i) => {
+          const s = i.subscription!;
+          const inBook = i.group === 'incoming';
+          const at = inBook ? i.closes_at : i.matures_at;
+          const elapsed = dayOfTerm(i.closes_at, i.term_days, clock);
+          const share = inBook ? 0 : elapsed === null ? 0 : elapsed / i.term_days;
+          return (
+            <li key={i.id}>
+              <div className="flex items-center gap-2.5">
+                <span className="ip-thumb !h-8 !w-12" style={markTint(i.asset) ? ({ '--mark': markTint(i.asset) } as React.CSSProperties) : undefined}>
+                  <IpoMark asset={i.asset} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold">{i.name}</span>
+                  <span className="block text-[11.5px] text-slate-ink tabular-nums">
+                    {money(s.amount, s.currency)} · <span className="text-up">+{fixed(s.accrued)}</span>
+                  </span>
+                </span>
+                <span className={`x-badge ${inBook ? 'is-locked' : ''}`}>{inBook ? 'Book open' : 'Running'}</span>
               </div>
-              {/* The same three facts the shelf shows, and no more: the listing date and the
-                  day of the term are already in the line above, and repeating them two
-                  centimetres apart is noise rather than emphasis. */}
-              <div>
-                <dt className="metric-label">Min</dt>
-                <dd className="font-mono text-sm leading-none font-medium tabular-nums">
-                  {num(ipo.min_subscription)}
-                </dd>
-              </div>
-              {ipo.valuation && (
-                <div>
-                  <dt className="metric-label">Valuation</dt>
-                  <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.valuation}</dd>
-                </div>
-              )}
-            </dl>
-
-            <div>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-ink">Raised</span>
-                <span className="font-mono tabular-nums">
-                  {num(ipo.raised)} / {money(ipo.target_amount, ipo.currency)}
+              <div className="mt-2 flex items-baseline justify-between text-[11px] text-slate-ink">
+                <span>{inBook ? 'Book closes in' : `Day ${elapsed ?? 0} of ${i.term_days}`}</span>
+                <span aria-live="off" className="font-semibold tabular-nums text-ember-ink">
+                  {at ? (inBook ? countdown(new Date(at).getTime() - clock) : `Matures ${day(at)}`) : '—'}
                 </span>
               </div>
-              <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-slate-ink/20"
-                role="img" aria-label={`${Math.round((ipo.progress ?? 0) * 100)}% of target raised`}>
-                <span className="bar-x block h-[3px] rounded-full bg-ember"
-                  style={{ width: `${Math.round((ipo.progress ?? 0) * 100)}%` }} />
-              </div>
-            </div>
+              {!inBook && <div className="sk-track mt-1 !h-1.5"><span style={{ width: `${Math.max(2, share * 100)}%` }} /></div>}
+              <p className="mt-1.5 text-[11px] text-slate-ink">
+                ≈ {money(Number(s.amount) * (1 + Number(i.estimated_return_pct)), s.currency)} back at maturity
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
-            {/* The term is closed, so there is nothing to subscribe to and no button that
-                could do anything. Saying why is better than an absence somebody reads as a
-                bug, or a disabled control they keep pressing. */}
-            <p className="text-xs text-slate-ink">
-              The book closed on {ipo.closes_at ? day(ipo.closes_at) : 'listing'}. This one is
-              working its term — nothing more can be put in, and it pays out at maturity.
-            </p>
-          </div>
-        </div>
-      )}
+const Mini = ({ label, value, sub, tone = '', lead }: { label: string; value: string; sub?: string; tone?: string; lead?: boolean }) => (
+  <div className={`x-mini-tile min-w-0 ${lead ? 'sk-lead' : ''}`}>
+    <p className="text-[11.5px] text-mist">{label}</p>
+    <p className={`mt-1 truncate text-[14px] font-semibold tabular-nums ${tone}`} title={value}>{value}</p>
+    {sub && <p className="truncate text-[11px] text-slate-ink">{sub}</p>}
+  </div>
+);
+
+/** How much of the book is taken: raised against target. */
+function Raised({ ipo, opening }: { ipo: Ipo; opening: boolean }) {
+  const share = opening ? 0 : Math.round((ipo.progress ?? 0) * 100);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-[11.5px]">
+        <span className="text-slate-ink">{opening ? 'Target' : `${share}% raised`}</span>
+        <span className="tabular-nums text-slate-ink">
+          {opening ? money(ipo.target_amount, ipo.currency) : `${num(ipo.raised)} / ${money(ipo.target_amount, ipo.currency)}`}
+        </span>
+      </div>
+      <div className="sk-track mt-1.5 !h-1.5" role="img" aria-label={opening ? 'Not yet open' : `${share}% of target raised`}>
+        <span style={{ width: `${Math.max(opening ? 0 : 2, share)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The figures an offering is decided on, in one row. Estimated return leads: it is the
+ * return over this offering's own term rather than a yearly rate, said with the term beside
+ * it so nobody reads a 180-day figure as a year's.
+ */
+const Facts = ({ ipo }: { ipo: Ipo }) => (
+  <dl className="ip-facts">
+    <div>
+      <dt>Est. return</dt>
+      <dd className="!text-[19px] text-ember-ink">+{(ipo.estimated_return_pct * 100).toFixed(2)}%</dd>
+    </div>
+    <div><dt>Term</dt><dd>{term(ipo.term_days)}</dd></div>
+    <div><dt>Minimum</dt><dd>{money(ipo.min_subscription, ipo.currency)}</dd></div>
+  </dl>
+);
+
+/** The picture with the offering's name, status and valuation laid over it. */
+function Hero({ ipo, badge }: { ipo: Ipo; badge: React.ReactNode }) {
+  return (
+    <div className="ip-hero">
+      <Picture ipo={ipo} />
+      <div className="ip-hero-top">
+        {badge}
+        {ipo.valuation && <span className="ip-chip">Valued {ipo.valuation}</span>}
+      </div>
+      <div className="ip-hero-foot">
+        <h3 className="truncate text-[17px] font-bold text-white">{ipo.name}</h3>
+        <p className="text-[11.5px] font-semibold tracking-wide text-[#ffb066]">{ipo.asset}</p>
+      </div>
     </div>
   );
 }
 
 /** An offering taking subscriptions, or about to. */
-function Offer({ ipo, on, clock, onDone, staff }: {
-  ipo: Ipo; on: On; clock: number; onDone: () => void; staff: boolean;
+function Offer({ ipo, on, clock, onDone, staff, available, verified }: {
+  ipo: Ipo; on: On; clock: number; onDone: () => void; staff: boolean; available: number | null; verified: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const opening = ipo.status === 'upcoming';
@@ -363,114 +427,74 @@ function Offer({ ipo, on, clock, onDone, staff }: {
   const left = target ? new Date(target).getTime() - clock : null;
 
   return (
-    <article className={`${card} tile lift grain relative space-y-2.5`}>
-      <span className="tile-corner" aria-hidden />
-      <Picture ipo={ipo} />
+    <article className="ip-card">
+      <Hero ipo={ipo} badge={opening
+        ? <span className="x-badge is-muted">Upcoming</span>
+        : <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Open</span>} />
+      <div className="space-y-3.5 p-4">
+        <p className="line-clamp-2 text-xs text-slate-ink" title={ipo.summary}>{ipo.summary}</p>
+        <Facts ipo={ipo} />
+        <Raised ipo={ipo} opening={opening} />
 
-      <div className="flex items-center justify-between">
-        <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember-ink">
-          {ipo.asset}
-        </span>
-        <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase ${
-          ipo.status === 'open'
-            ? 'bg-ember/15 text-ember-ink'
-            : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-          {ipo.status}
-        </span>
-      </div>
+        {ipo.subscription && (
+          <p className="flex items-center gap-1.5 text-xs text-up">
+            <CheckCircle2 size={13} aria-hidden />You have {money(ipo.subscription.amount, ipo.subscription.currency)} in this offering.
+          </p>
+        )}
 
-      <h3 className="text-[16px] font-semibold">{ipo.name}</h3>
-      <p className="text-xs text-slate-ink">{ipo.summary}</p>
-
-      {/* No ROI here: the rate is the desk's, and only a finished offering shows what it
-          actually returned. The term leads instead, in the size the rate had — a card still
-          needs one figure to read from across the page, and "how long is my money in" is the
-          honest candidate once the rate has gone. */}
-      {/* Estimated return leads, because it is the thing being decided on. It is the return
-          over this offering's own term rather than a yearly rate — 7.25% a year across 180
-          days is 3.52%, and printing the annual figure beside a 180-day term is how somebody
-          ends up expecting twice what they get. "Estimated" because the desk can change the
-          rate on a live offering, not because the arithmetic is uncertain. */}
-      {/* On its own line rather than squeezed into the fact grid: "Est. return" does not fit
-          a quarter of a card at this tracking, and the figure is the one being decided on
-          anyway. Saying "over 180 days" beside it is the whole point — the number is this
-          term's, not a year's. */}
-      <div className="flex items-baseline gap-2">
-        <span className="metric-label">Est. return</span>
-        <span className="font-mono text-xl leading-none font-medium tabular-nums text-ember-ink">
-          +{(ipo.estimated_return_pct * 100).toFixed(2)}%
-        </span>
-        <span className="text-xs text-slate-ink">over {term(ipo.term_days)}</span>
-      </div>
-
-      <dl className={`grid gap-2 ${ipo.valuation ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
-        <div>
-          <dt className="metric-label">Term</dt>
-          <dd className="font-mono text-sm leading-none font-medium tabular-nums">
-            {ipo.term_days}d
-          </dd>
-        </div>
-        <div>
-          <dt className="metric-label">Min</dt>
-          <dd className="font-mono text-sm leading-none font-medium tabular-nums">
-            {num(ipo.min_subscription)}
-          </dd>
-        </div>
-        {/* The valuation the deal is talked about at. Absent on an offering the desk has not
-            given one, and the grid closes up rather than leaving a labelled hole. */}
-        {ipo.valuation && (
-          <div>
-            <dt className="metric-label">Valuation</dt>
-            <dd className="font-mono text-sm leading-none font-medium tabular-nums">{ipo.valuation}</dd>
+        {open && !opening ? (
+          <Subscribe ipo={ipo} on={on} available={available} onCancel={() => setOpen(false)} onDone={() => { setOpen(false); onDone(); }} />
+        ) : (
+          <div className="ip-foot">
+            <span className="min-w-0">
+              <span className="flex items-center gap-1 text-[11px] text-mist"><Timer size={12} aria-hidden />{opening ? 'Opens in' : 'Closes in'}</span>
+              <span aria-live="off" className="block truncate text-[14px] font-semibold tabular-nums text-ember-ink">
+                {left === null ? (opening ? 'To be announced' : '—') : left <= 0 ? 'Refreshing…' : countdown(left)}
+              </span>
+            </span>
+            {/* Upcoming says when rather than showing a button that cannot work. */}
+            {opening ? (
+              <span className="text-right text-[11.5px] text-slate-ink">{ipo.opens_at ? `Opens ${day(ipo.opens_at)}` : 'Nothing is taken until it opens'}</span>
+            ) : (
+              <button className={`${btn} shrink-0`} onClick={() => setOpen(true)} disabled={!verified}
+                title={verified ? undefined : 'Verify your account first'}>
+                {staff ? 'Subscribe for client' : ipo.subscription ? 'Add more' : 'Subscribe'}
+              </button>
+            )}
           </div>
         )}
-      </dl>
-
-      <div>
-        <div className="flex justify-between text-[11px]">
-          <span className="text-slate-ink">{opening ? 'Target' : 'Raised'}</span>
-          <span className="font-mono tabular-nums">
-            {opening
-              ? money(ipo.target_amount, ipo.currency)
-              : `${num(ipo.raised)} / ${money(ipo.target_amount, ipo.currency)}`}
-          </span>
-        </div>
-        <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-slate-ink/20"
-          role="img" aria-label={ipo.progress === null ? 'not yet open'
-            : `${Math.round(ipo.progress * 100)}% of target raised`}>
-          <span className="bar-x block h-[3px] rounded-full bg-ember"
-            style={{ width: `${opening ? 0 : Math.round((ipo.progress ?? 0) * 100)}%` }} />
-        </div>
       </div>
+    </article>
+  );
+}
 
-      <div className="flex items-center justify-between">
-        <span className="metric-label">{opening ? 'Opens in' : 'Closes in'}</span>
-        <span aria-live="off" className="font-mono text-xs tabular-nums text-ember-ink">
-          {left === null ? '—' : left <= 0 ? 'refreshing…' : countdown(left)}
-        </span>
+/** An offering working its term: the book is closed, so it is shown, not offered. */
+function RunningCard({ ipo, clock }: { ipo: Ipo; clock: number }) {
+  const elapsed = dayOfTerm(ipo.closes_at, ipo.term_days, clock);
+  const left = ipo.matures_at ? new Date(ipo.matures_at).getTime() - clock : null;
+  return (
+    <article className="ip-card">
+      <Hero ipo={ipo} badge={<span className="x-badge is-locked">Running</span>} />
+      <div className="space-y-3.5 p-4">
+        <p className="line-clamp-2 text-xs text-slate-ink" title={ipo.summary}>{ipo.summary}</p>
+        <Facts ipo={ipo} />
+        {elapsed !== null && (
+          <div>
+            <div className="flex items-baseline justify-between text-[11.5px] text-slate-ink">
+              <span>Day {elapsed} of {ipo.term_days}</span>
+              <span aria-live="off" className="font-semibold tabular-nums text-ember-ink">
+                {left === null ? '' : left <= 0 ? 'Settling…' : `Matures in ${countdown(left)}`}
+              </span>
+            </div>
+            <div className="sk-track mt-1.5 !h-1.5"><span style={{ width: `${Math.max(2, (elapsed / ipo.term_days) * 100)}%` }} /></div>
+          </div>
+        )}
+        <p className="text-xs text-slate-ink">
+          {ipo.subscription
+            ? <>You have {money(ipo.subscription.amount, ipo.subscription.currency)} in this one.</>
+            : <>The book closed{ipo.closes_at ? ` on ${day(ipo.closes_at)}` : ''}. It pays out at maturity.</>}
+        </p>
       </div>
-
-      {ipo.subscription && (
-        <p className="text-xs text-slate-ink">
-          You have {money(ipo.subscription.amount, ipo.subscription.currency)} in this offering.
-        </p>
-      )}
-
-      {/* Upcoming shows the action disabled with a reason rather than nothing at all: an
-          absent button reads as a broken card. */}
-      {opening ? (
-        <p className="text-xs text-slate-ink">
-          {ipo.opens_at
-            ? <>Opens {day(ipo.opens_at)}. Nothing is taken until then.</>
-            : <>Listing date to be announced. The window opens once it is, and nothing is taken until then.</>}
-        </p>
-      ) : open ? (
-        <Subscribe ipo={ipo} on={on} onDone={() => { setOpen(false); onDone(); }} />
-      ) : (
-        <button className={`${btn} w-full`} onClick={() => setOpen(true)}>
-          {staff ? 'Subscribe for this client' : 'Subscribe'}
-        </button>
-      )}
     </article>
   );
 }
@@ -480,57 +504,32 @@ function Done({ ipo }: { ipo: Ipo }) {
   const mine = ipo.subscription;
   const cancelled = ipo.status === 'cancelled';
   return (
-    <article className={`${card} space-y-2.5`}>
-      <div className="flex items-center justify-between">
-        <span className="rounded-md bg-ember/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ember-ink">
-          {ipo.asset}
+    <article className="sk-card space-y-3">
+      <div className="flex items-start gap-3">
+        <span className="ip-thumb" style={markTint(ipo.asset) ? ({ '--mark': markTint(ipo.asset) } as React.CSSProperties) : undefined}>
+          <IpoMark asset={ipo.asset} />
         </span>
-        <span className="rounded-full bg-bone px-2 py-0.5 font-mono text-[10px] tracking-wide text-slate-ink uppercase dark:bg-white/10 dark:text-mist">
-          {ipo.status}
-        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[14px] font-semibold">{ipo.name}</h3>
+          <p className="text-[11.5px] text-slate-ink">
+            {pct(ipo.roi_rate)} over {term(ipo.term_days)}
+            {ipo.matures_at && ` · ${cancelled ? 'withdrawn' : 'matured'} ${day(ipo.matures_at)}`}
+          </p>
+        </div>
+        <span className={`x-badge ${cancelled ? 'is-muted' : ''}`}>{cancelled ? 'Withdrawn' : 'Matured'}</span>
       </div>
-      <h3 className="text-sm font-medium">{ipo.name}</h3>
-      {/* The company, not just the terms: a settled deal is a record of what it was, and the
-          summary is the only thing on the card that says what the business does. */}
-      <p className="text-xs text-slate-ink">{ipo.summary}</p>
-      <p className="text-xs text-slate-ink">
-        {pct(ipo.roi_rate)} over {term(ipo.term_days)}
-        {ipo.matures_at && ` · ${cancelled ? 'withdrawn' : 'matured'} ${day(ipo.matures_at)}`}
-      </p>
+      <p className="line-clamp-2 text-xs text-slate-ink">{ipo.summary}</p>
       {mine ? (
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <div>
-            <dt className="metric-label">Subscribed</dt>
-            <dd className="font-mono text-sm font-medium tabular-nums">{fixed(mine.amount)}</dd>
-          </div>
-          <div>
-            <dt className="metric-label">{cancelled ? 'Refunded' : 'Returned'}</dt>
-            <dd className="font-mono text-sm font-medium tabular-nums">
-              {fixed(cancelled ? mine.amount : Number(mine.amount) + Number(mine.accrued))}
-            </dd>
-          </div>
-          <div>
-            <dt className="metric-label">Return</dt>
-            {/* As a percentage of what went in, which is the figure that compares across two
-                deals of different sizes — 21.71 on 2,500 and 20.09 on 1,000 are not ranked
-                the way the amounts suggest.
-                A cancellation is not a loss and is not coloured like one: nothing was
-                earned and nothing was lost. */}
-            <dd className={`font-mono text-sm font-medium tabular-nums ${cancelled ? 'text-slate-ink' : 'text-up'}`}>
-              {cancelled ? '0.00%' : `+${((Number(mine.accrued) / Number(mine.amount)) * 100).toFixed(2)}%`}
-            </dd>
-          </div>
-        </dl>
+        <div className="grid grid-cols-3 gap-2">
+          <Mini label="Subscribed" value={fixed(mine.amount)} />
+          <Mini label={cancelled ? 'Refunded' : 'Returned'} value={fixed(cancelled ? mine.amount : Number(mine.amount) + Number(mine.accrued))} />
+          {/* A cancellation is not a loss and is not coloured like one. */}
+          <Mini label="Return" value={cancelled ? '0.00%' : `+${((Number(mine.accrued) / Number(mine.amount)) * 100).toFixed(2)}%`}
+            tone={cancelled ? '' : 'text-up'} />
+        </div>
       ) : (
-        <p className="text-xs text-slate-ink">You had nothing in this one.</p>
+        <p className="text-xs text-slate-ink">You had nothing in this one. Subscribers were paid principal and accrued ROI{cancelled ? ' back in full' : ' at maturity'}.</p>
       )}
-      <p className="text-xs text-slate-ink">
-        {!mine
-          ? 'Subscribers were paid principal and accrued ROI when it matured.'
-          : cancelled
-            ? 'Refunded at exactly the amount debited, never a figure recomputed from a rate.'
-            : 'Principal and accrued ROI were paid to your balance.'}
-      </p>
     </article>
   );
 }
@@ -558,11 +557,23 @@ function Picture({ ipo }: { ipo: Ipo }) {
   );
 }
 
-/** Labels, not placeholders. The server re-checks everything this form believes. */
-function Subscribe({ ipo, on, onDone }: { ipo: Ipo; on: On; onDone: () => void }) {
+/**
+ * Subscribing. The ceiling offered is the smallest of what is held, what is left in the book
+ * and the offering's maximum; the server re-checks every one of them, and the window, so
+ * this form's beliefs are a convenience and never an authorisation.
+ */
+function Subscribe({ ipo, on, available, onCancel, onDone }: {
+  ipo: Ipo; on: On; available: number | null; onCancel: () => void; onDone: () => void;
+}) {
   const [amount, setAmount] = useState(String(ipo.min_subscription || ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ceiling = Math.min(
+    available ?? Infinity, Number(ipo.remaining), ipo.max_subscription ?? Infinity);
+  const n = Number(amount);
+  const tooSmall = !!amount && n < Number(ipo.min_subscription);
+  const tooBig = !!amount && Number.isFinite(ceiling) && n > ceiling;
+  const mat = maturesOf(ipo);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -570,35 +581,56 @@ function Subscribe({ ipo, on, onDone }: { ipo: Ipo; on: On; onDone: () => void }
     setError(null);
     try {
       await api(`/ipos/${ipo.id}/subscribe`, {
-        method: 'POST', body: JSON.stringify({ ...on, amount: Number(amount) }),
+        method: 'POST', body: JSON.stringify({ ...on, amount: n }),
       });
       onDone();
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2 border-t border-pebble pt-2.5 dark:border-white/10">
-      <label className="block">
-        <span className="metric-label">Amount in {ipo.currency}</span>
-        <input className={`${field} mt-1 w-full`} type="number" step="any" required
-          min={ipo.min_subscription || undefined}
-          max={ipo.max_subscription ?? undefined}
+    <form onSubmit={submit} className="pt-move space-y-3">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="font-semibold">Amount</span>
+        {available !== null && (
+          <span className="text-slate-ink">Available <span className="font-semibold tabular-nums text-obsidian dark:text-vellum">{money(available, ipo.currency)}</span></span>
+        )}
+      </div>
+      <div className="sk-amount">
+        <input className={`${field} w-full`} type="number" step="any" required autoFocus inputMode="decimal"
+          aria-label={`Amount in ${ipo.currency}`}
+          min={ipo.min_subscription || undefined} max={ipo.max_subscription ?? undefined}
           value={amount} onChange={(e) => setAmount(e.target.value)} />
-      </label>
-      <p className="text-xs text-slate-ink">
-        {num(ipo.remaining)} {ipo.currency} left in this offering.
-        {ipo.max_subscription !== null && ` Maximum ${num(ipo.max_subscription)}.`}
-      </p>
+        <span className="sk-amount-unit">{ipo.currency}</span>
+      </div>
+      {Number.isFinite(ceiling) && ceiling > 0 && (
+        <div className="grid grid-cols-4 gap-1.5">
+          {([['Min', Number(ipo.min_subscription)], ['25%', ceiling * 0.25], ['50%', ceiling * 0.5], ['Max', ceiling]] as const).map(([label, v]) => (
+            <button key={label} type="button" className="x-btn-sm !h-7 !px-0 text-[11.5px]" disabled={v < Number(ipo.min_subscription) || v > ceiling}
+              onClick={() => setAmount(String(Math.floor(v * 100) / 100))}>{label}</button>
+          ))}
+        </div>
+      )}
+      {tooSmall && <p className="text-xs text-down">The minimum is {money(ipo.min_subscription, ipo.currency)}.</p>}
+      {tooBig && <p className="text-xs text-down">The most you can put in here is {money(ceiling, ipo.currency)}.</p>}
+      {available === 0 && (
+        <p className="text-xs text-slate-ink">You hold no {ipo.currency}. <a href="#/wallet" className="text-ember-ink hover:underline">Open your wallet</a> to add some.</p>
+      )}
+      {n > 0 && !tooSmall && !tooBig && (
+        <div className="sk-summary">
+          <p>
+            <b className="tabular-nums">{money(n, ipo.currency)}</b> is taken from your {ipo.currency} balance now.
+            {mat && <> At maturity on <b>{day(mat.toISOString())}</b> you receive about <b className="tabular-nums">{money(n * (1 + Number(ipo.estimated_return_pct)), ipo.currency)}</b>.</>}
+          </p>
+          <p className="mt-1 text-[11.5px] text-slate-ink">{num(ipo.remaining)} {ipo.currency} left in this offering{ipo.max_subscription !== null ? ` · maximum ${num(ipo.max_subscription)}` : ''}.</p>
+        </div>
+      )}
       {error && <p role="alert" className={alertBox}>{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button className={btn} disabled={busy}>{busy ? 'Subscribing…' : 'Confirm'}</button>
-        <button type="button" className="rounded-full border border-pebble px-3 py-1.5 text-sm text-slate-ink transition-colors hover:border-ember/50 hover:text-obsidian dark:border-white/10 dark:hover:text-vellum"
-          onClick={onDone}>Cancel</button>
+        <button className={`${btn} flex-1`} disabled={busy || !(n > 0) || tooSmall || tooBig}>
+          {busy ? 'Subscribing…' : n > 0 ? `Subscribe ${money(n, ipo.currency)}` : 'Enter an amount'}
+        </button>
+        <button type="button" className="x-btn-sm !h-auto" onClick={onCancel}>Cancel</button>
       </div>
-      <p className="text-xs text-slate-ink">
-        Taken from your {ipo.currency} balance now, not at close.
-      </p>
     </form>
   );
 }
-
