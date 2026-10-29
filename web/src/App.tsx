@@ -479,7 +479,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/reports' ? (crm ? <ReportsView /> : <Denied />)
           : hash === '/support' ? (crm ? <SupportQueue role={me?.role} /> : <div className="mx-auto max-w-[1300px]"><SupportPanel /></div>)
           : hash === '/portfolios' ? (trading
-            ? <div className="mx-auto max-w-[1200px]"><PortfoliosPanel /></div>
+            ? <div className="mx-auto max-w-[1300px]"><PortfoliosPanel /></div>
             : <Denied />)
           : hash === '/requests' ? (crm ? <PortfolioRequests /> : <Denied />)
           : hash === '/staking' ? (crm ? <StakingAdmin />
