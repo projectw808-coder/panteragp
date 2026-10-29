@@ -2390,3 +2390,12 @@ html:not(.dark) .dc-type:hover { color: var(--color-obsidian); }
 html:not(.dark) .dc-type.is-on { background: rgba(255, 117, 24, 0.08); border-color: var(--color-ember); }
 html:not(.dark) .dc-list > li + li { border-color: var(--color-pebble); }
 html:not(.dark) .dc-thumb { border-color: #e4e7ec; background: var(--color-bone); }
+
+/* ---------------------------------------------------------------- overview additions */
+.ov-coin { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; }
+.ov-coin > span { transform: scale(0.62); }
+.ov-feed > li { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.ov-feed > li + li { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.ov-feed > li.is-new .text-\[13px\] { color: var(--color-ember-ink); }
+html:not(.dark) .ov-feed > li + li { border-color: var(--color-pebble); }
+html:not(.dark) .ov-coin > span.bg-white\/10 { background: #475467; }

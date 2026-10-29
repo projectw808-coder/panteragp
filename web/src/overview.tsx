@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ChartCandlestick, Landmark, Layers, Wallet } from 'lucide-react';
-import { alertBox, card } from './App.tsx';
+import { Activity, Bell, Bot, ChartCandlestick, ChartLine, Landmark, Layers, Wallet } from 'lucide-react';
+import { alertBox, card, PageTitle } from './App.tsx';
+import { Coin } from './landing.tsx';
+import { ICON as NOTE_ICON, TONE as NOTE_TONE, when, type Notification } from './notifications.tsx';
 import { QuoteCard, useQuotes } from './x-shell.tsx';
 import { useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
@@ -108,6 +110,7 @@ export function OverviewView() {
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-4">
+      <Header />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         {/* Total equity, and what the account has earned over the range beneath it. */}
         <div className="x-card tile enter p-5" style={{ '--i': 0 } as CSSProperties}>
@@ -165,11 +168,131 @@ export function OverviewView() {
         <div className="enter" style={{ '--i': 9 } as CSSProperties}><Allocation accounts={accounts.data} /></div>
         <div className="enter" style={{ '--i': 10 } as CSSProperties}><PerformanceBars perf={perf.data} label={range.label} /></div>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="enter" style={{ '--i': 11 } as CSSProperties}><OpenPositions rows={positions.data} /></div>
+        <div className="enter" style={{ '--i': 12 } as CSSProperties}><RecentActivity /></div>
+      </div>
       <p className="text-xs text-slate-ink">
         Earnings are realised trading results, interest credited into savings and staking rewards, each on the day it
         happened: what the account has earned, not a daily valuation of open positions.
       </p>
     </div>
+  );
+}
+
+/** The page's own heading: who it is for, that it is live, and the two places people go next. */
+function Header() {
+  const me = useApi<{ name: string }>('/me/profile').data;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const first = me?.name.trim().split(/\s+/)[0];
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <PageTitle>Overview</PageTitle>
+      <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Live</span>
+      {first && <span className="hidden text-[13px] text-slate-ink sm:inline">{greeting}, {first}.</span>}
+      <span className="ml-auto flex gap-2">
+        <a href="#/charts" className="x-btn-sm inline-flex items-center gap-1.5"><ChartLine size={14} aria-hidden />Charts</a>
+        <a href="#/trade" className="x-btn-sm inline-flex items-center gap-1.5"><Bot size={14} aria-hidden />Auto Trader</a>
+      </span>
+    </div>
+  );
+}
+
+const priceFmt = (n: number) => Number(n).toLocaleString('en-US', {
+  minimumFractionDigits: 2, maximumFractionDigits: Math.abs(n) < 10 ? 5 : 2,
+});
+
+/**
+ * What is open right now, read-only: the same positions the margin and open P&L tiles
+ * count, so the table and the tiles are the same instant's figures.
+ */
+function OpenPositions({ rows }: { rows?: Position[] | null }) {
+  const list = [...(rows ?? [])].sort((a, b) => Math.abs(Number(b.unrealized)) - Math.abs(Number(a.unrealized)));
+  return (
+    <section className="x-card x-holo h-full space-y-3 p-5">
+      <div className="flex items-center gap-3">
+        <h2 className="section-title">Open positions</h2>
+        {!!list.length && <span className="x-badge is-muted">{list.length}</span>}
+        <a href="#/trade" className="ml-auto text-xs font-semibold text-ember-ink hover:underline">Auto Trader</a>
+      </div>
+      {!rows && <div className="skeleton h-28 rounded-lg" />}
+      {rows && !list.length && (
+        <div className="grid place-items-center gap-2 py-8 text-center">
+          <span className="x-drop-icon" aria-hidden><Layers size={22} /></span>
+          <p className="text-[14px] font-semibold">Nothing open</p>
+          <p className="max-w-xs text-xs text-slate-ink">Positions the Auto Trader opens on your account appear here with their live P&amp;L.</p>
+        </div>
+      )}
+      {!!list.length && (
+        <div className="table-card x-table overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="x-thead">
+              <tr>{['Market', 'Side', 'Size', 'Entry', 'Price', 'P&L'].map((h, i) => (
+                <th key={h} className={`px-3 py-2 ${i > 1 ? 'text-right' : 'text-left'}`}>{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {list.slice(0, 8).map((p) => {
+                const long = Number(p.qty) > 0;
+                const pnl = Number(p.unrealized);
+                return (
+                  <tr key={p.symbol} className="border-t border-white/5">
+                    <td className="px-3 py-2.5">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <span className="ov-coin"><Coin symbol={p.symbol} /></span>{p.symbol}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5"><span className={`x-badge ${long ? '' : 'is-bad'}`}>{long ? 'Long' : 'Short'}</span></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{Math.abs(Number(p.qty)).toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>
+                    <td className="px-3 py-2.5 text-right text-slate-ink tabular-nums">{priceFmt(Number(p.avg_price))}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{priceFmt(Number(p.price))}</td>
+                    <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${pnl > 0 ? 'text-up' : pnl < 0 ? 'text-down' : ''}`}>{signed(pnl)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The latest things that happened on the account, from the same feed as the bell. */
+function RecentActivity() {
+  const items = useApi<Notification[]>('/notifications?limit=6').data;
+  return (
+    <section className="x-card x-holo h-full space-y-3 p-5">
+      <div className="flex items-center gap-3">
+        <h2 className="section-title">Recent activity</h2>
+        <Activity size={15} className="ml-auto text-mist" aria-hidden />
+      </div>
+      {!items && <div className="skeleton h-28 rounded-lg" />}
+      {items && !items.length && (
+        <div className="grid place-items-center gap-2 py-8 text-center">
+          <span className="x-drop-icon" aria-hidden><Bell size={22} /></span>
+          <p className="text-[14px] font-semibold">Nothing yet</p>
+          <p className="max-w-xs text-xs text-slate-ink">Fills, deposits, interest and messages from the desk show up here.</p>
+        </div>
+      )}
+      <ul className="ov-feed">
+        {(items ?? []).map((n) => {
+          const Icon = NOTE_ICON[n.kind] ?? Bell;
+          return (
+            <li key={n.id} className={n.read_at ? '' : 'is-new'}>
+              <span className={`x-note-icon ${NOTE_TONE[n.kind] ?? ''}`} aria-hidden><Icon size={14} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold">{n.title}</span>
+                {n.body && <span className="block truncate text-[11.5px] text-slate-ink">{n.body}</span>}
+              </span>
+              <span className="shrink-0 text-[11px] text-slate-ink">{when(n.created_at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

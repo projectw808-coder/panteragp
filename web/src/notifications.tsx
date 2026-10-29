@@ -6,12 +6,12 @@ import {
 import { api } from './api.ts';
 import { subscribe } from './feed.ts';
 
-type Notification = {
+export type Notification = {
   id: number; kind: string; title: string; body: string | null;
   read_at: string | null; created_at: string;
 };
 
-const when = (iso: string) => {
+export const when = (iso: string) => {
   const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -19,7 +19,7 @@ const when = (iso: string) => {
   return new Date(iso).toLocaleDateString();
 };
 
-const ICON: Record<string, typeof Bell> = {
+export const ICON: Record<string, typeof Bell> = {
   'order.filled': CircleCheck, deposit: ArrowDownLeft, withdrawal: ArrowUpRight,
   kyc: ShieldCheck, interest: Percent, credit: Plus, message: Mail,
   // Staff kinds. The bell is the same component on both sides — one inbox, two audiences.
@@ -28,7 +28,7 @@ const ICON: Record<string, typeof Bell> = {
 };
 
 /** Money in and good news read green, money out and flags red; the rest stay ember. */
-const TONE: Record<string, string> = {
+export const TONE: Record<string, string> = {
   'order.filled': 'is-up', deposit: 'is-up', interest: 'is-up', credit: 'is-up',
   withdrawal: 'is-down', 'withdrawal.request': 'is-down', 'flag.raised': 'is-down',
 };
