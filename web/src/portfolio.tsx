@@ -308,7 +308,7 @@ function Pot({ p, on, onDone, available }: { p: Portfolio; on: On; onDone: () =>
           )}
           {over && <p className="text-xs text-down">That is more than the {money(room!, p.currency)} {action === 'contribute' ? 'available' : 'in the pot'}.</p>}
           {action === 'contribute' && available === 0 && (
-            <p className="text-xs text-slate-ink">You hold no {p.currency}. <a href="#/wallet" className="text-ember-ink hover:underline">Open your wallet</a> to add some.</p>
+            <p className="text-xs text-slate-ink">You hold no {p.currency}. The desk funds your account — <a href="#/support" className="text-ember-ink hover:underline">ask in Support</a>.</p>
           )}
           {asking && <p className="text-xs text-slate-ink">Money comes out of a pot by request. The desk decides, and nothing moves until it does.</p>}
           <div className="flex flex-wrap items-center gap-2">

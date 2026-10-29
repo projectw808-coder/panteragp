@@ -613,7 +613,7 @@ function Subscribe({ ipo, on, available, onCancel, onDone }: {
       {tooSmall && <p className="text-xs text-down">The minimum is {money(ipo.min_subscription, ipo.currency)}.</p>}
       {tooBig && <p className="text-xs text-down">The most you can put in here is {money(ceiling, ipo.currency)}.</p>}
       {available === 0 && (
-        <p className="text-xs text-slate-ink">You hold no {ipo.currency}. <a href="#/wallet" className="text-ember-ink hover:underline">Open your wallet</a> to add some.</p>
+        <p className="text-xs text-slate-ink">You hold no {ipo.currency}. The desk funds your account — <a href="#/support" className="text-ember-ink hover:underline">ask in Support</a>.</p>
       )}
       {n > 0 && !tooSmall && !tooBig && (
         <div className="sk-summary">

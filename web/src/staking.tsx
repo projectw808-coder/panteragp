@@ -453,7 +453,7 @@ function NewStake({ products, on, wallets, onDone }: {
         {tooBig && <p className="mt-2 text-xs text-down">That is more than the {num(available!)} {asset} in your wallet.</p>}
         {available === 0 && (
           <p className="mt-2 text-xs text-slate-ink">
-            You hold no {asset}. <a href="#/wallet" className="text-ember-ink hover:underline">Open your wallet</a> to add some.
+            You hold no {asset}. The desk funds your account — <a href="#/support" className="text-ember-ink hover:underline">ask in Support</a>.
           </p>
         )}
       </Step>

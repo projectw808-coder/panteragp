@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ArrowRight, Check, Layers, Search, ShieldCheck, Wallet as WalletIcon } from 'lucide-react';
+import { ArrowRight, Check, ExternalLink, Headset, Landmark, Layers, Link2, Search, ShieldCheck, Wallet as WalletIcon } from 'lucide-react';
+import { CopyButton } from './copy.tsx';
+import { Coin } from './landing.tsx';
+import type { Accounts } from './balance.tsx';
 import { StatTile } from './x-shell.tsx';
 import { alertBox, btn, card, mono, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
@@ -163,106 +166,106 @@ export function WalletView() {
   }
 
   const linked = wallets.data ?? [];
+  const byRdns = new Map(providers.map((p) => [p.info.rdns, p]));
+  // Every wallet we name, installed or not, plus any other the browser announced — one grid
+  // of choices rather than a list of buttons and a separate row of chips.
+  const choices = [
+    ...KNOWN.map((k) => ({ key: k.rdns, name: k.name, url: k.url, found: byRdns.get(k.rdns) ?? null })),
+    ...providers.filter((p) => !KNOWN.some((k) => k.rdns === p.info.rdns))
+      .map((p) => ({ key: p.info.rdns, name: p.info.name, url: '', found: p })),
+  ].sort((a, b) => Number(!!b.found) - Number(!!a.found));
+  const chooser = useRef<HTMLElement>(null);
 
   return (
     <div className="stagger mx-auto max-w-[1300px] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <PageTitle>Wallet</PageTitle>
         <span className="x-badge"><ShieldCheck size={13} className="mr-1.5" aria-hidden />Signature only · no gas · no approvals</span>
+        <button type="button" onClick={() => chooser.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className={`${btn} ml-auto inline-flex items-center gap-2`}>
+          <Link2 size={16} aria-hidden />Link a wallet
+        </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile label="Linked wallets" Icon={WalletIcon} value={linked.length} tone={linked.length ? 'text-up' : ''}
-          note={linked.length ? 'Proved to be yours' : 'Nothing linked yet'} />
-        <StatTile label="Found in this browser" Icon={Search} value={providers.length}
-          note={providers.length ? 'Ready to link' : 'Install a wallet extension to link'} />
-        <StatTile label="Supported" Icon={Layers} value={KNOWN.length} note="MetaMask, Coinbase, Rabby and more" />
-      </div>
+      <WalletTiles linked={linked.length} found={providers.length} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <div className="x-card x-holo space-y-4 p-5">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h2 className="section-title">Your wallets</h2>
-              <span className="text-xs text-slate-ink">Addresses you have proved are yours.</span>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
+          <section className="x-card x-holo space-y-4 p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="section-title">Linked wallets</h2>
+              {!!linked.length && <span className="x-badge is-muted">{linked.length}</span>}
+              <span className="ml-auto text-xs text-slate-ink">Addresses you have proved are yours</span>
             </div>
-            {linked.length === 0
-              ? (
-                <div className="grid place-items-center gap-2 py-8 text-center">
-                  <span className="x-drop-icon" aria-hidden><WalletIcon size={24} /></span>
-                  <p className="text-[15px] font-semibold">Nothing linked yet</p>
-                  <p className="max-w-sm text-xs text-slate-ink">Choose a wallet below and sign one short message to prove the address is yours.</p>
-                </div>
-              )
-              : (
-                <ul className="space-y-2">
-                  {linked.map((w) => (
-                    <li key={w.id} className="x-wallet-row">
-                      <span className="x-chip" aria-hidden><WalletIcon size={18} /></span>
-                      <span className="min-w-0">
-                        <span className={`block text-[15px] font-semibold ${mono} text-ember-ink`} title={w.address}>{short(w.address)}</span>
-                        <span className="block text-xs text-slate-ink">{w.label ?? 'wallet'} · linked {new Date(w.linked_at).toLocaleDateString()}</span>
-                      </span>
-                      <span className="x-badge ml-1"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Verified</span>
-                      <button type="button" onClick={() => unlink(w)} className="x-btn-sm ml-auto hover:!border-down hover:!text-down">Unlink</button>
-                      <span className="w-full"><WalletBalance address={w.address} /></span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-          </div>
-
-          <div className="x-card space-y-4 p-5">
-            <div>
-              <h2 className="section-title">Choose a wallet</h2>
-              <p className="mt-1 text-xs text-slate-ink">
-                {providers.length
-                  ? 'Found in this browser. Pick the one holding the address you want to link.'
-                  : 'No wallet extension found in this browser. Install one of these, then reload the page.'}
-              </p>
-            </div>
-
-            {!!providers.length && (
-              <ul className="grid gap-3 sm:grid-cols-2">
-                {providers.map((w, i) => (
-                  <li key={w.info.uuid}>
-                    <button type="button" onClick={() => connect(w)} disabled={!!busy}
-                      className={`x-wallet-row w-full text-left disabled:opacity-60 ${i === 0 ? '!border-ember/70 !bg-ember/5' : ''}`}>
-                      <Mark w={w} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[15px] font-semibold">{w.info.name}</span>
-                        <span className="block text-[11px] tracking-wide text-slate-ink uppercase">
-                          {active.current === w.info.uuid && busy ? busy : (i === 0 ? 'recommended' : 'installed')}
-                        </span>
-                      </span>
-                      <ArrowRight size={16} className="text-ember-ink" aria-hidden />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {!!missing.length && (
-              <div>
-                <h3 className="metric-label">Not installed</h3>
-                <ul className="mt-2 flex flex-wrap gap-2">
-                  {missing.map((k) => (
-                    <li key={k.rdns}>
-                      <a href={k.url} target="_blank" rel="noreferrer noopener" className="x-btn-sm inline-flex items-center gap-1.5">
-                        {k.name} <span aria-hidden>↗</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+            {!wallets.data && <div className="skeleton h-20 rounded-lg" />}
+            {wallets.data && linked.length === 0 && (
+              <div className="grid place-items-center gap-2 py-8 text-center">
+                <span className="x-drop-icon" aria-hidden><WalletIcon size={24} /></span>
+                <p className="text-[15px] font-semibold">Nothing linked yet</p>
+                <p className="max-w-sm text-xs text-slate-ink">Choose a wallet below and sign one short message to prove the address is yours.</p>
               </div>
             )}
+            <ul className="space-y-2">
+              {linked.map((w) => (
+                <li key={w.id} className="x-wallet-row">
+                  <span className="x-chip" aria-hidden><WalletIcon size={18} /></span>
+                  <span className="min-w-0">
+                    <span className={`block text-[15px] font-semibold ${mono} text-ember-ink`} title={w.address}>{short(w.address)}</span>
+                    <span className="block text-xs text-slate-ink">{w.label ?? 'Wallet'} · linked {new Date(w.linked_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </span>
+                  <span className="x-badge ml-1"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Verified</span>
+                  <span className="ml-auto flex items-center gap-2">
+                    <CopyButton text={w.address} />
+                    <button type="button" onClick={() => unlink(w)} className="x-btn-sm hover:!border-down hover:!text-down">Unlink</button>
+                  </span>
+                  <span className="w-full"><WalletBalance address={w.address} /></span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
+          <section ref={chooser} className="x-card x-holo scroll-mt-24 space-y-4 p-5">
+            <div>
+              <h2 className="section-title">Link a wallet</h2>
+              <p className="mt-1 text-xs text-slate-ink">
+                {providers.length
+                  ? 'Pick the one holding the address you want to link. You sign one message; nothing moves.'
+                  : 'No wallet extension found in this browser. Install one, then reload this page.'}
+              </p>
+            </div>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {choices.map((c) => {
+                const mid = !!c.found && active.current === c.found.info.uuid && !!busy;
+                return (
+                  <li key={c.key} className={`wl-choice ${c.found ? 'is-found' : ''}`}>
+                    {c.found ? <Mark w={c.found} /> : <Brand name={c.name} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-semibold">{c.name}</span>
+                      <span className={`block truncate text-[11.5px] ${c.found ? 'text-up' : 'text-slate-ink'}`}>
+                        {mid ? busy : c.found ? 'Installed in this browser' : 'Not installed'}
+                      </span>
+                    </span>
+                    {c.found ? (
+                      <button type="button" onClick={() => connect(c.found!)} disabled={!!busy}
+                        className={`${btn} inline-flex shrink-0 items-center gap-1.5 !px-3 !py-1.5 text-xs disabled:opacity-60`}>
+                        Link<ArrowRight size={13} aria-hidden />
+                      </button>
+                    ) : c.url && (
+                      <a href={c.url} target="_blank" rel="noreferrer noopener" className="x-btn-sm inline-flex shrink-0 items-center gap-1">
+                        Install<ExternalLink size={12} aria-hidden />
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
             {error && <p role="alert" className={alertBox}>{error}</p>}
-          </div>
+          </section>
         </div>
 
-        <div className="space-y-4">
-          <div className="x-card x-holo space-y-4 p-5">
+        <div className="min-w-0 space-y-4">
+          <OnAccount />
+          <section className="x-card x-holo space-y-4 p-5">
             <h2 className="section-title">How linking works</h2>
             <ol className="space-y-4">
               {([
@@ -272,23 +275,135 @@ export function WalletView() {
               ] as const).map(([t, d], i) => (
                 <li key={t} className="flex gap-3">
                   <span className="x-step" aria-hidden>{i + 1}</span>
-                  <span><span className="block text-[15px] font-semibold">{t}</span><span className="block text-xs text-slate-ink">{d}</span></span>
+                  <span><span className="block text-[14px] font-semibold">{t}</span><span className="block text-xs text-slate-ink">{d}</span></span>
                 </li>
               ))}
             </ol>
-          </div>
-          <div className="x-card space-y-3 p-5">
-            <h2 className="section-title">Your keys stay yours</h2>
-            <ul className="space-y-2.5 text-[13px]">
-              {['We never hold your keys and cannot spend from your wallet.', 'No transaction or token approval is ever requested from this page.',
-                'Deposits and withdrawals do not run through here.', 'Unlink whenever you like — it removes the address and nothing else.'].map((t) => (
+            <ul className="space-y-2.5 border-t border-white/10 pt-4 text-[13px] [html:not(.dark)_&]:border-pebble">
+              {['We never hold your keys and cannot spend from your wallet.', 'No transaction or token approval is ever requested here.',
+                'Unlink whenever you like — it removes the address and nothing else.'].map((t) => (
                 <li key={t} className="flex items-start gap-2.5"><span className="x-check" aria-hidden><Check size={13} /></span><span className="text-slate-ink">{t}</span></li>
               ))}
             </ul>
-          </div>
+          </section>
         </div>
       </div>
     </div>
+  );
+}
+
+function WalletTiles({ linked, found }: { linked: number; found: number }) {
+  const acc = useApi<Accounts>('/accounts').data;
+  const equity = acc ? Number(acc.equity_usd ?? acc.total_usd) : null;
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <StatTile label="On your account" Icon={Landmark} tone="text-ember-ink"
+        value={equity === null ? <span className="skeleton inline-block h-5 w-28" /> : usdFmt(equity)}
+        note="Equity, the same figure as the top bar" />
+      <StatTile label="Linked wallets" Icon={WalletIcon} value={linked} tone={linked ? 'text-up' : ''}
+        note={linked ? 'Proved to be yours' : 'Nothing linked yet'} />
+      <StatTile label="Found in this browser" Icon={Search} value={found}
+        note={found ? 'Ready to link' : 'Install a wallet extension'} />
+      <StatTile label="Supported" Icon={Layers} value={KNOWN.length} note="MetaMask, Coinbase, Rabby and more" />
+    </div>
+  );
+}
+
+/** Stablecoins have no coin of their own in the platform's set; their brand colour and sign. */
+const STABLE_MARK: Record<string, [string, string]> = { USDT: ['#26a17b', '₮'], USDC: ['#2775ca', '$'], DAI: ['#f5ac37', '◈'] };
+const usdFmt = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * Where the money on the account sits, read-only: the same split the overview uses, with
+ * each part linking to the page that manages it. Money arrives and leaves through the desk,
+ * so the way in is a support thread rather than a button here.
+ */
+function OnAccount() {
+  const a = useApi<Accounts>('/accounts').data;
+  if (!a) return <div className="x-card skeleton h-64" />;
+  const b = a.book;
+  const parts = b ? ([
+    ['Cash', b.cash_usd, '#/overview', 'var(--color-cat-1)'],
+    ['Crypto', b.crypto_usd, '#/overview', 'var(--color-cat-2)'],
+    ['Portfolios', b.savings_usd, '#/portfolios', 'var(--color-cat-3)'],
+    ['Staked', b.staked_usd, '#/staking', 'var(--color-cat-4)'],
+    ['IPOs', b.ipos_usd, '#/ipos', 'var(--color-cat-5)'],
+  ] as const).filter(([, v]) => Number(v) > 0) : [];
+  const total = parts.reduce((n, [, v]) => n + Number(v), 0);
+  const coins = [
+    ...a.cash.map((c) => ({ code: c.currency, amount: Number(c.balance), usd: c.usd_value, fiat: true })),
+    ...a.wallets.map((w) => ({ code: w.asset, amount: Number(w.balance), usd: w.usd_value, fiat: false })),
+  ].filter((r) => r.amount !== 0);
+
+  return (
+    <section className="x-card x-holo space-y-4 p-5">
+      <div className="flex items-center gap-3">
+        <span className="x-chip" aria-hidden><Landmark size={17} /></span>
+        <h2 className="section-title">On your account</h2>
+      </div>
+
+      {!!parts.length && (
+        <>
+          <div className="wl-bar" role="img" aria-label={parts.map(([l, v]) => `${l} ${Math.round((Number(v) / total) * 100)}%`).join(', ')}>
+            {parts.map(([label, v, , color]) => (
+              <span key={label} style={{ width: `${(Number(v) / total) * 100}%`, background: color }} />
+            ))}
+          </div>
+          <ul className="wl-rows">
+            {parts.map(([label, v, href, color]) => (
+              <li key={label}>
+                <a href={href}>
+                  <i style={{ background: color }} aria-hidden />
+                  <span className="flex-1">{label}</span>
+                  <span className="text-slate-ink tabular-nums">{Math.round((Number(v) / total) * 100)}%</span>
+                  <span className="w-28 text-right font-semibold tabular-nums">{usdFmt(Number(v))}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {!!coins.length && (
+        <div>
+          <p className="mb-2 text-[12px] text-mist">Balances</p>
+          <ul className="wl-rows">
+            {coins.map((r) => (
+              <li key={`${r.fiat}-${r.code}`}>
+                <span className="wl-coin">
+                  <span className="wl-coin-mark">{r.fiat
+                    ? <span className="wl-fiat">{r.code === 'USD' ? '$' : r.code === 'EUR' ? '€' : r.code === 'GBP' ? '£' : r.code[0]}</span>
+                    : STABLE_MARK[r.code]
+                      ? <span className="wl-fiat" style={{ background: STABLE_MARK[r.code]![0] }}>{STABLE_MARK[r.code]![1]}</span>
+                      : <Coin symbol={`${r.code}USD`} />}</span>
+                  <span className="flex-1 font-semibold">{r.code}</span>
+                  <span className="tabular-nums">{r.amount.toLocaleString('en-US', { maximumFractionDigits: r.fiat ? 2 : 8 })}</span>
+                  <span className="w-28 text-right text-slate-ink tabular-nums">{r.usd === null ? '—' : usdFmt(Number(r.usd))}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="flex items-start gap-2 rounded-lg bg-white/[0.03] p-3 text-xs text-slate-ink [html:not(.dark)_&]:bg-bone">
+        <Headset size={14} className="mt-0.5 shrink-0 text-ember-ink" aria-hidden />
+        <span>Deposits and withdrawals go through the desk. <a href="#/support" className="font-semibold text-ember-ink hover:underline">Ask in Support</a> and we will arrange it with you.</span>
+      </p>
+    </section>
+  );
+}
+
+/** A wallet's colour and initial, for one that is not installed and so supplies no icon. */
+function Brand({ name }: { name: string }) {
+  const tint: Record<string, string> = {
+    MetaMask: '#f6851b', 'Coinbase Wallet': '#0052ff', Rabby: '#7084ff', 'Trust Wallet': '#3375bb', Phantom: '#ab9ff2',
+  };
+  return (
+    <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-bold text-white"
+      style={{ background: tint[name] ?? 'var(--color-ember)' }}>
+      {name[0]}
+    </span>
   );
 }
 

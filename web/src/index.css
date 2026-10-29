@@ -2342,3 +2342,23 @@ html:not(.dark) .ip-facts, html:not(.dark) .ip-facts > div + div, html:not(.dark
   .ip-tiles .x-card { padding: 12px; }
   .ip-tiles .x-card p.text-\[22px\] { font-size: 17px; }
 }
+
+/* ---------------------------------------------------------------- wallet */
+.wl-choice { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s; }
+.wl-choice.is-found { border-color: rgba(255, 117, 24, 0.45); background: rgba(255, 117, 24, 0.05); }
+.wl-choice:not(.is-found) { opacity: 0.85; }
+.wl-choice:hover { border-color: rgba(255, 117, 24, 0.5); opacity: 1; }
+.wl-bar { display: flex; height: 10px; overflow: hidden; border-radius: 999px; gap: 2px; background: rgba(255, 255, 255, 0.05); }
+.wl-bar > span { display: block; height: 100%; min-width: 3px; }
+.wl-rows > li > a, .wl-rows > li > .wl-coin { display: flex; align-items: center; gap: 10px; padding: 8px 4px; font-size: 13px; border-radius: 6px; }
+.wl-rows > li + li { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.wl-rows > li > a:hover { background: rgba(255, 255, 255, 0.03); }
+.wl-rows i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.wl-coin-mark { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; }
+.wl-coin-mark > span { transform: scale(0.67); }
+.wl-fiat { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; font-size: 18px; font-weight: 700; color: #fff; background: #2f855a; }
+html:not(.dark) .wl-choice { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .wl-choice.is-found { border-color: rgba(255, 117, 24, 0.45); background: rgba(255, 117, 24, 0.05); }
+html:not(.dark) .wl-bar { background: var(--color-pebble); }
+html:not(.dark) .wl-rows > li + li { border-color: var(--color-pebble); }
+html:not(.dark) .wl-rows > li > a:hover { background: var(--color-bone); }
