@@ -149,7 +149,7 @@ export function AutoTraderView() {
         <LiveFeed log={d.log} live={live} />
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="ip-tiles grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
         <StatTile label="Today" Icon={Zap} value={money(k.today_net, true)} tone={toneOf(k.today_net)}
           note={`${k.today_trades} trade${k.today_trades === 1 ? '' : 's'} closed, ${money(k.today_fees)} in fees`} />
         <StatTile label="Win rate" Icon={Percent} note={`${k.wins} won of ${k.closed} closed`}>
@@ -169,34 +169,68 @@ export function AutoTraderView() {
         </StatTile>
       </div>
 
-      <section className="space-y-3" aria-label="Strategies">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="section-title">Strategies</h2>
-          <span className="text-xs text-slate-ink">Each one trades its own allocation, at up to {d.settings.max_leverage}× leverage.</span>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {d.strategies.map((s) => <StrategyCard key={s.id} s={s} live={live} busy={busy} onChange={run} />)}
-        </div>
-      </section>
+      <Workspace d={d} live={live} busy={busy} run={run} />
+    </div>
+  );
+}
 
-      <FundamentalsPanel symbols={d.strategies.flatMap((s) => s.symbols)} />
+type Tab = 'positions' | 'strategies' | 'closed' | 'fundamentals' | 'risk';
+const TAB_KEY = 'autotrader.tab';
+function savedTab(): Tab {
+  try {
+    const v = localStorage.getItem(TAB_KEY);
+    if (v === 'positions' || v === 'strategies' || v === 'closed' || v === 'fundamentals' || v === 'risk') return v;
+  } catch { /* private window or blocked storage: start on positions */ }
+  return 'positions';
+}
 
-      <section className="x-card space-y-3 p-5" aria-label="Open positions">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="section-title">Open positions</h2>
-          <span className={`text-xs ${toneOf(k.unrealised)}`}>{money(k.unrealised, true)} unrealised</span>
-          <span className="ml-auto text-xs text-slate-ink">The bar runs from the stop to the target; the dot is the price now.</span>
-        </div>
-        {d.positions.length === 0
-          ? <p className="py-8 text-center text-sm text-slate-ink">{d.on ? 'Nothing open. The strategies are waiting for a setup.' : 'Nothing open.'}</p>
-          : <ul className="space-y-2">{d.positions.map((p) => <PositionRow key={p.id} p={p} />)}</ul>}
-      </section>
+/**
+ * Everything below the engine, as one tabbed workspace rather than a long scroll: what is
+ * open, the strategies, what has closed, the markets' fundamentals, and the limits with the
+ * engine's log. The tab is remembered on this device.
+ */
+function Workspace({ d, live, busy, run }: { d: Dash; live: boolean; busy: boolean; run: (what: () => Promise<unknown>) => Promise<void> }) {
+  const [tab, setTabState] = useState<Tab>(savedTab);
+  const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* not kept */ } };
+  const k = d.kpis;
+  const TABS: [Tab, string, typeof Layers, number | null][] = [
+    ['positions', 'Positions', Layers, d.positions.length],
+    ['strategies', 'Strategies', Sparkles, d.strategies.length],
+    ['closed', 'Closed trades', CircleCheck, k.closed],
+    ['fundamentals', 'Fundamentals', Gauge, null],
+    ['risk', 'Risk & log', ShieldAlert, null],
+  ];
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="x-card min-w-0 space-y-3 p-5" aria-label="Closed trades">
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Auto trader" className="x-segs ad-tabs at-tabs">
+        {TABS.map(([key, label, Icon, n]) => (
+          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={tab === key ? 'is-on' : ''}>
+            <Icon size={14} className="mr-1.5 inline" aria-hidden />{label}{n ? <span className="ad-count">{n}</span> : null}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'positions' && <Positions d={d} />}
+
+      {tab === 'strategies' && (
+        <section className="space-y-4" aria-label="Strategies">
+          <StrategyBoard d={d} />
+          <div className="grid gap-4 lg:grid-cols-3">
+            {d.strategies.map((s) => <StrategyCard key={s.id} s={s} live={live} busy={busy} onChange={run} />)}
+          </div>
+        </section>
+      )}
+
+      {tab === 'closed' && (
+        <section className="x-card x-holo min-w-0 space-y-3 p-5" aria-label="Closed trades">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="section-title">Closed trades</h2>
             <span className="text-xs text-slate-ink">{k.closed} in all, {money(k.realised, true)} realised</span>
+            <span className="ml-auto flex gap-2">
+              <span className="x-badge">{k.wins} won</span>
+              <span className="x-badge is-bad">{k.losses} lost</span>
+            </span>
           </div>
           {d.closed.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-ink">No trade has closed yet.</p>
@@ -221,8 +255,12 @@ export function AutoTraderView() {
             </table></div>
           )}
         </section>
+      )}
 
-        <div className="space-y-4">
+      {tab === 'fundamentals' && <FundamentalsPanel symbols={d.strategies.flatMap((s) => s.symbols)} />}
+
+      {tab === 'risk' && (
+        <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
           <section className="x-card x-holo space-y-4 p-5" aria-label="Risk controls">
             {/* Read-only here: the limits are the desk's to set, from the client's record. */}
             <div className="flex items-center gap-3">
@@ -242,12 +280,91 @@ export function AutoTraderView() {
               <Limit l="Stop all" v="Closes everything at market and turns the bot off" />
             </div>
           </section>
-
           <EngineLog log={d.log} live={live} busy={busy} on={d.on}
             onEvaluate={() => run(() => api('/me/auto-trader/tick', { method: 'POST' }))} />
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * What is open, summed up before it is listed: the long/short split, how many are
+ * winning, and the best and worst — so the list underneath is read with its shape known.
+ */
+function Positions({ d }: { d: Dash }) {
+  const ps = d.positions;
+  const longs = ps.filter((p) => p.side === 'long').length;
+  const winners = ps.filter((p) => p.unrealised > 0.005).length;
+  const losers = ps.filter((p) => p.unrealised < -0.005).length;
+  const sorted = [...ps].sort((a, b) => b.unrealised - a.unrealised);
+  const best = sorted[0];
+  const worst = sorted[sorted.length - 1];
+  const k = d.kpis;
+  return (
+    <section className="x-card x-holo space-y-4 p-5" aria-label="Open positions">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="section-title">Open positions</h2>
+        <span className={`text-xs ${toneOf(k.unrealised)}`}>{money(k.unrealised, true)} unrealised</span>
+        <span className="ml-auto text-xs text-slate-ink">The bar runs from the stop to the target; the dot is the price now.</span>
+      </div>
+      {ps.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="x-mini-tile">
+            <p className="text-[11.5px] text-mist">Long / short</p>
+            <p className="mt-1 text-[15px] font-bold tabular-nums">{longs} long · {ps.length - longs} short</p>
+            <div className="at-split mt-2"><span className="is-up" style={{ width: `${(longs / ps.length) * 100}%` }} /><span className="is-down" style={{ width: `${((ps.length - longs) / ps.length) * 100}%` }} /></div>
+          </div>
+          <div className="x-mini-tile">
+            <p className="text-[11.5px] text-mist">Winning / losing</p>
+            <p className="mt-1 text-[15px] font-bold tabular-nums"><span className="text-up">{winners}</span> · <span className="text-down">{losers}</span>{ps.length - winners - losers ? <span className="text-slate-ink"> · {ps.length - winners - losers} flat</span> : null}</p>
+            <div className="at-split mt-2"><span className="is-up" style={{ width: `${(winners / ps.length) * 100}%` }} /><span className="is-flat" style={{ width: `${((ps.length - winners - losers) / ps.length) * 100}%` }} /><span className="is-down" style={{ width: `${(losers / ps.length) * 100}%` }} /></div>
+          </div>
+          {best && (
+            <div className="x-mini-tile">
+              <p className="text-[11.5px] text-mist">Best right now</p>
+              <p className="mt-1 flex items-center gap-2 text-[15px] font-bold"><span className="x-qcoin" aria-hidden><Coin symbol={best.symbol} /></span>{base(best.symbol)} <span className={`tabular-nums ${toneOf(best.unrealised)}`}>{money(best.unrealised, true)}</span></p>
+            </div>
+          )}
+          {worst && worst !== best && (
+            <div className="x-mini-tile">
+              <p className="text-[11.5px] text-mist">Worst right now</p>
+              <p className="mt-1 flex items-center gap-2 text-[15px] font-bold"><span className="x-qcoin" aria-hidden><Coin symbol={worst.symbol} /></span>{base(worst.symbol)} <span className={`tabular-nums ${toneOf(worst.unrealised)}`}>{money(worst.unrealised, true)}</span></p>
+            </div>
+          )}
+        </div>
+      )}
+      {ps.length === 0
+        ? <p className="py-8 text-center text-sm text-slate-ink">{d.on ? 'Nothing open. The strategies are waiting for a setup.' : 'Nothing open.'}</p>
+        : <ul className="space-y-2">{ps.map((p) => <PositionRow key={p.id} p={p} />)}</ul>}
+    </section>
+  );
+}
+
+/** The strategies side by side: what each has realised, as bars on one scale, and what it holds now. */
+function StrategyBoard({ d }: { d: Dash }) {
+  const max = Math.max(1, ...d.strategies.map((s) => Math.abs(s.realised)));
+  return (
+    <section className="x-card x-holo space-y-3 p-5">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="section-title">Strategies head to head</h2>
+        <span className="text-xs text-slate-ink">Realised result on one scale. Each one trades its own allocation, at up to {d.settings.max_leverage}× leverage.</span>
+      </div>
+      <ul className="space-y-2.5">
+        {d.strategies.map((s) => (
+          <li key={s.id} className="at-vs">
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-semibold">{s.name}</span>
+              <span className="block text-[11px] text-slate-ink">{s.state === 'running' ? 'Running' : 'Paused'} · {s.open} open · {s.closed} closed · {pct(s.win_rate, 0)} won</span>
+            </span>
+            <span className="at-vs-track" aria-hidden>
+              <span className={s.realised >= 0 ? 'is-up' : 'is-down'} style={{ width: `${Math.max(2, (Math.abs(s.realised) / max) * 50)}%` }} />
+            </span>
+            <span className={`text-right text-[13px] font-bold tabular-nums ${toneOf(s.realised)}`}>{money(s.realised, true)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
