@@ -6,6 +6,7 @@ import {
 import { alertBox, PageTitle } from './App.tsx';
 import { api, useApi } from './api.ts';
 import { useCountUp } from './count-up.ts';
+import { LiveOffers } from './offers.tsx';
 
 /**
  * The Arena, as the client sees it: a monthly league among anonymous clients of a
@@ -113,6 +114,8 @@ export function ArenaView() {
       </div>
 
       <Hero a={a} />
+
+      <LiveOffers />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Podium a={a} />

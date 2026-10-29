@@ -137,3 +137,47 @@ export const ACHIEVEMENTS: Achievement[] = [
 ];
 
 export const achievement = (code: string) => ACHIEVEMENTS.find((a) => a.code === code);
+
+// ------------------------------------------------------------------ offers
+//
+// Time-limited bonuses the desk switches on: a deposit bonus, a bonus for using a product,
+// a multiplier on achievement bonuses, a prize pool for the top of each league, or an
+// announcement with no money in it. Each qualifying event becomes a grant, paid by the desk
+// or automatically, as the offer says.
+
+export const OFFER_KINDS = ['deposit_bonus', 'product_bonus', 'achievement_multiplier', 'league_prize', 'announcement'] as const;
+export type OfferKind = (typeof OFFER_KINDS)[number];
+export type OfferRule = {
+  min?: number; percent?: number; fixed?: number; cap?: number; first_only?: boolean;
+  product?: 'stake' | 'pot' | 'ipo'; multiplier?: number; prizes?: number[]; min_members?: number;
+};
+
+/** What one qualifying amount (in USD) earns under a rule. Zero when it does not qualify. */
+export function offerAmount(rule: OfferRule, usd: number): number {
+  if (!(usd > 0) || usd < (rule.min ?? 0)) return 0;
+  const raw = rule.percent ? usd * rule.percent / 100 : rule.fixed ?? 0;
+  const capped = rule.cap ? Math.min(rule.cap, raw) : raw;
+  return Math.round(capped * 100) / 100;
+}
+
+const usdText = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const PRODUCT: Record<string, string> = { stake: 'stake', pot: 'payment into a portfolio', ipo: 'IPO subscription' };
+
+/** The offer's terms in one plain sentence, the same on the client's pop-up and the desk's list. */
+export function offerTerms(kind: OfferKind, rule: OfferRule): string {
+  const earn = rule.percent ? `${rule.percent}%${rule.cap ? ` (up to ${usdText(rule.cap)})` : ''}` : usdText(rule.fixed ?? 0);
+  switch (kind) {
+    case 'deposit_bonus':
+      return `Each ${rule.first_only ? 'first ' : ''}deposit of ${usdText(rule.min ?? 0)} or more earns a ${earn} bonus${rule.percent ? ' of the deposit' : ''}.`;
+    case 'product_bonus':
+      return `Each ${PRODUCT[rule.product ?? 'ipo']} of ${usdText(rule.min ?? 0)} or more earns a ${earn} bonus.`;
+    case 'achievement_multiplier':
+      return `Achievement bonuses earned during the offer are worth ×${rule.multiplier ?? 2}.`;
+    case 'league_prize': {
+      const p = rule.prizes ?? [];
+      return `At month end the top ${p.length} of every league win ${p.map(usdText).join(' / ')}.`;
+    }
+    default:
+      return '';
+  }
+}

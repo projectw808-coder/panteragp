@@ -2594,4 +2594,27 @@ await step('only the desk sees the leagues with names, and only funds:credit pay
   assert.equal(await status('/arena/bonuses/999999999/decide', { token: A, method: 'POST', body: { approve: false } }), 404);
 });
 
+await step('a live deposit offer turns a qualifying deposit into a bonus for the desk to decide', async () => {
+  assert.equal(await status('/arena/offers', { token: T, method: 'POST', body: { kind: 'announcement', title: 'x' } }), 403);
+  const offer = await get('/arena/offers', { token: A, method: 'POST', body: {
+    kind: 'deposit_bonus', title: 'Acceptance deposit bonus', rule: { min: 10000, percent: 10, cap: 500 }, popup: true, notify: false } });
+  assert.equal(offer.status, 'draft');
+  const live = await get(`/arena/offers/${offer.id}`, { token: A, method: 'PATCH', body: { action: 'activate' } });
+  assert.equal(live.status, 'active');
+  await get(`/clients/${client.id}/deposit`, { token: A, method: 'POST', body: { currency: 'USD', amount: 12000, note: 'offer check' } });
+  let mine;
+  for (let i = 0; i < 20; i++) {
+    mine = (await get('/me/offers', { token: T })).find((o) => o.id === offer.id);
+    if (mine?.grants.length) break;
+    await wait(250);
+  }
+  assert.ok(mine, 'the live offer is listed for the client');
+  assert.equal(mine.popup, true, 'not seen yet, so it pops up');
+  assert.deepEqual(mine.grants.map((g) => [g.amount, g.status]), [[500, 'pending']], '10% of 12,000, capped at 500, waiting on the desk');
+  await get(`/me/offers/${offer.id}/seen`, { token: T, method: 'POST' });
+  assert.equal((await get('/me/offers', { token: T })).find((o) => o.id === offer.id).popup, false, 'seen once, never again');
+  await get(`/arena/offers/${offer.id}`, { token: A, method: 'PATCH', body: { action: 'end' } });
+  assert.ok(!(await get('/me/offers', { token: T })).some((o) => o.id === offer.id), 'an ended offer is gone from the client');
+});
+
 console.log(`\n${passed} checks passed across all nine phases.\n`);

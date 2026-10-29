@@ -2516,3 +2516,48 @@ html:not(.dark) .ar-step-block { border-color: #e4e7ec; }
 html:not(.dark) .ar-badge { background: linear-gradient(160deg, #eef0f3, #dfe3e8); }
 html:not(.dark) .ar-rarity.is-legendary { color: #b88a00; text-shadow: none; }
 html:not(.dark) .ar-badge.is-earned, html:not(.dark) .ar-badge.is-goal { background: linear-gradient(160deg, #ffd59a, #ff9a3c 55%, #c95a10); }
+
+/* ---------------------------------------------------------------- offers: pop-up and cards */
+.of-scrim { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(5, 7, 10, 0.72); backdrop-filter: blur(6px); animation: of-fade 0.25s ease both; }
+@keyframes of-fade { from { opacity: 0; } }
+.of-pop { position: relative; width: 100%; max-width: 420px; padding: 28px 24px 20px; border-radius: 20px; overflow: hidden;
+  border: 1px solid rgba(255, 140, 50, 0.5); background: radial-gradient(120% 70% at 50% 0%, rgba(255, 117, 24, 0.28), transparent 60%), #10141a;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(255, 117, 24, 0.18); animation: of-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+@keyframes of-in { from { opacity: 0; transform: translateY(16px) scale(0.94); } }
+.of-close { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; color: var(--color-mist); background: rgba(255, 255, 255, 0.06); }
+.of-close:hover { color: var(--color-vellum); }
+.of-burst { display: grid; place-items: center; width: 76px; height: 76px; margin: 0 auto 12px; border-radius: 22px; color: #2a1202;
+  background: linear-gradient(160deg, #ffd59a, #ff9a3c 55%, #c95a10); box-shadow: 0 0 0 8px rgba(255, 117, 24, 0.12), 0 0 40px rgba(255, 140, 40, 0.55); animation: ar-float 3s ease-in-out infinite; }
+.of-kicker { text-align: center; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; color: var(--color-ember-ink); margin-bottom: 4px; }
+.of-terms { margin-top: 14px; padding: 10px 12px; border-radius: 12px; text-align: center; font-size: 13px; font-weight: 600; border: 1px dashed rgba(255, 140, 50, 0.55); background: rgba(255, 117, 24, 0.08); }
+.of-card { padding: 14px; border-radius: 12px; border: 1px solid rgba(255, 117, 24, 0.35); background: linear-gradient(160deg, rgba(255, 117, 24, 0.1), rgba(255, 117, 24, 0.01) 70%); }
+.of-card-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; color: #2a1202; background: linear-gradient(160deg, #ffd59a, #ff9a3c 55%, #c95a10); }
+html:not(.dark) .of-pop { background: radial-gradient(120% 70% at 50% 0%, rgba(255, 117, 24, 0.18), transparent 60%), #fff; }
+html:not(.dark) .of-close { background: var(--color-bone); }
+html:not(.dark) .of-card { background: linear-gradient(160deg, rgba(255, 117, 24, 0.08), #fff 70%); }
+
+/* ---------------------------------------------------------------- arena admin */
+.ad-tabs { display: flex; flex-wrap: wrap; }
+.ad-count { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; background: rgba(255, 255, 255, 0.12); }
+.ad-tabs > .is-on .ad-count { background: rgba(0, 0, 0, 0.18); }
+.ad-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 22px; }
+.ad-stat { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.08); }
+.ad-stat > b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.ad-new { display: flex; width: 100%; align-items: center; gap: 14px; padding: 16px 18px; border-radius: var(--radius-lg); border: 1.5px dashed rgba(255, 117, 24, 0.5); background: rgba(255, 117, 24, 0.05); transition: border-color 0.2s, background-color 0.2s; }
+.ad-new:hover { border-color: var(--color-ember); background: rgba(255, 117, 24, 0.1); }
+.ad-new-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; color: #2a1202; background: linear-gradient(160deg, #ffd59a, #ff9a3c 55%, #c95a10); }
+.ad-offer { padding: 16px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.ad-offer.is-live { border-color: rgba(255, 117, 24, 0.5); background: linear-gradient(160deg, rgba(255, 117, 24, 0.1), rgba(255, 117, 24, 0.01) 70%); box-shadow: 0 0 24px rgba(255, 117, 24, 0.08); }
+.ad-offer.is-ended { opacity: 0.75; }
+.ad-legend { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+.ad-kind { flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; }
+.ad-preview { padding: 18px; border-radius: 16px; background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.02) 0 10px, transparent 10px 20px), rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.08); }
+.ad-league { display: grid; justify-items: start; gap: 2px; min-width: 150px; padding: 12px 14px; border-radius: 12px; text-align: left; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.ad-league > svg { color: var(--tone); }
+.ad-league.is-on { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--tone) 22%, transparent); }
+@media (max-width: 900px) { .ad-hero-grid { grid-template-columns: auto minmax(0, 1fr); } .ad-hero-grid > .ar-clock { grid-column: 1 / -1; justify-items: start; } }
+html:not(.dark) .ad-stat { background: #fff; border-color: #e4e7ec; }
+html:not(.dark) .ad-offer, html:not(.dark) .ad-league { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .ad-offer.is-live { background: linear-gradient(160deg, rgba(255, 117, 24, 0.08), #fff 70%); border-color: rgba(255, 117, 24, 0.5); }
+html:not(.dark) .ad-preview { background: var(--color-bone); border-color: #e4e7ec; }
+html:not(.dark) .ad-count { background: rgba(0, 0, 0, 0.08); }

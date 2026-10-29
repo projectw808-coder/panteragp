@@ -56,3 +56,13 @@ test('no achievement can be earned by trading more', () => {
   const diversified = ACHIEVEMENTS.find((a) => a.code === 'diversified')!.check!;
   assert.deepEqual(diversified({ ...none, activeStake: true, fundedPot: true, activeIpo: true }), { done: false, have: 3, need: 4 });
 });
+
+test('an offer pays what its rule says, and nothing below the minimum', async () => {
+  const { offerAmount, offerTerms } = await import('../src/arena.ts');
+  assert.equal(offerAmount({ min: 10_000, percent: 10 }, 9_999), 0);
+  assert.equal(offerAmount({ min: 10_000, percent: 10 }, 25_000), 2_500);
+  assert.equal(offerAmount({ min: 10_000, percent: 10, cap: 1_000 }, 25_000), 1_000);
+  assert.equal(offerAmount({ min: 500, fixed: 50 }, 600), 50);
+  assert.match(offerTerms('deposit_bonus', { min: 10_000, percent: 10, cap: 1_000 }), /deposit of \$10,000 or more earns a 10% \(up to \$1,000\)/);
+  assert.match(offerTerms('league_prize', { prizes: [250, 150, 100] }), /top 3 of every league win \$250 \/ \$150 \/ \$100/);
+});

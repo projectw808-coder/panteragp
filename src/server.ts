@@ -23,7 +23,7 @@ import { demoShowcase } from './showcase-demo.ts';
 import { makeFundamentals } from './fundamentals.ts';
 import {
   ACHIEVEMENTS, achievement, demote, type Facts, LEAGUES, type League, leagueFor, makeAlias, monthKey, monthStart,
-  movesFor, nextMonth, promote, rankLeague, scoreOf, type Standing,
+  movesFor, nextMonth, OFFER_KINDS, offerAmount, type OfferKind, type OfferRule, offerTerms, promote, rankLeague, scoreOf, type Standing,
 } from './arena.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
@@ -2382,6 +2382,7 @@ const NOTIFY_KINDS = {
     { kind: 'ticket',       label: 'Support replies', note: 'When we reply on one of your tickets.' },
     { kind: 'message',      label: 'Messages from the desk', note: 'Direct messages from your account manager.' },
     { kind: 'achievement',  label: 'Arena', note: 'Achievements you earn, bonuses the desk decides and your league result each month.' },
+    { kind: 'promotion',    label: 'Offers', note: 'Bonus offers from the desk, and bonuses you qualify for.' },
     { kind: 'security',     label: 'Security', note: 'Password and sign-in changes.', locked: true },
   ],
   staff: [
@@ -7438,34 +7439,149 @@ async function leagueStandings(league: League, month: string, fresh = false): Pr
   return rows;
 }
 
+/** The catalogue as the desk has set it: each achievement's bonus and whether it is offered. */
+async function rewardSettings(c: pg.PoolClient | pg.Pool = pool) {
+  const { rows } = await c.query<{ code: string; bonus: string | null; enabled: boolean }>('SELECT code, bonus, enabled FROM arena_rewards');
+  const set = new Map(rows.map((r) => [r.code, r]));
+  return new Map(ACHIEVEMENTS.map((a) => {
+    const o = set.get(a.code);
+    return [a.code, { bonus: o ? (o.bonus === null ? null : Number(o.bonus)) : a.bonus, enabled: o ? o.enabled : true, overridden: !!o }];
+  }));
+}
+
+/** Offers that are live right now: switched on, and inside their window. */
+async function liveOffers(c: pg.PoolClient | pg.Pool = pool, kind?: OfferKind) {
+  const { rows } = await c.query(
+    `SELECT * FROM promotions WHERE status = 'active' AND (starts_at IS NULL OR starts_at <= now())
+        AND (ends_at IS NULL OR ends_at > now()) ${kind ? 'AND kind = $1' : ''} ORDER BY id`, kind ? [kind] : []);
+  return rows as { id: number; kind: OfferKind; title: string; body: string; rule: OfferRule; starts_at: string | null;
+    ends_at: string | null; popup: boolean; notify: boolean; auto_pay: boolean }[];
+}
+
 /** Award an achievement once; returns true when it is new. Notifies the client, and the desk if there is a bonus. */
 async function award(c: pg.PoolClient, clientId: string, code: string, period = '') {
   const a = achievement(code);
   if (!a) return false;
+  const setting = (await rewardSettings(c)).get(code)!;
+  if (!setting.enabled) return false;
+  // A live "double rewards" offer multiplies the bonus; the largest one wins if several run.
+  const mult = Math.max(1, ...(await liveOffers(c, 'achievement_multiplier')).map((o) => Number(o.rule.multiplier ?? 1)));
+  const bonus = setting.bonus ? Math.round(setting.bonus * mult * 100) / 100 : null;
   const { rows: [row] } = await c.query(
     `INSERT INTO client_achievements (client_id, code, period, bonus, bonus_status)
      VALUES ($1,$2,$3,$4,$5) ON CONFLICT (client_id, code, period) DO NOTHING RETURNING id`,
-    [clientId, code, period, a.bonus, a.bonus ? 'pending' : 'none']);
+    [clientId, code, period, bonus, bonus ? 'pending' : 'none']);
   if (!row) return false;
   await notifyClientOf(c, {
     client_id: clientId, kind: 'achievement',
     title: `Achievement unlocked: ${a.title}`,
-    body: a.bonus ? `${a.note} A $${a.bonus} bonus is with the desk for approval.` : a.note,
+    body: bonus ? `${a.note} A $${bonus} bonus${mult > 1 ? ` (×${mult})` : ''} is with the desk for approval.` : a.note,
     ref_table: 'client_achievements', ref_id: String(row.id),
   });
   await logActivity(c, {
     client_id: clientId, kind: 'achievement', actor: 'system',
-    summary: `Earned ${a.title}${a.bonus ? ` · $${a.bonus} bonus pending` : ''}`,
-    ref_table: 'client_achievements', ref_id: String(row.id), data: { code, period, bonus: a.bonus },
+    summary: `Earned ${a.title}${bonus ? ` · $${bonus} bonus pending` : ''}`,
+    ref_table: 'client_achievements', ref_id: String(row.id), data: { code, period, bonus, multiplier: mult },
   });
-  if (a.bonus) {
+  if (bonus) {
     const { rows: [who] } = await c.query<{ name: string }>('SELECT name FROM clients WHERE id = $1', [clientId]);
     await notifyStaff(c, { roles: ['admin'] }, {
       kind: 'achievement.bonus', title: `Bonus to approve: ${who?.name ?? 'a client'}`,
-      body: `${a.title} · $${a.bonus}`, ref_table: 'client_achievements', ref_id: String(row.id),
+      body: `${a.title} · $${bonus}`, ref_table: 'client_achievements', ref_id: String(row.id),
     });
   }
   return true;
+}
+
+/**
+ * Put a bonus on a client's account: the same settled adjustment a credit writes, into the
+ * USD account, so it is visible as money the desk added and never counted as a deposit or
+ * as a return. Shared by achievement bonuses and offer grants.
+ */
+async function creditBonus(c: pg.PoolClient, clientId: string, amount: number, actor: string, title: string, note?: string) {
+  const { rows: [account] } = await c.query(
+    `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo','USD',0)
+     ON CONFLICT (client_id, mode, currency) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [clientId]);
+  await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [account.id, amount]);
+  const { rows: [entry] } = await c.query(
+    `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
+     VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`, [account.id, clientId, amount, actor === 'system' ? null : actor]);
+  await notifyClientOf(c, { client_id: clientId, kind: 'achievement', title: `$${amount} bonus for ${title} added to your account`,
+    body: note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id) });
+  await logActivity(c, { client_id: clientId, kind: 'credit', actor,
+    summary: `Paid the ${title} bonus, ${amount} USD`, ref_table: 'cash_transactions', ref_id: String(entry.id),
+    data: { currency: 'USD', amount, bonus: title } });
+  return entry;
+}
+
+/**
+ * Record what an offer owes a client for one qualifying event — once, keyed on the event —
+ * and either pay it at once (an offer set to pay automatically) or leave it for the desk.
+ */
+async function grantOffer(c: pg.PoolClient, o: { id: number; title: string; auto_pay: boolean }, clientId: string,
+  ref: string, amount: number, basis: number | null) {
+  if (!(amount > 0)) return false;
+  const { rows: [g] } = await c.query(
+    `INSERT INTO promotion_grants (promotion_id, client_id, ref, amount, basis) VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (promotion_id, ref) DO NOTHING RETURNING id`, [o.id, clientId, ref, amount, basis]);
+  if (!g) return false;
+  if (o.auto_pay) {
+    await creditBonus(c, clientId, amount, 'system', o.title);
+    await c.query(`UPDATE promotion_grants SET status = 'paid', decided_at = now() WHERE id = $1`, [g.id]);
+  } else {
+    await notifyClientOf(c, { client_id: clientId, kind: 'promotion', title: `You qualified: ${o.title}`,
+      body: `A $${amount} bonus is with the desk for approval.`, ref_table: 'promotion_grants', ref_id: String(g.id) });
+    const { rows: [who] } = await c.query<{ name: string }>('SELECT name FROM clients WHERE id = $1', [clientId]);
+    await notifyStaff(c, { roles: ['admin'] }, { kind: 'achievement.bonus', title: `Bonus to approve: ${who?.name ?? 'a client'}`,
+      body: `${o.title} · $${amount}`, ref_table: 'promotion_grants', ref_id: String(g.id) });
+  }
+  return true;
+}
+
+/**
+ * Look for events that qualify under the live offers and grant them. Idempotent — every
+ * grant is keyed on the event it came from — so it runs on the Arena's sweep and straight
+ * after anything that could qualify, and repeating it changes nothing.
+ */
+async function evaluateOffers() {
+  const offers = await liveOffers();
+  let granted = 0;
+  for (const o of offers) {
+    const from = o.starts_at ?? '-infinity';
+    const to = o.ends_at ?? 'infinity';
+    let events: { client_id: string; ref: string; amount: number; code: string; first?: boolean }[] = [];
+    if (o.kind === 'deposit_bonus') {
+      const { rows } = await pool.query(
+        `SELECT ct.id, ct.client_id, ct.amount, ta.currency,
+                NOT EXISTS (SELECT 1 FROM cash_transactions p WHERE p.client_id = ct.client_id AND p.kind = 'deposit'
+                             AND p.status IN ('approved','settled') AND p.created_at < ct.created_at) AS first
+           FROM cash_transactions ct JOIN trading_accounts ta ON ta.id = ct.account_id
+          WHERE ct.kind = 'deposit' AND ct.status IN ('approved','settled') AND ct.amount > 0
+            AND ct.created_at >= $1::timestamptz AND ct.created_at < $2::timestamptz`, [from, to]);
+      events = rows.map((r) => ({ client_id: r.client_id, ref: `cash:${r.id}`, amount: Number(r.amount), code: r.currency, first: r.first }));
+      if (o.rule.first_only) events = events.filter((e) => e.first);
+    } else if (o.kind === 'product_bonus') {
+      const sql = o.rule.product === 'stake'
+        ? `SELECT id::text, client_id, amount, asset AS code FROM stakes WHERE staked_at >= $1::timestamptz AND staked_at < $2::timestamptz`
+        : o.rule.product === 'pot'
+          ? `SELECT t.id::text, t.client_id, t.amount, p.currency AS code FROM portfolio_transactions t JOIN portfolios p ON p.id = t.portfolio_id
+              WHERE t.kind = 'contribution' AND t.at >= $1::timestamptz AND t.at < $2::timestamptz`
+          : `SELECT id::text, client_id, amount, currency AS code FROM ipo_subscriptions WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz`;
+      const { rows } = await pool.query(sql, [from, to]);
+      events = rows.map((r) => ({ client_id: r.client_id, ref: `${o.rule.product ?? 'ipo'}:${r.id}`, amount: Number(r.amount), code: r.code }));
+    } else continue;
+
+    for (const e of events) {
+      const rate = await rateToUsd(e.code);
+      if (rate === null) continue;
+      const usd = e.amount * rate;
+      const amount = offerAmount(o.rule, usd);
+      if (!amount) continue;
+      if (await tx('system', (c) => grantOffer(c, o, e.client_id, e.ref, amount, Math.round(usd * 100) / 100))) granted++;
+    }
+  }
+  if (granted) flushNotifications();
+  return granted;
 }
 
 /** What the achievement checks need to know about a client, in one query. */
@@ -7530,6 +7646,10 @@ async function closeArenaMonths() {
     // Every league's final table is taken before anybody moves. Moving as each league is
     // closed would rank the clients just promoted into the next league a second time, in
     // the same close, and send some of them up or down again.
+    const { rows: prizePools } = await pool.query(
+      `SELECT * FROM promotions WHERE kind = 'league_prize' AND status <> 'draft'
+          AND (starts_at IS NULL OR starts_at < $2::timestamptz) AND (ends_at IS NULL OR ends_at >= $1::timestamptz)`,
+      [monthStart(m).toISOString(), monthStart(nextMonth(m)).toISOString()]);
     const finals: [League, LeagueRow[]][] = [];
     for (const league of LEAGUES) finals.push([league, await leagueStandings(league, m, true)]);
     for (const [league, rows] of finals) {
@@ -7547,6 +7667,13 @@ async function closeArenaMonths() {
           if (r.move === 'up') await award(c, r.client_id, 'promoted');
           // A winner needs a field to have won against, and a positive month to have won with.
           if (r.rank === 1 && rows.length >= 3 && r.score > 0) await award(c, r.client_id, 'league_champion', m);
+          // A league prize pool that covered this month pays its places, once per place.
+          for (const o of prizePools) {
+            const prize = (o.rule.prizes ?? [])[r.rank - 1];
+            if (prize && rows.length >= (o.rule.min_members ?? 3) && r.score > 0) {
+              await grantOffer(c, o, r.client_id, `league:${m}:${league}:${r.rank}`, prize, null);
+            }
+          }
           await notifyClientOf(c, {
             client_id: r.client_id, kind: 'achievement',
             title: `${m}: you finished #${r.rank} of ${rows.length} in ${league}`,
@@ -7569,7 +7696,8 @@ async function arenaSweep() {
   let awarded = 0;
   for (const r of rows) awarded += (await evaluateAchievements(r.client_id)).awarded;
   const closed = await closeArenaMonths();
-  return { awarded, closed };
+  const offers = await evaluateOffers();
+  return { awarded, closed, offers };
 }
 
 app.get('/me/arena', { preHandler: trader }, async (req: any) => {
@@ -7592,6 +7720,7 @@ app.get('/me/arena', { preHandler: trader }, async (req: any) => {
   const { rows: held } = await pool.query<{ code: string; n: number }>(
     'SELECT code, count(DISTINCT client_id)::int AS n FROM client_achievements GROUP BY code');
   const share = new Map(held.map((h) => [h.code, total ? h.n / total : 0]));
+  const settings = await rewardSettings();
 
   return {
     month,
@@ -7605,11 +7734,11 @@ app.get('/me/arena', { preHandler: trader }, async (req: any) => {
     } : null,
     // Aliases and percentages only. The client's own row is marked; nobody else's id leaves.
     table: table.map((r) => ({ rank: r.rank, alias: r.alias, score: r.score, ret: r.ret, move: r.move, me: r.client_id === me })),
-    achievements: ACHIEVEMENTS.map((a) => {
+    achievements: ACHIEVEMENTS.filter((a) => settings.get(a.code)!.enabled || earned.some((e) => e.code === a.code)).map((a) => {
       const got = earned.filter((e) => e.code === a.code);
       const progress = facts && a.check ? a.check(facts) : null;
       return {
-        code: a.code, title: a.title, note: a.note, icon: a.icon, bonus: a.bonus, share: share.get(a.code) ?? 0,
+        code: a.code, title: a.title, note: a.note, icon: a.icon, bonus: settings.get(a.code)!.bonus, share: share.get(a.code) ?? 0,
         earned: got.map((e) => ({ period: e.period, at: e.earned_at, bonus: e.bonus === null ? null : Number(e.bonus), status: e.bonus_status })),
         have: progress?.have ?? null, need: progress?.need ?? null,
       };
@@ -7642,9 +7771,19 @@ app.get('/arena/overview', { preHandler: auth('crm:read') }, async () => {
     `SELECT a.id, a.client_id, c.name, a.code, a.period, a.earned_at, a.bonus, a.bonus_status, a.decided_at, a.note
        FROM client_achievements a JOIN clients c ON c.id = a.client_id
       WHERE a.bonus IS NOT NULL ORDER BY (a.bonus_status = 'pending') DESC, a.earned_at DESC LIMIT 200`);
+  const { rows: grants } = await pool.query(
+    `SELECT g.id, g.client_id, c.name, p.title, p.kind, g.ref, g.created_at, g.amount, g.basis, g.status, g.decided_at, g.note
+       FROM promotion_grants g JOIN clients c ON c.id = g.client_id JOIN promotions p ON p.id = g.promotion_id
+      ORDER BY (g.status = 'pending') DESC, g.created_at DESC LIMIT 200`);
   return {
     month, ends_at: monthStart(nextMonth(month)).toISOString(), leagues,
-    bonuses: bonuses.map((b) => ({ ...b, bonus: Number(b.bonus), title: achievement(b.code)?.title ?? b.code })),
+    bonuses: [
+      ...bonuses.map((b) => ({ source: 'achievement', id: b.id, client_id: b.client_id, name: b.name, title: achievement(b.code)?.title ?? b.code,
+        detail: b.period || '', at: b.earned_at, amount: Number(b.bonus), status: b.bonus_status, decided_at: b.decided_at })),
+      ...grants.map((g) => ({ source: 'offer', id: g.id, client_id: g.client_id, name: g.name, title: g.title,
+        detail: g.basis ? `on $${Number(g.basis).toLocaleString('en-US')}` : g.ref.startsWith('league:') ? g.ref.split(':').slice(1).join(' ') : '',
+        at: g.created_at, amount: Number(g.amount), status: g.status, decided_at: g.decided_at })),
+    ].sort((x, y) => Number(y.status === 'pending') - Number(x.status === 'pending') || new Date(y.at).getTime() - new Date(x.at).getTime()),
   };
 });
 
@@ -7672,26 +7811,183 @@ app.post('/arena/bonuses/:id/decide', { preHandler: auth('funds:credit') }, asyn
       return { status: 'declined' };
     }
     const amount = body.data.amount ?? Number(a.bonus);
-    const { rows: [account] } = await c.query(
-      `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo','USD',0)
-       ON CONFLICT (client_id, mode, currency) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [a.client_id]);
-    await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [account.id, amount]);
-    const { rows: [entry] } = await c.query(
-      `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
-       VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`, [account.id, a.client_id, amount, req.principal.sub]);
+    await creditBonus(c, a.client_id, amount, req.principal.sub, title, body.data.note);
     await c.query(`UPDATE client_achievements SET bonus_status = 'paid', bonus = $4, decided_by = $2, decided_at = now(), note = $3 WHERE id = $1`,
       [a.id, req.principal.sub, body.data.note ?? null, amount]);
-    await notifyClientOf(c, { client_id: a.client_id, kind: 'achievement', title: `$${amount} bonus for ${title} added to your account`,
-      body: body.data.note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id) });
-    await logActivity(c, { client_id: a.client_id, kind: 'credit', actor: req.principal.sub,
-      summary: `Paid the ${title} bonus, ${amount} USD`, ref_table: 'cash_transactions', ref_id: String(entry.id),
-      data: { currency: 'USD', amount, achievement: a.code } });
     return { status: 'paid', amount };
   });
   if (out === 'missing') return reply.code(404).send({ error: 'no such bonus' });
   if (out === 'decided') return reply.code(409).send({ error: 'that bonus has already been decided' });
   flushNotifications();
   return out;
+});
+
+
+// ------------------------------------------------------------------ Arena offers and rewards
+
+const offerRule = z.object({
+  min: z.number().min(0).max(1e9).optional(), percent: z.number().positive().max(1000).optional(),
+  fixed: z.number().positive().max(1e7).optional(), cap: z.number().positive().max(1e7).optional(),
+  first_only: z.boolean().optional(), product: z.enum(['stake', 'pot', 'ipo']).optional(),
+  multiplier: z.number().min(1).max(10).optional(), prizes: z.array(z.number().positive().max(1e7)).max(10).optional(),
+  min_members: z.number().int().min(1).max(1000).optional(),
+});
+const offerBody = z.object({
+  kind: z.enum(OFFER_KINDS), title: z.string().min(1).max(120), body: z.string().max(1000).default(''),
+  rule: offerRule.default({}), starts_at: z.coerce.date().nullable().optional(), ends_at: z.coerce.date().nullable().optional(),
+  popup: z.boolean().default(true), notify: z.boolean().default(true), auto_pay: z.boolean().default(false),
+});
+
+const shapeOffer = (o: any) => ({ ...o, terms: offerTerms(o.kind, o.rule ?? {}) });
+
+/** Every offer, with what it has granted so far. */
+app.get('/arena/offers', { preHandler: auth('crm:read') }, async () => {
+  const { rows } = await pool.query(`
+    SELECT p.*, coalesce(g.n, 0)::int AS grants, coalesce(g.paid, 0)::float AS paid, coalesce(g.pending, 0)::float AS pending,
+           coalesce(g.clients, 0)::int AS clients
+      FROM promotions p LEFT JOIN (
+        SELECT promotion_id, count(*) AS n, count(DISTINCT client_id) AS clients,
+               sum(amount) FILTER (WHERE status = 'paid') AS paid, sum(amount) FILTER (WHERE status = 'pending') AS pending
+          FROM promotion_grants GROUP BY promotion_id) g ON g.promotion_id = p.id
+     ORDER BY (p.status = 'active') DESC, (p.status = 'draft') DESC, p.created_at DESC`);
+  return rows.map(shapeOffer);
+});
+
+app.post('/arena/offers', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const b = offerBody.safeParse(req.body);
+  if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+  const o = b.data;
+  const { rows: [row] } = await pool.query(
+    `INSERT INTO promotions (kind, title, body, rule, starts_at, ends_at, popup, notify, auto_pay, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [o.kind, o.title, o.body, o.rule, o.starts_at ?? null, o.ends_at ?? null, o.popup, o.notify, o.auto_pay, req.principal.sub]);
+  return reply.code(201).send(shapeOffer(row));
+});
+
+/**
+ * Change an offer, or move it along: activate (it goes live, and clients are told by a
+ * notification and/or a pop-up, as the offer says), end it now, or delete a draft. A live
+ * offer's terms can still be corrected; anything already granted stays as it was granted.
+ */
+app.patch('/arena/offers/:id', { preHandler: auth('admin') }, async (req: any, reply) => {
+  const b = offerBody.partial().extend({ action: z.enum(['activate', 'end', 'delete']).optional() }).safeParse(req.body);
+  if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+  const { action, ...fields } = b.data;
+  const { rows: [o] } = await pool.query('SELECT * FROM promotions WHERE id = $1', [req.params.id]);
+  if (!o) return reply.code(404).send({ error: 'no such offer' });
+
+  if (action === 'delete') {
+    if (o.status !== 'draft') return reply.code(409).send({ error: 'only a draft can be deleted; end a live offer instead' });
+    await pool.query('DELETE FROM promotions WHERE id = $1', [o.id]);
+    return { deleted: true };
+  }
+  const sets: string[] = []; const vals: unknown[] = [o.id];
+  for (const [k, v] of Object.entries(fields)) { vals.push(v ?? null); sets.push(`${k} = $${vals.length}`); }
+  if (action === 'end') sets.push(`status = 'ended'`, `ends_at = LEAST(coalesce(ends_at, now()), now())`);
+  if (action === 'activate') {
+    if (o.status === 'active') return reply.code(409).send({ error: 'already live' });
+    sets.push(`status = 'active'`, `activated_at = now()`, `starts_at = coalesce(starts_at, now())`);
+  }
+  const { rows: [row] } = sets.length
+    ? await pool.query(`UPDATE promotions SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, vals)
+    : { rows: [o] };
+
+  if (action === 'activate' && row.notify) {
+    // Told through the bell, which respects each client's own notification settings.
+    const { rows: clients } = await pool.query<{ id: string }>('SELECT DISTINCT client_id AS id FROM trading_accounts');
+    await tx(req.principal.sub, async (c) => {
+      for (const cl of clients) {
+        await notifyClientOf(c, { client_id: cl.id, kind: 'promotion', title: row.title,
+          body: [row.body, offerTerms(row.kind, row.rule)].filter(Boolean).join(' '), ref_table: 'promotions', ref_id: String(row.id) });
+      }
+    });
+    flushNotifications();
+  }
+  if (action === 'activate') await evaluateOffers();
+  return shapeOffer(row);
+});
+
+/** The achievement catalogue as the desk sees it: defaults, overrides, and how many hold each. */
+app.get('/arena/rewards', { preHandler: auth('crm:read') }, async () => {
+  const settings = await rewardSettings();
+  const { rows } = await pool.query<{ code: string; n: number; paid: number; pending: number }>(`
+    SELECT code, count(DISTINCT client_id)::int AS n,
+           coalesce(sum(bonus) FILTER (WHERE bonus_status = 'paid'), 0)::float AS paid,
+           coalesce(sum(bonus) FILTER (WHERE bonus_status = 'pending'), 0)::float AS pending
+      FROM client_achievements GROUP BY code`);
+  const by = new Map(rows.map((r) => [r.code, r]));
+  const { rows: [{ total }] } = await pool.query<{ total: number }>('SELECT count(*)::int AS total FROM arena_profiles');
+  return ACHIEVEMENTS.map((a) => ({
+    code: a.code, title: a.title, note: a.note, icon: a.icon, default_bonus: a.bonus, ...settings.get(a.code)!,
+    holders: by.get(a.code)?.n ?? 0, members: total, paid: by.get(a.code)?.paid ?? 0, pending: by.get(a.code)?.pending ?? 0,
+  }));
+});
+
+app.put('/arena/rewards/:code', { preHandler: auth('admin') }, async (req: any, reply) => {
+  if (!achievement(req.params.code)) return reply.code(404).send({ error: 'no such achievement' });
+  const b = z.object({ bonus: z.number().min(0).max(1e6).nullable(), enabled: z.boolean() }).safeParse(req.body);
+  if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+  await pool.query(
+    `INSERT INTO arena_rewards (code, bonus, enabled, updated_by, updated_at) VALUES ($1,$2,$3,$4,now())
+     ON CONFLICT (code) DO UPDATE SET bonus = excluded.bonus, enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()`,
+    [req.params.code, b.data.bonus || null, b.data.enabled, req.principal.sub]);
+  return { code: req.params.code, bonus: b.data.bonus || null, enabled: b.data.enabled };
+});
+
+app.post('/arena/grants/:id/decide', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const b = z.object({ approve: z.boolean(), amount: z.number().positive().finite().max(1_000_000).optional(), note: z.string().max(300).optional() }).safeParse(req.body);
+  if (!b.success) return reply.code(400).send({ error: b.error.flatten() });
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [g] } = await c.query(
+      `SELECT g.*, p.title FROM promotion_grants g JOIN promotions p ON p.id = g.promotion_id WHERE g.id = $1 FOR UPDATE OF g`, [req.params.id]);
+    if (!g) return 'missing' as const;
+    if (g.status !== 'pending') return 'decided' as const;
+    if (!b.data.approve) {
+      await c.query(`UPDATE promotion_grants SET status = 'declined', decided_by = $2, decided_at = now(), note = $3 WHERE id = $1`,
+        [g.id, req.principal.sub, b.data.note ?? null]);
+      return { status: 'declined' };
+    }
+    const amount = b.data.amount ?? Number(g.amount);
+    await creditBonus(c, g.client_id, amount, req.principal.sub, g.title, b.data.note);
+    await c.query(`UPDATE promotion_grants SET status = 'paid', amount = $4, decided_by = $2, decided_at = now(), note = $3 WHERE id = $1`,
+      [g.id, req.principal.sub, b.data.note ?? null, amount]);
+    return { status: 'paid', amount };
+  });
+  if (out === 'missing') return reply.code(404).send({ error: 'no such bonus' });
+  if (out === 'decided') return reply.code(409).send({ error: 'that bonus has already been decided' });
+  flushNotifications();
+  return out;
+});
+
+/** The client's live offers, whether they have seen each one's pop-up, and what each has granted them. */
+app.get('/me/offers', { preHandler: trader }, async (req: any) => {
+  const me = req.principal.sub as string;
+  const offers = await liveOffers();
+  const { rows: seen } = await pool.query<{ promotion_id: number }>('SELECT promotion_id FROM promotion_seen WHERE client_id = $1', [me]);
+  const seenIds = new Set(seen.map((s) => Number(s.promotion_id)));
+  const { rows: grants } = await pool.query(
+    'SELECT promotion_id, amount, status, created_at FROM promotion_grants WHERE client_id = $1 ORDER BY created_at DESC', [me]);
+  return offers.map((o) => ({
+    id: o.id, kind: o.kind, title: o.title, body: o.body, terms: offerTerms(o.kind, o.rule), ends_at: o.ends_at,
+    product: o.rule.product ?? null, popup: o.popup && !seenIds.has(Number(o.id)),
+    grants: grants.filter((g) => Number(g.promotion_id) === Number(o.id)).map((g) => ({ amount: Number(g.amount), status: g.status, at: g.created_at })),
+  }));
+});
+
+app.post('/me/offers/:id/seen', { preHandler: trader }, async (req: any) => {
+  await pool.query('INSERT INTO promotion_seen (promotion_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, req.principal.sub]);
+  return { seen: true };
+});
+
+
+// Anything that could qualify for a live offer is checked straight after it happens, rather
+// than waiting for the sweep. Debounced, because one action can be several requests.
+let offerTimer: ReturnType<typeof setTimeout> | null = null;
+const QUALIFYING = /\/(cash\/[^/]+\/decide|clients\/[^/]+\/deposit|stakes|ipos\/[^/]+\/subscribe|portfolios\/[^/]+\/contribute)$/;
+app.addHook('onResponse', async (req: any, reply: any) => {
+  if (req.method !== 'POST' || reply.statusCode >= 300 || !QUALIFYING.test(req.routeOptions?.url ?? '') && !QUALIFYING.test(req.url.split('?')[0])) return;
+  if (offerTimer) clearTimeout(offerTimer);
+  offerTimer = setTimeout(() => { evaluateOffers().catch((err: unknown) => app.log.error({ err }, 'offer check failed')); }, 1500);
 });
 
 if (process.argv[1]?.endsWith('server.ts')) {
@@ -7740,7 +8036,7 @@ if (process.argv[1]?.endsWith('server.ts')) {
   // enough that a badge arrives soon after it is earned, and a month closes shortly after
   // midnight on the first. Idempotent, like the accruals, so a restart repeats nothing.
   const arena = () => arenaSweep()
-    .then((r) => { if (r.awarded || r.closed) app.log.info(r, 'arena sweep'); })
+    .then((r) => { if (r.awarded || r.closed || r.offers) app.log.info(r, 'arena sweep'); })
     .catch((err: unknown) => app.log.error({ err }, 'arena sweep failed'));
   setTimeout(arena, 20_000).unref();
   setInterval(arena, 15 * 60_000).unref();

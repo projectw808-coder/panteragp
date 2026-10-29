@@ -1057,3 +1057,52 @@ CREATE TABLE IF NOT EXISTS league_closings (
   month     text PRIMARY KEY,
   closed_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- The Arena's rewards, as the desk sets them: an achievement's bonus amount and whether it
+-- is offered at all (a row here overrides the catalogue in src/arena.ts), and offers —
+-- time-limited bonuses the desk switches on, with the grants each one produces and which
+-- clients have already seen its pop-up.
+CREATE TABLE IF NOT EXISTS arena_rewards (
+  code       text PRIMARY KEY,
+  bonus      numeric(18,2),
+  enabled    boolean NOT NULL DEFAULT true,
+  updated_by uuid REFERENCES staff(id),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS promotions (
+  id           bigserial PRIMARY KEY,
+  kind         text NOT NULL CHECK (kind IN ('deposit_bonus','product_bonus','achievement_multiplier','league_prize','announcement')),
+  title        text NOT NULL,
+  body         text NOT NULL DEFAULT '',
+  rule         jsonb NOT NULL DEFAULT '{}',
+  starts_at    timestamptz,
+  ends_at      timestamptz,
+  status       text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','ended')),
+  popup        boolean NOT NULL DEFAULT true,
+  notify       boolean NOT NULL DEFAULT true,
+  auto_pay     boolean NOT NULL DEFAULT false,
+  created_by   uuid REFERENCES staff(id),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  activated_at timestamptz
+);
+CREATE TABLE IF NOT EXISTS promotion_grants (
+  id           bigserial PRIMARY KEY,
+  promotion_id bigint NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+  client_id    uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  ref          text NOT NULL,
+  amount       numeric(18,2) NOT NULL,
+  basis        numeric(20,2),
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','declined')),
+  note         text,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  decided_by   uuid REFERENCES staff(id),
+  decided_at   timestamptz,
+  UNIQUE (promotion_id, ref)
+);
+CREATE INDEX IF NOT EXISTS promotion_grants_pending ON promotion_grants (status) WHERE status = 'pending';
+CREATE TABLE IF NOT EXISTS promotion_seen (
+  promotion_id bigint NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+  client_id    uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  seen_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (promotion_id, client_id)
+);

@@ -8,6 +8,7 @@ import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
 import { ArenaView } from './arena.tsx';
 import { ArenaAdmin } from './arena-admin.tsx';
+import { OfferPopup } from './offers.tsx';
 import { StakingAdmin } from './staking-admin.tsx';
 import { PortfolioRequests } from './portfolio-requests.tsx';
 import { NAV_ICONS, XTopBar } from './x-shell.tsx';
@@ -510,6 +511,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/tasks' ? <TaskBoard />
           : <ClientList />}
       </main>
+      {trading && <OfferPopup />}
     </div>
   );
 }
