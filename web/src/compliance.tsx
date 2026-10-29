@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Clock, FileText, ShieldCheck, Upload } from 'lucide-react';
+import { AlertCircle, BadgeCheck, Camera, Check, Clock, Coins, Eye, FileText, Home, IdCard, Landmark, Receipt, ShieldCheck, Upload, X } from 'lucide-react';
 import { StatTile } from './x-shell.tsx';
 import { alertBox, btn, card, field, input, mono, PageTitle, tableCard, thead } from './App.tsx';
 import { api, token, useApi } from './api.ts';
@@ -492,20 +492,47 @@ const WHY: Record<string, string> = {
   other: 'Anything the desk has asked you for by name.',
 };
 
-export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
+/** What each kind is called on screen: the words a person uses, not the stored code. */
+const DOC_LABEL: Record<string, string> = {
+  id_front: 'Photo ID (front)', id_back: 'Photo ID (back)', proof_of_address: 'Proof of address', selfie: 'Selfie with ID',
+  bank_statement: 'Bank statement', source_of_funds: 'Source of funds', tax_document: 'Tax document', other: 'Other',
+};
+const docLabel = (k: string) => DOC_LABEL[k] ?? pretty(k);
+/** What the identity kinds are for, shown when one is picked — the additional ones use WHY. */
+const ID_WHY: Record<string, string> = {
+  id_front: 'Passport, national ID card or driving licence — the side with your photo.',
+  id_back: 'The reverse of an ID card or licence, where it has one.',
+  proof_of_address: 'A utility bill or bank letter from the last three months, showing your name and address.',
+  selfie: 'You holding the same ID next to your face. Only if the desk asks.',
+};
+const DOC_ICON: Record<string, typeof FileText> = {
+  id_front: IdCard, id_back: IdCard, proof_of_address: Home, selfie: Camera,
+  bank_statement: Landmark, source_of_funds: Coins, tax_document: Receipt, other: FileText,
+};
+const BADGE: Record<string, [string, string]> = {
+  approved: ['Accepted', ''], pending: ['In review', 'is-locked'], rejected: ['Resend', 'is-bad'], missing: ['Missing', 'is-muted'],
+};
+const dateOf = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+export function DocumentsPanel({ clientId, canUpload, onBehalf = false, page = false }: {
   clientId: string;
   canUpload: boolean;
   /** Staff uploading for a client rather than a client uploading their own. Same form and
    *  the same route — the panel only stops addressing the reader as the document's owner. */
   onBehalf?: boolean;
+  /** The client's own page: the panel carries the page title and its actions. */
+  page?: boolean;
 }) {
   const docs = useApi<Doc[]>(`/clients/${clientId}/kyc`);
   const [kind, setKind] = useState('id_front');
   const [file, setFile] = useState<File | null>(null);
   const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<'all' | 'identity' | 'additional' | 'action'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploader = useRef<HTMLElement>(null);
 
   const rows = docs.data ?? [];
   const identity = rows.filter((d) => IDENTITY.includes(d.kind));
@@ -518,20 +545,34 @@ export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
     const best = sent.find((d) => d.status === 'approved')
       ?? sent.find((d) => d.status === 'pending')
       ?? sent[0] ?? null;
-    return { kind: k, state: best?.status ?? 'missing' as const };
+    return { kind: k, state: best?.status ?? 'missing', at: best?.uploaded_at ?? null, note: best?.note ?? null };
   });
-  const done = checklist.filter((c) => c.state === 'approved').length;
+  const verifiedCount = checklist.filter((c) => c.state === 'approved').length;
+  const verified = verifiedCount === REQUIRED.length;
+  const pending = rows.filter((d) => d.status === 'pending').length;
+  const rejected = rows.filter((d) => d.status === 'rejected').length;
+  const next = checklist.find((c) => c.state === 'missing' || c.state === 'rejected');
 
   function choose(f: File | null) {
     setFile(f);
     setError(null);
+    setDone(null);
     // Pick the type from the name where it is obvious, so the commonest upload is one
-    // drop and one button rather than a dropdown somebody has to remember to set.
+    // drop and one button rather than a choice somebody has to remember to make.
     const name = f?.name.toLowerCase() ?? '';
     const guess = [...IDENTITY, ...ADDITIONAL].find((k) => name.includes(k.replace(/_/g, '')))
       ?? (/passport|licence|license|\bid\b/.test(name) ? 'id_front' : null)
-      ?? (/address|utility|bill|bank/.test(name) ? 'proof_of_address' : null);
+      ?? (/address|utility|bill/.test(name) ? 'proof_of_address' : null);
     if (guess) setKind(guess);
+  }
+
+  /** Jump to the uploader with a type already chosen, and open the file picker. */
+  function start(k: string) {
+    setKind(k);
+    setError(null);
+    setDone(null);
+    uploader.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    fileRef.current?.click();
   }
 
   async function upload() {
@@ -548,59 +589,95 @@ export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
     });
     setBusy(false);
     if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? 'Upload failed');
+    setDone(`${docLabel(kind)} sent. The desk reviews it and you will hear when it is decided.`);
     setFile(null);
     if (fileRef.current) fileRef.current.value = '';
     docs.reload();
   }
 
-  const pending = rows.filter((d) => d.status === 'pending').length;
+  const shown = view === 'identity' ? identity : view === 'additional' ? extra
+    : view === 'action' ? rows.filter((d) => d.status === 'rejected') : rows;
 
   return (
-    <div className="space-y-4">
-      {/* Where verification stands, at a glance. */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile label="Verification" Icon={ShieldCheck} value={`${done} of ${REQUIRED.length}`}
-          tone={done === REQUIRED.length ? 'text-up' : ''}
-          note={done === REQUIRED.length ? 'Identity verified' : 'Identity documents accepted'}>
-          <div className="x-meter mt-3"><span style={{ width: `${(done / REQUIRED.length) * 100}%` }} /></div>
+    <div className="stagger space-y-4">
+      {page && (
+        <div className="flex flex-wrap items-center gap-3">
+          <PageTitle>Documents</PageTitle>
+          <span className={`x-badge ${verified ? '' : 'is-locked'}`}>
+            <ShieldCheck size={13} className="mr-1.5" aria-hidden />{verified ? 'Identity verified' : 'Verification in progress'}
+          </span>
+          {canUpload && (
+            <button type="button" onClick={() => start(next?.kind ?? kind)} className={`${btn} ml-auto inline-flex items-center gap-2`}>
+              <Upload size={16} aria-hidden />Upload a document
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatTile label="Verification" Icon={ShieldCheck} value={`${verifiedCount} of ${REQUIRED.length}`}
+          tone={verified ? 'text-up' : ''} note={verified ? 'Identity verified' : 'Required documents accepted'}>
+          <div className="x-meter mt-3"><span style={{ width: `${(verifiedCount / REQUIRED.length) * 100}%` }} /></div>
         </StatTile>
         <StatTile label="On file" Icon={FileText} value={rows.length} note={`${identity.length} identity · ${extra.length} additional`} />
         <StatTile label="In review" Icon={Clock} value={pending} tone={pending ? 'text-ember-ink' : ''}
           note={pending ? 'The desk is looking at these' : 'Nothing waiting on the desk'} />
+        <StatTile label="Needs action" Icon={AlertCircle} value={rejected} tone={rejected ? 'text-down' : ''}
+          note={rejected ? 'Not accepted — send again' : 'Nothing to resend'} />
       </div>
 
-      <div className={`grid gap-4 ${canUpload ? 'xl:grid-cols-2' : ''}`}>
-        <div className="x-card x-holo space-y-4 p-5">
+      <div className={`grid gap-4 ${canUpload ? 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}`}>
+        <section className="x-card x-holo space-y-4 p-5">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="section-title">Identity</h2>
-            <span className={`x-badge ml-auto ${done === REQUIRED.length ? '' : 'is-locked'}`}>{done} of {REQUIRED.length} approved</span>
+            <h2 className="section-title">Identity verification</h2>
+            <span className={`x-badge ml-auto ${verified ? '' : 'is-locked'}`}>{verifiedCount} of {REQUIRED.length} accepted</span>
           </div>
-          <ol className="space-y-3">
-            {checklist.map((c, i) => (
-              <li key={c.kind} className="flex items-center gap-3">
-                <span className={`x-step ${c.state === 'approved' ? '!border-up !text-up' : c.state === 'rejected' ? '!border-down !text-down' : ''}`} aria-hidden>
-                  {c.state === 'approved' ? '✓' : c.state === 'rejected' ? '✕' : i + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold capitalize text-obsidian dark:text-vellum">{pretty(c.kind)}</span>
-                  <span className="block text-xs text-slate-ink">
-                    {c.state === 'approved' ? 'Accepted'
-                      : c.state === 'pending' ? 'With us for review'
-                      : c.state === 'rejected' ? 'Needs sending again'
-                      : 'Not sent yet'}
+          <p className="text-xs text-slate-ink">
+            {verified
+              ? 'Both required documents are accepted. Nothing more is needed unless the desk asks.'
+              : `Two documents verify ${onBehalf ? 'the' : 'your'} account. Each is reviewed by the desk, usually within a working day.`}
+          </p>
+          <ol className="dc-steps">
+            {checklist.map((c, i) => {
+              const Icon = DOC_ICON[c.kind] ?? FileText;
+              const [label, badge] = BADGE[c.state] ?? BADGE.missing!;
+              return (
+                <li key={c.kind} className={`dc-step is-${c.state}`}>
+                  <span className="dc-step-dot" aria-hidden>
+                    {c.state === 'approved' ? <Check size={14} strokeWidth={2.6} /> : c.state === 'rejected' ? <X size={14} strokeWidth={2.6} /> : i + 1}
                   </span>
+                  <span className="x-chip !h-9 !w-9" aria-hidden><Icon size={17} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-semibold">{docLabel(c.kind)}</span>
+                    <span className="block text-xs text-slate-ink">
+                      {c.state === 'approved' ? `Accepted${c.at ? ` · sent ${dateOf(c.at)}` : ''}`
+                        : c.state === 'pending' ? `With the desk for review${c.at ? ` · sent ${dateOf(c.at)}` : ''}`
+                        : c.state === 'rejected' ? (c.note ? `Not accepted: ${c.note}` : 'Not accepted — please send it again')
+                        : ID_WHY[c.kind]}
+                    </span>
+                  </span>
+                  {canUpload && (c.state === 'missing' || c.state === 'rejected')
+                    ? <button type="button" onClick={() => start(c.kind)} className="x-btn-sm inline-flex shrink-0 items-center gap-1.5"><Upload size={13} aria-hidden />{c.state === 'rejected' ? 'Resend' : 'Upload'}</button>
+                    : <span className={`x-badge shrink-0 ${badge}`}>{label}</span>}
+                </li>
+              );
+            })}
+            <li className={`dc-step ${verified ? 'is-approved' : 'is-missing'}`}>
+              <span className="dc-step-dot" aria-hidden>{verified ? <Check size={14} strokeWidth={2.6} /> : REQUIRED.length + 1}</span>
+              <span className="x-chip !h-9 !w-9" aria-hidden><BadgeCheck size={17} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold">Account verified</span>
+                <span className="block text-xs text-slate-ink">
+                  {verified ? 'IPO subscriptions are open to you.' : 'Once both are accepted. Needed for IPO subscriptions.'}
                 </span>
-                <span className={`x-badge ${c.state === 'approved' ? '' : c.state === 'pending' ? 'is-locked' : c.state === 'rejected' ? 'is-bad' : 'is-muted'}`}>
-                  {c.state === 'approved' ? 'Accepted' : c.state === 'pending' ? 'Reviewing' : c.state === 'rejected' ? 'Resend' : 'Missing'}
-                </span>
-              </li>
-            ))}
+              </span>
+              <span className={`x-badge shrink-0 ${verified ? '' : 'is-muted'}`}>{verified ? 'Done' : 'Waiting'}</span>
+            </li>
           </ol>
-          <DocList rows={identity} empty="No identification uploaded yet." />
-        </div>
+        </section>
 
         {canUpload && (
-          <div className="x-card space-y-4 p-5">
+          <section ref={uploader} className="x-card x-holo scroll-mt-24 space-y-4 p-5">
             <h2 className="section-title">{onBehalf ? 'Upload for this client' : 'Upload a document'}</h2>
             {onBehalf && (
               <p className="text-xs text-slate-ink">
@@ -608,83 +685,88 @@ export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
                 their timeline, and an identity document moves them to pending verification.
               </p>
             )}
+
+            <fieldset>
+              <legend className="mb-2 text-[12.5px] text-mist">What is it?</legend>
+              <div className="space-y-2" role="radiogroup" aria-label="Document type">
+                {([['Identity', IDENTITY], ['Additional', ADDITIONAL]] as const).map(([group, kinds]) => (
+                  <div key={group} className="flex flex-wrap gap-1.5">
+                    {kinds.map((k) => {
+                      const Icon = DOC_ICON[k] ?? FileText;
+                      return (
+                        <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => { setKind(k); setDone(null); }}
+                          className={`dc-type ${kind === k ? 'is-on' : ''}`}>
+                          <Icon size={13} aria-hidden />{docLabel(k)}
+                          {REQUIRED.includes(k) && <span className="dc-req" title="Required">•</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-ink">{ID_WHY[kind] ?? WHY[kind]}</p>
+            </fieldset>
+
             {/* A drop target that is also a file picker: dragging is the fast path and the
                 click is the one that works on a phone and with a keyboard. */}
             <label
               onDragOver={(e) => { e.preventDefault(); setOver(true); }}
               onDragLeave={() => setOver(false)}
               onDrop={(e) => { e.preventDefault(); setOver(false); choose(e.dataTransfer.files?.[0] ?? null); }}
-              className={`x-drop ${over ? 'is-over' : ''}`}>
+              className={`x-drop ${over ? 'is-over' : ''} ${file ? 'has-file' : ''}`}>
               <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only"
                 onChange={(e) => choose(e.target.files?.[0] ?? null)} />
-              <span className="x-drop-icon" aria-hidden><Upload size={24} /></span>
-              <span className="block text-[15px] font-semibold text-obsidian dark:text-vellum">
+              <span className="x-drop-icon" aria-hidden>{file ? <FileText size={24} /> : <Upload size={24} />}</span>
+              <span className="block max-w-full truncate px-4 text-[15px] font-semibold text-obsidian dark:text-vellum">
                 {file ? file.name : 'Drop a file here, or choose one'}
               </span>
               <span className="block text-xs text-slate-ink">
                 {file
-                  ? `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || 'unknown type'}`
+                  ? `${file.size < 1024 * 1024 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`} · ${file.type || 'unknown type'} · click to change`
                   : 'JPEG, PNG or PDF, up to 10 MB · encrypted in transit'}
               </span>
             </label>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <label className="block">
-                <span className="metric-label">Document type</span>
-                <select className={`${field} mt-1 w-full`} value={kind} onChange={(e) => setKind(e.target.value)}>
-                  <optgroup label="Identity">
-                    {IDENTITY.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
-                  </optgroup>
-                  <optgroup label="Additional">
-                    {ADDITIONAL.map((k) => <option key={k} value={k}>{pretty(k)}</option>)}
-                  </optgroup>
-                </select>
-              </label>
-              <button onClick={upload} disabled={busy || !file} className={`${btn} self-end disabled:opacity-50`}>
-                {busy ? 'Uploading…' : 'Upload'}
-              </button>
-            </div>
             {error && <p role="alert" className={alertBox}>{error}</p>}
-          </div>
+            {done && <p role="status" className="flex items-center gap-1.5 text-xs text-up"><Check size={14} aria-hidden />{done}</p>}
+            <div className="flex gap-2">
+              <button onClick={upload} disabled={busy || !file} className={`${btn} flex-1 disabled:opacity-50`}>
+                {busy ? 'Uploading…' : file ? `Upload ${docLabel(kind)}` : 'Choose a file to upload'}
+              </button>
+              {file && (
+                <button type="button" className="x-btn-sm !h-auto" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </section>
         )}
       </div>
 
-      <div className="x-card space-y-3 p-5">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="section-title">Additional documents</h2>
-          <span className="text-xs text-slate-ink">Anything else the desk has asked for. Reviewed like the rest, but they do not change your verification either way.</span>
-        </div>
-        <DocList rows={extra} empty="Nothing else on file." />
-      </div>
-
-      {/* What else you can send, and why. Picking one sets the type and opens the file picker. */}
-      {canUpload && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-baseline gap-3">
-            <h3 className="section-title">{onBehalf ? 'What else can be filed' : 'What else you can send'}</h3>
-            <span className="text-xs text-slate-ink">
-              {onBehalf
-                ? 'none of these are required — they answer questions before they have to be asked'
-                : 'none of these are required — they answer questions before the desk has to ask'}
-            </span>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {ADDITIONAL.map((k) => (
-              <button key={k} type="button"
-                onClick={() => { setKind(k); fileRef.current?.click(); }}
-                className="x-card tile lift focus-ring p-4 text-left">
-                <span className="flex items-center gap-3">
-                  <span className="x-chip text-[11px] font-bold" aria-hidden>
-                    {pretty(k).split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-                  </span>
-                  <span className="block truncate text-[15px] font-semibold capitalize">{pretty(k)}</span>
-                </span>
-                <span className="mt-2 block text-xs text-slate-ink">{WHY[k]}</span>
-              </button>
+      <section className="x-card x-holo space-y-3 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="section-title">{onBehalf ? 'Documents on file' : 'Your documents'}</h2>
+          <div className="x-qgroups ml-auto w-full sm:w-auto" role="tablist">
+            {([['all', 'All', rows.length], ['identity', 'Identity', identity.length], ['additional', 'Additional', extra.length], ['action', 'Needs action', rejected]] as const).map(([k, label, n]) => (
+              <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
+                className={`!px-3 whitespace-nowrap ${view === k ? 'is-on' : ''}`}>{label}{n ? ` · ${n}` : ''}</button>
             ))}
           </div>
         </div>
-      )}
+        {!docs.data && <div className="skeleton h-24 rounded-lg" />}
+        {docs.data && !shown.length && (
+          <div className="grid place-items-center gap-2 py-8 text-center">
+            <span className="x-drop-icon" aria-hidden><FileText size={24} /></span>
+            <p className="text-[15px] font-semibold">{rows.length ? 'Nothing here' : 'Nothing uploaded yet'}</p>
+            <p className="max-w-sm text-xs text-slate-ink">
+              {rows.length ? 'Try another filter.' : 'Start with your photo ID and a proof of address — together they verify the account.'}
+            </p>
+          </div>
+        )}
+        <ul className="dc-list">
+          {shown.map((d) => <DocRow key={d.id} d={d} />)}
+        </ul>
+      </section>
     </div>
   );
 }
@@ -699,9 +781,10 @@ export function DocumentsPanel({ clientId, canUpload, onBehalf = false }: {
  */
 function DocRow({ d }: { d: Doc }) {
   const [src, setSrc] = useState<string | null>(null);
+  const pdf = /\.pdf$/i.test(d.storage_key ?? '');
 
   useEffect(() => {
-    if (/\.pdf$/i.test(d.storage_key ?? '')) return;
+    if (pdf) return;
     let url: string | null = null;
     let dropped = false;
     fetch(`/api/kyc/${d.id}/file`, { headers: { authorization: `Bearer ${token.get()}` } })
@@ -709,7 +792,7 @@ function DocRow({ d }: { d: Doc }) {
       .then((b) => { if (!dropped) { url = URL.createObjectURL(b); setSrc(url); } })
       .catch(() => setSrc(null));
     return () => { dropped = true; if (url) URL.revokeObjectURL(url); };
-  }, [d.id, d.storage_key]);
+  }, [d.id, pdf]);
 
   const open = async () => {
     const res = await fetch(`/api/kyc/${d.id}/file`, {
@@ -720,44 +803,27 @@ function DocRow({ d }: { d: Doc }) {
     window.open(url, '_blank', 'noopener');
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
+  const [label, badge] = BADGE[d.status] ?? [d.status, 'is-muted'];
 
   return (
-    <li className="flex flex-wrap items-center gap-3 py-2.5">
-      <button type="button" onClick={open} title="Open the document"
-        className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-pebble bg-bone transition-colors hover:border-ember dark:border-white/10 dark:bg-white/5">
-        {src
-          ? <img src={src} alt="" className="h-full w-full object-cover" />
-          : <span className="font-mono text-[10px] text-slate-ink" aria-hidden>PDF</span>}
+    <li>
+      <button type="button" onClick={open} title="Open the document" className="dc-thumb">
+        {src ? <img src={src} alt="" /> : <span aria-hidden>{pdf ? 'PDF' : <FileText size={18} />}</span>}
       </button>
-      <span className="min-w-0">
-        <button type="button" onClick={open}
-          className="block text-left text-sm font-medium text-obsidian hover:underline dark:text-vellum">
-          {pretty(d.kind)}
-        </button>
-        <span className={`block text-xs text-slate-ink ${mono}`}>
-          {new Date(d.uploaded_at).toLocaleDateString()}
-          {d.reviewed_at && ` · reviewed ${new Date(d.reviewed_at).toLocaleDateString()}`}
+      <span className="min-w-0 flex-1">
+        <button type="button" onClick={open} className="block text-left text-[14px] font-semibold hover:underline">{docLabel(d.kind)}</button>
+        <span className="block text-xs text-slate-ink">
+          Sent {dateOf(d.uploaded_at)}{d.reviewed_at && ` · reviewed ${dateOf(d.reviewed_at)}`}
+          {' · '}{IDENTITY.includes(d.kind) ? 'Identity' : 'Additional'}
         </span>
+        {d.note && <span className="mt-1 block text-xs text-slate-ink"><span className="font-semibold text-obsidian dark:text-vellum">Desk:</span> {d.note}</span>}
       </span>
-      <span className={`ml-auto ${STATUS[d.status] ?? ''}`}>{d.status}</span>
-      {d.note && (
-        <span className="w-full text-xs text-slate-ink">
-          <span className="text-obsidian dark:text-vellum">Note from the desk:</span> {d.note}
-        </span>
-      )}
+      <button type="button" onClick={open} className="x-btn-sm hidden items-center gap-1.5 sm:inline-flex"><Eye size={13} aria-hidden />View</button>
+      <span className={`x-badge shrink-0 ${badge}`}>{label}</span>
     </li>
   );
 }
 
-const DocList = ({ rows, empty }: { rows: Doc[]; empty: string }) => (
-  rows.length === 0
-    ? <p className="text-sm text-slate-ink">{empty}</p>
-    : (
-      <ul className="divide-y divide-pebble dark:divide-white/10">
-        {rows.map((d) => <DocRow key={d.id} d={d} />)}
-      </ul>
-    )
-);
 
 /** Deposits and withdrawals for the signed-in trader. */
 export function FundingPanel() {

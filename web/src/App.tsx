@@ -494,10 +494,7 @@ function Shell({ dark, setDark, onLogout }: {
           : hash === '/profile' ? (trading ? <ProfileView /> : <Denied />)
           : hash === '/wallet' ? (trading ? <WalletView /> : <Denied />)
           : hash === '/documents' ? (trading && me
-            ? <div className="stagger mx-auto max-w-[1300px] space-y-4">
-                <PageTitle>Documents</PageTitle>
-                <DocumentsPanel clientId={me.sub} canUpload />
-              </div>
+            ? <div className="mx-auto max-w-[1300px]"><DocumentsPanel clientId={me.sub} canUpload page /></div>
             : <Denied />)
           : hash === '/overview' ? (trading ? <OverviewView /> : <Denied />)
           : hash === '/trade' ? (trading ? <AutoTraderView /> : <Denied />)

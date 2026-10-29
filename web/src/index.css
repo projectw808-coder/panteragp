@@ -2362,3 +2362,31 @@ html:not(.dark) .wl-choice.is-found { border-color: rgba(255, 117, 24, 0.45); ba
 html:not(.dark) .wl-bar { background: var(--color-pebble); }
 html:not(.dark) .wl-rows > li + li { border-color: var(--color-pebble); }
 html:not(.dark) .wl-rows > li > a:hover { background: var(--color-bone); }
+
+/* ---------------------------------------------------------------- documents */
+.dc-steps { position: relative; display: grid; gap: 8px; }
+.dc-steps::before { content: ''; position: absolute; left: 13px; top: 24px; bottom: 24px; width: 1px; background: rgba(255, 255, 255, 0.1); }
+.dc-step { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 0; }
+.dc-step-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 27px; height: 27px; flex-shrink: 0; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--color-mist); background: var(--color-onyx, #0c1117); border: 1.5px solid rgba(255, 255, 255, 0.18); }
+.dc-step.is-approved .dc-step-dot { color: #06130b; background: var(--color-up); border-color: var(--color-up); box-shadow: 0 0 10px color-mix(in srgb, var(--color-up) 45%, transparent); }
+.dc-step.is-pending .dc-step-dot { color: var(--color-ember); border-color: rgba(255, 117, 24, 0.7); box-shadow: 0 0 12px rgba(255, 117, 24, 0.3); }
+.dc-step.is-rejected .dc-step-dot { color: var(--color-down); border-color: var(--color-down); }
+.dc-step.is-missing .dc-step-dot { color: var(--color-ember); border-color: rgba(255, 117, 24, 0.5); }
+.dc-type { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--color-mist); border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.02); transition: color 0.2s, border-color 0.2s, background-color 0.2s; }
+.dc-type:hover { color: var(--color-vellum); border-color: rgba(255, 117, 24, 0.45); }
+.dc-type.is-on { color: var(--color-ember-ink); border-color: var(--color-ember); background: rgba(255, 117, 24, 0.12); }
+.dc-req { color: var(--color-ember); font-size: 16px; line-height: 0; }
+.x-drop.has-file { border-style: solid; border-color: rgba(255, 117, 24, 0.55); }
+.dc-list > li { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.dc-list > li + li { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.dc-thumb { display: grid; place-items: center; width: 52px; height: 52px; flex-shrink: 0; overflow: hidden; border-radius: 10px; font-size: 11px; font-weight: 700; color: var(--color-mist); border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); transition: border-color 0.2s; }
+.dc-thumb:hover { border-color: var(--color-ember); }
+.dc-thumb > img { width: 100%; height: 100%; object-fit: cover; }
+html:not(.dark) .dc-steps::before { background: var(--color-pebble); }
+html:not(.dark) .dc-step-dot { background: #fff; border-color: var(--color-pebble); }
+html:not(.dark) .dc-step.is-approved .dc-step-dot { color: #fff; }
+html:not(.dark) .dc-type { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .dc-type:hover { color: var(--color-obsidian); }
+html:not(.dark) .dc-type.is-on { background: rgba(255, 117, 24, 0.08); border-color: var(--color-ember); }
+html:not(.dark) .dc-list > li + li { border-color: var(--color-pebble); }
+html:not(.dark) .dc-thumb { border-color: #e4e7ec; background: var(--color-bone); }
