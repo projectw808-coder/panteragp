@@ -3,15 +3,17 @@ import {
   BarSeries, CandlestickSeries, HistogramSeries, LineSeries, createChart,
   type IChartApi, type ISeriesApi, type UTCTimestamp,
 } from 'lightweight-charts';
-import { card, grouped } from './App.tsx';
+import {
+  BarChart3, CandlestickChart, Columns2, Eraser, Grid2x2, LineChart, Minus, MousePointer2, Ratio, Search, Square, TrendingUp,
+} from 'lucide-react';
+import { grouped, PageTitle } from './App.tsx';
+import { Coin } from './landing.tsx';
 import { FundamentalsCard } from './fundamentals.tsx';
 
 import { api, useApi } from './api.ts';
 import { useFeed } from './feed.ts';
 import { bollinger, ema, macd, rsi, sma } from './indicators.ts';
 
-// Compact select: the shared `input` style is w-full, which would beat a fixed width here.
-const sel = 'rounded-md border border-pebble px-2 py-1 text-xs outline-none dark:border-white/10 dark:bg-onyx';
 
 export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 type Instrument = { symbol: string; display_name: string; asset_class: string | null };
@@ -40,9 +42,9 @@ const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 // Only two chromatic values appear: up/down (the sanctioned money-delta exception) and
 // ember for the single most important overlay. Every other series is neutral grey.
 const theme = (dark: boolean) => dark
-  ? { bg: '#18181b', text: '#a1a1aa', grid: '#27272a', up: '#15803d', down: '#b91c1c',
+  ? { bg: 'rgba(0,0,0,0)', text: '#8b93a1', grid: 'rgba(255,255,255,0.05)', up: '#2cba60', down: '#ff4d4f',
       line: '#ff7817', draw: '#ff7817', accent: '#ff7817', muted: '#71717a', faint: '#3f3f46' }
-  : { bg: '#ffffff', text: '#71717a', grid: '#e5e7eb', up: '#15803d', down: '#b91c1c',
+  : { bg: 'rgba(0,0,0,0)', text: '#71717a', grid: '#eef0f3', up: '#116a32', down: '#af1b1b',
       line: '#ff7817', draw: '#ff7817', accent: '#ff7817', muted: '#71717a', faint: '#a1a1aa' };
 
 /** Pair indicator output with bar times, dropping the leading nulls the chart can't plot. */
@@ -52,8 +54,8 @@ const series = (bars: Candle[], values: (number | null)[]) =>
 
 // ------------------------------------------------------------------ panel
 
-function ChartPanel({ instruments, dark, symbol, onSymbol }: {
-  instruments: Instrument[]; dark: boolean; symbol: string; onSymbol: (s: string) => void;
+function ChartPanel({ instruments, dark, symbol, onSymbol, quote }: {
+  instruments: Instrument[]; dark: boolean; symbol: string; onSymbol: (s: string) => void; quote?: Quote;
 }) {
   const [tf, setTf] = useState<(typeof TIMEFRAMES)[number]>('1H');
   const [type, setType] = useState<(typeof TYPES)[number]>('line');
@@ -215,41 +217,70 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
   const width = box.current?.clientWidth ?? 0;
 
   return (
-    <div className={`${card} flex h-[420px] min-h-0 flex-col gap-2 p-2 lg:h-auto`}>
-      <div className="flex flex-wrap items-center gap-1 text-xs">
-        <select className={`${sel} w-28`} value={symbol} onChange={(e) => onSymbol(e.target.value)}>
-          {grouped(instruments).map(([label, items]) => (
-            <optgroup key={label} label={label}>
-              {items.map((i) => <option key={i.symbol} value={i.symbol}>{i.symbol}</option>)}
-            </optgroup>
+    <div className="ch-card flex h-[440px] shrink-0 flex-col lg:h-auto lg:min-h-0 lg:shrink">
+      <div className="ch-head">
+        <span className="ch-coin" aria-hidden><Coin symbol={symbol} /></span>
+        <label className="min-w-0">
+          <span className="sr-only">Market</span>
+          <select className="ch-symbol" value={symbol} onChange={(e) => onSymbol(e.target.value)}>
+            {grouped(instruments).map(([label, items]) => (
+              <optgroup key={label} label={label}>
+                {items.map((i) => <option key={i.symbol} value={i.symbol}>{i.symbol}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <span className="block truncate text-[11px] text-slate-ink">{instruments.find((i) => i.symbol === symbol)?.display_name ?? ''}</span>
+        </label>
+        {quote && (
+          <span className="ml-1 flex items-baseline gap-2">
+            <span className="text-[17px] font-bold tabular-nums">{quote.price.toLocaleString('en-US', { maximumFractionDigits: quote.price < 10 ? 5 : 2 })}</span>
+            <span className={`ch-chg ${quote.change >= 0 ? 'is-up' : 'is-down'}`}>{quote.change >= 0 ? '▲' : '▼'} {Math.abs(quote.change_pct).toFixed(2)}%</span>
+          </span>
+        )}
+        <div role="radiogroup" aria-label="Timeframe" className="ch-seg ml-auto">
+          {TIMEFRAMES.map((f) => (
+            <button key={f} type="button" role="radio" aria-checked={tf === f} onClick={() => setTf(f)} className={tf === f ? 'is-on' : ''}>{f}</button>
           ))}
-        </select>
-        <select className={`${sel} w-16`} value={tf} onChange={(e) => setTf(e.target.value as typeof tf)}>
-          {TIMEFRAMES.map((f) => <option key={f}>{f}</option>)}
-        </select>
-        <select className={`${sel} w-28`} value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-          {TYPES.map((f) => <option key={f}>{f}</option>)}
-        </select>
-        <span className="mx-1 flex flex-wrap gap-1">
+        </div>
+      </div>
+
+      <div className="ch-tools">
+        <div role="radiogroup" aria-label="Chart type" className="ch-seg">
+          {TYPES.map((t) => {
+            const Icon = t === 'candlestick' ? CandlestickChart : t === 'line' ? LineChart : BarChart3;
+            return (
+              <button key={t} type="button" role="radio" aria-checked={type === t} title={t} aria-label={t} onClick={() => setType(t)} className={type === t ? 'is-on' : ''}>
+                <Icon size={14} aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+        <span className="ch-sep" aria-hidden />
+        <div className="flex flex-wrap gap-1" aria-label="Indicators">
           {[...OVERLAYS, ...PANELS].map((i) => (
-            <button key={i} onClick={() => toggle(i)} aria-pressed={on.includes(i)}
-              className={`rounded-full px-2 py-1 ${on.includes(i) ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-              {i}
-            </button>
+            <button key={i} type="button" onClick={() => toggle(i)} aria-pressed={on.includes(i)} className={`ch-chip ${on.includes(i) ? 'is-on' : ''}`}>{i}</button>
           ))}
-        </span>
-        <span className="flex flex-wrap gap-1">
-          {(['none', 'trend', 'hline', 'fib'] as Tool[]).map((t) => (
-            <button key={t} onClick={() => { setTool(t); pending.current = null; setAwaiting(false); }} aria-pressed={tool === t}
-              className={`rounded-full px-2 py-1 ${tool === t ? 'bg-ember text-graphite' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-              {t === 'none' ? 'cursor' : t}
-            </button>
-          ))}
-          {drawings.length > 0 &&
-            <button className="rounded-full px-2 py-1 text-slate-ink hover:text-obsidian hover:underline dark:hover:text-vellum"
-              onClick={() => { setDrawings([]); pending.current = null; setAwaiting(false); }}>clear</button>}
-        </span>
-        {awaiting && <span className="font-medium text-obsidian dark:text-vellum">click the second point…</span>}
+        </div>
+        <span className="ch-sep" aria-hidden />
+        <div className="ch-seg" role="radiogroup" aria-label="Drawing tool">
+          {(['none', 'trend', 'hline', 'fib'] as Tool[]).map((t) => {
+            const Icon = t === 'none' ? MousePointer2 : t === 'trend' ? TrendingUp : t === 'hline' ? Minus : Ratio;
+            const label = t === 'none' ? 'Cursor' : t === 'trend' ? 'Trend line' : t === 'hline' ? 'Horizontal line' : 'Fibonacci';
+            return (
+              <button key={t} type="button" role="radio" aria-checked={tool === t} title={label} aria-label={label}
+                onClick={() => { setTool(t); pending.current = null; setAwaiting(false); }} className={tool === t ? 'is-on' : ''}>
+                <Icon size={14} aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+        {drawings.length > 0 && (
+          <button type="button" className="ch-chip inline-flex items-center gap-1" title="Clear drawings"
+            onClick={() => { setDrawings([]); pending.current = null; setAwaiting(false); }}>
+            <Eraser size={12} aria-hidden />Clear
+          </button>
+        )}
+        {awaiting && <span className="text-[11.5px] font-semibold text-ember-ink">Click the second point…</span>}
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -287,12 +318,15 @@ function ChartPanel({ instruments, dark, symbol, onSymbol }: {
   );
 }
 
-// ----------------------------------------------------------------- watchlist
+// ----------------------------------------------------------------- live quotes
 
-function Watchlist({ onPick }: { onPick: (s: string) => void }) {
+/**
+ * Every instrument's price, kept live: the REST snapshot once, then each tick. The previous
+ * bar's close comes from the snapshot, because ticks only carry the current price. Shared
+ * by the watchlist and every chart's header, so the two can never show different prices.
+ */
+function useLiveQuotes() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  // The previous bar's close, to price the change against. Comes from the REST snapshot;
-  // ticks only carry the current price.
   const base = useRef<Record<string, number>>({});
   const [flash, setFlash] = useState<Record<string, 'up' | 'down'>>({});
 
@@ -323,83 +357,126 @@ function Watchlist({ onPick }: { onPick: (s: string) => void }) {
     });
   }, []);
 
+  return { quotes, flash };
+}
+
+// ----------------------------------------------------------------- watchlist
+
+const CLASS_LABEL: Record<string, string> = { crypto: 'Crypto', forex: 'FX', fx: 'FX', metal: 'Metals', metals: 'Metals', commodity: 'Metals', index: 'Indices', etf: 'ETFs', stock: 'Stocks', equity: 'Stocks' };
+
+function Watchlist({ quotes, flash, instruments, active, onPick }: {
+  quotes: Quote[]; flash: Record<string, 'up' | 'down'>; instruments: Instrument[]; active: string; onPick: (s: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [cls, setCls] = useState('all');
+  const info = new Map(instruments.map((i) => [i.symbol, i]));
+  const classes = [...new Set(instruments.map((i) => CLASS_LABEL[i.asset_class ?? ''] ?? 'Other'))].filter((c) => c !== 'Other');
+  const term = q.trim().toLowerCase();
+  const rows = quotes.filter((x) => {
+    const i = info.get(x.symbol);
+    if (cls !== 'all' && (CLASS_LABEL[i?.asset_class ?? ''] ?? 'Other') !== cls) return false;
+    return !term || x.symbol.toLowerCase().includes(term) || (i?.display_name ?? '').toLowerCase().includes(term);
+  });
+
   return (
     // The frame keeps its height and the rows move inside it: header pinned, list scrolling
     // under it, and the whole thing bounded by the column rather than by how many
     // instruments happen to be listed.
-    <div className={`${card} flex min-h-0 flex-1 flex-col overflow-hidden p-0`}>
-      <h2 className="flex shrink-0 items-baseline gap-2 border-b border-pebble px-3 py-2 dark:border-white/10">
-        <span className="metric-label">Watchlist</span>
-        <span className="ml-auto font-mono text-[10px] tabular-nums text-slate-ink">{quotes.length}</span>
-      </h2>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
-          <colgroup>
-            <col />
-            <col className="w-[4.75rem]" />
-            <col className="w-[3.75rem]" />
-          </colgroup>
-          <tbody>
-          {quotes.map((q) => (
-            <tr key={q.symbol} onClick={() => onPick(q.symbol)}
-              className="cursor-pointer border-b border-pebble last:border-0 hover:bg-bone dark:border-white/10 dark:hover:bg-white/10">
-              <td className="truncate px-3 py-1.5 font-medium">{q.symbol}</td>
-              <td className={`truncate px-1 py-1.5 text-right tabular-nums transition-colors ${
-                flash[q.symbol] === 'up' ? 'text-up' : flash[q.symbol] === 'down' ? 'text-down' : ''}`}>
-                {q.price}
-              </td>
-              <td className={`px-2 py-1.5 text-right tabular-nums ${q.change >= 0 ? 'text-up' : 'text-down'}`}>
-                {q.change >= 0 ? '+' : ''}{q.change_pct}%
-              </td>
-            </tr>
+    <div className="ch-card flex max-h-80 min-h-0 flex-1 flex-col overflow-hidden lg:max-h-none">
+      <div className="shrink-0 space-y-2 border-b border-white/5 p-3 [html:not(.dark)_&]:border-pebble">
+        <div className="flex items-center gap-2">
+          <h2 className="section-title">Watchlist</h2>
+          <span className="ml-auto text-[11px] tabular-nums text-slate-ink">{rows.length}</span>
+        </div>
+        <label className="ch-search">
+          <Search size={13} aria-hidden />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search markets" aria-label="Search markets" />
+        </label>
+        {classes.length > 1 && (
+          <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Asset class">
+            {['all', ...classes].map((c) => (
+              <button key={c} type="button" role="tab" aria-selected={cls === c} onClick={() => setCls(c)} className={`ch-chip shrink-0 ${cls === c ? 'is-on' : ''}`}>
+                {c === 'all' ? 'All' : c}
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+        {rows.map((x) => (
+          <li key={x.symbol}>
+            <button type="button" onClick={() => onPick(x.symbol)} className={`ch-row ${x.symbol === active ? 'is-active' : ''}`}>
+              <span className="ch-coin is-sm" aria-hidden><Coin symbol={x.symbol} /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[12.5px] font-semibold">{x.symbol}</span>
+                <span className="block truncate text-[10.5px] text-slate-ink">{info.get(x.symbol)?.display_name ?? ''}</span>
+              </span>
+              <span className="text-right">
+                <span className={`block text-[12.5px] font-semibold tabular-nums transition-colors ${flash[x.symbol] === 'up' ? 'text-up' : flash[x.symbol] === 'down' ? 'text-down' : ''}`}>
+                  {x.price.toLocaleString('en-US', { maximumFractionDigits: x.price < 10 ? 5 : 2 })}
+                </span>
+                <span className={`ch-chg is-xs ${x.change >= 0 ? 'is-up' : 'is-down'}`}>{x.change >= 0 ? '+' : ''}{x.change_pct.toFixed(2)}%</span>
+              </span>
+            </button>
+          </li>
+        ))}
+        {!rows.length && <li className="px-3 py-6 text-center text-xs text-slate-ink">{quotes.length ? 'Nothing matches.' : 'Loading markets…'}</li>}
+      </ul>
     </div>
   );
 }
 
 // --------------------------------------------------------------------- view
 
+const LAYOUTS = [[1, Square, 'One chart'], [2, Columns2, 'Two charts'], [4, Grid2x2, 'Four charts']] as const;
+
 export function ChartsView({ dark }: { dark: boolean }) {
   const instruments = useApi<Instrument[]>('/instruments');
+  const { quotes, flash } = useLiveQuotes();
   const [count, setCount] = useState(4);
   const [symbols, setSymbols] = useState(['BTCUSD', 'ETHUSD', 'XAUUSD', 'EURUSD']);
   // The chart the watchlist loads into and the fundamentals describe: the last one touched.
   const [focus, setFocus] = useState(0);
   const at = Math.min(focus, count - 1);
   const setAt = (i: number, s: string) => setSymbols((v) => v.map((x, j) => (j === i ? s : x)));
+  const quoteOf = (s: string) => quotes.find((x) => x.symbol === s);
 
   return (
-    // Side by side from lg up; on a phone or a tablet the watchlist sits above the charts,
-    // kept short so the charts are not a screen away, and each chart has its own height.
-    <div className="flex min-h-0 flex-col gap-4 lg:h-full lg:flex-row">
-        <div className="flex max-h-72 min-h-0 w-full shrink-0 flex-col gap-3 lg:max-h-none lg:w-72">
-        <div className="flex gap-1 text-xs">
-            {[1, 2, 4].map((n) => (
-              <button key={n} onClick={() => setCount(n)} aria-pressed={count === n}
-                className={`flex-1 rounded-full px-2 py-1 ${count === n ? 'bg-onyx text-vellum dark:bg-pebble dark:text-obsidian' : 'bg-bone text-slate-ink dark:bg-white/10 dark:text-mist'}`}>
-                {n} chart{n > 1 ? 's' : ''}
-              </button>
-            ))}
-          </div>
-          <Watchlist onPick={(s) => setAt(at, s)} />
+    <div className="flex flex-col gap-3 lg:h-full lg:min-h-0">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <PageTitle>Charts</PageTitle>
+        <span className="x-badge"><i className="nav-live mr-1.5 block size-1.5 rounded-full bg-up" aria-hidden />Live prices</span>
+        {count > 1 && <span className="hidden text-xs text-slate-ink md:inline">Click a chart to focus it; the watchlist loads into the one outlined.</span>}
+        <div role="radiogroup" aria-label="Layout" className="ch-seg ml-auto">
+          {LAYOUTS.map(([n, Icon, label]) => (
+            <button key={n} type="button" role="radio" aria-checked={count === n} title={label} aria-label={label} onClick={() => setCount(n)} className={count === n ? 'is-on' : ''}>
+              <Icon size={15} aria-hidden />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Side by side from lg up; on a phone or a tablet the watchlist sits above the charts,
+          kept short so the charts are not a screen away, and each chart has its own height. */}
+      <div className="flex flex-1 flex-col gap-3 lg:min-h-0 lg:flex-row">
+        <div className="flex w-full shrink-0 flex-col gap-3 lg:min-h-0 lg:w-72">
+          <Watchlist quotes={quotes} flash={flash} instruments={instruments.data ?? []} active={symbols[at]!} onPick={(s) => setAt(at, s)} />
           <FundamentalsCard symbol={symbols[at]!} />
         </div>
 
-      {/* The panels sequence in. Safe against lightweight-charts' autoSize, which sizes from
-          a ResizeObserver on the border box: a translate does not change that box, so the
-          chart measures the same width mid-animation as at rest. Nothing here re-runs on a
-          price tick — the series is updated in place — so this is arrival only, which is the
-          whole rule. Changing the 1/2/4 count does remount and replay it, and should. */}
-      <div className={`stagger grid min-h-0 flex-1 gap-3 ${count === 1 ? '' : 'md:grid-cols-2'} ${count === 4 ? 'md:grid-rows-2' : ''}`}>
-        {symbols.slice(0, count).map((s, i) => (
-          <div key={i} className={`ch-slot ${count > 1 && at === i ? 'is-focus' : ''}`} onPointerDownCapture={() => setFocus(i)} onFocusCapture={() => setFocus(i)}>
-            <ChartPanel symbol={s} onSymbol={(v) => setAt(i, v)}
-              instruments={instruments.data ?? []} dark={dark} />
-          </div>
-        ))}
+        {/* The panels sequence in. Safe against lightweight-charts' autoSize, which sizes from
+            a ResizeObserver on the border box: a translate does not change that box, so the
+            chart measures the same width mid-animation as at rest. Nothing here re-runs on a
+            price tick — the series is updated in place — so this is arrival only, which is the
+            whole rule. Changing the 1/2/4 count does remount and replay it, and should. */}
+        <div className={`stagger grid flex-1 gap-3 lg:min-h-0 ${count === 1 ? '' : 'md:grid-cols-2'} ${count === 4 ? 'md:grid-rows-2' : ''}`}>
+          {symbols.slice(0, count).map((s, i) => (
+            <div key={i} className={`ch-slot ${count > 1 && at === i ? 'is-focus' : ''}`} onPointerDownCapture={() => setFocus(i)} onFocusCapture={() => setFocus(i)}>
+              <ChartPanel symbol={s} onSymbol={(v) => setAt(i, v)} quote={quoteOf(s)}
+                instruments={instruments.data ?? []} dark={dark} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
