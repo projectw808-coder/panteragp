@@ -7586,6 +7586,12 @@ app.get('/me/arena', { preHandler: trader }, async (req: any) => {
   const { rows: [last] } = await pool.query(
     'SELECT month, league, rank, members, score, ret, move FROM league_results WHERE client_id = $1 ORDER BY month DESC LIMIT 1', [me]);
   const n = movesFor(table.length);
+  // How rare each achievement is: the share of Arena members who hold it. A badge most
+  // people have is a step; one few have is a trophy, and saying which is honest either way.
+  const { rows: [{ total }] } = await pool.query<{ total: number }>('SELECT count(*)::int AS total FROM arena_profiles');
+  const { rows: held } = await pool.query<{ code: string; n: number }>(
+    'SELECT code, count(DISTINCT client_id)::int AS n FROM client_achievements GROUP BY code');
+  const share = new Map(held.map((h) => [h.code, total ? h.n / total : 0]));
 
   return {
     month,
@@ -7603,7 +7609,7 @@ app.get('/me/arena', { preHandler: trader }, async (req: any) => {
       const got = earned.filter((e) => e.code === a.code);
       const progress = facts && a.check ? a.check(facts) : null;
       return {
-        code: a.code, title: a.title, note: a.note, icon: a.icon, bonus: a.bonus,
+        code: a.code, title: a.title, note: a.note, icon: a.icon, bonus: a.bonus, share: share.get(a.code) ?? 0,
         earned: got.map((e) => ({ period: e.period, at: e.earned_at, bonus: e.bonus === null ? null : Number(e.bonus), status: e.bonus_status })),
         have: progress?.have ?? null, need: progress?.need ?? null,
       };
