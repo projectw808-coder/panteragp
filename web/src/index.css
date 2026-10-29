@@ -2399,3 +2399,45 @@ html:not(.dark) .dc-thumb { border-color: #e4e7ec; background: var(--color-bone)
 .ov-feed > li.is-new .text-\[13px\] { color: var(--color-ember-ink); }
 html:not(.dark) .ov-feed > li + li { border-color: var(--color-pebble); }
 html:not(.dark) .ov-coin > span.bg-white\/10 { background: #475467; }
+
+/* ---------------------------------------------------------------- arena */
+.ar-table { font-size: 13px; }
+.ar-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 84px 76px; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; }
+.ar-head { padding-top: 0; padding-bottom: 6px; font-size: 11px; color: var(--color-mist); }
+.ar-row + div .ar-row, [role="rowgroup"] + [role="rowgroup"] > .ar-row { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.ar-row.is-up { background: color-mix(in srgb, var(--color-up) 5%, transparent); }
+.ar-row.is-down { background: color-mix(in srgb, var(--color-down) 5%, transparent); }
+.ar-row.is-me { background: rgba(255, 117, 24, 0.12) !important; box-shadow: inset 0 0 0 1.5px var(--color-ember); }
+.ar-rank { font-weight: 700; color: var(--color-mist); font-variant-numeric: tabular-nums; }
+.ar-medal { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; font-size: 12px; font-weight: 800; color: #1a1205; }
+.ar-medal.is-1 { background: #f5c542; box-shadow: 0 0 12px rgba(245, 197, 66, 0.45); }
+.ar-medal.is-2 { background: #c9d2dd; }
+.ar-medal.is-3 { background: #d08b4e; }
+.ar-gap { text-align: center; font-size: 12px; letter-spacing: 3px; color: var(--color-mist); padding: 2px 0; }
+.ar-line { margin: 4px 0; padding: 3px 10px; font-size: 11px; font-weight: 600; border-radius: 0; }
+.ar-line.is-up { color: var(--color-up); border-top: 1px dashed color-mix(in srgb, var(--color-up) 55%, transparent); }
+.ar-line.is-down { color: var(--color-down); border-bottom: 1px dashed color-mix(in srgb, var(--color-down) 55%, transparent); }
+.ar-ladder { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ar-ladder > li { display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px; font-size: 11.5px; font-weight: 600; color: var(--color-mist); border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.ar-ladder > li > svg { color: var(--tone); opacity: 0.55; }
+.ar-ladder > li.is-past > svg { opacity: 0.85; }
+.ar-ladder > li.is-on { color: var(--color-vellum); border-color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--tone) 25%, transparent); }
+.ar-ladder > li.is-on > svg { opacity: 1; }
+.ar-ach { padding: 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); }
+.ar-ach-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; color: var(--color-mist); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); }
+.ar-ach.is-earned { border-color: rgba(255, 117, 24, 0.4); background: linear-gradient(160deg, rgba(255, 117, 24, 0.1), rgba(255, 117, 24, 0.01) 70%); }
+.ar-ach.is-earned .ar-ach-icon { color: #ffcf9e; background: radial-gradient(circle at 30% 25%, rgba(255, 170, 90, 0.55), rgba(255, 122, 18, 0.35) 45%, rgba(120, 50, 0, 0.5)); border-color: rgba(255, 150, 60, 0.45); box-shadow: 0 4px 14px rgba(255, 122, 18, 0.25); }
+.ar-ach:not(.is-earned) { opacity: 0.88; }
+.ar-bonuses > li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; }
+.ar-bonuses > li + li { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+html:not(.dark) [role="rowgroup"] + [role="rowgroup"] > .ar-row { border-color: var(--color-pebble); }
+html:not(.dark) .ar-ladder > li { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .ar-ladder > li.is-on { color: var(--color-obsidian); }
+html:not(.dark) .ar-ach { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .ar-ach.is-earned { background: linear-gradient(160deg, rgba(255, 117, 24, 0.08), #fff 70%); }
+html:not(.dark) .ar-ach-icon { background: #f3f4f6; border-color: #e4e7ec; }
+html:not(.dark) .ar-ach.is-earned .ar-ach-icon { color: #9a3d00; background: radial-gradient(circle at 30% 25%, #ffe2c4, #ffc28a 60%, #ffab61); }
+html:not(.dark) .ar-bonuses > li + li { border-color: var(--color-pebble); }
+.ar-tone { color: var(--tone); }
+html:not(.dark) .ar-tone { color: color-mix(in srgb, var(--tone) 62%, #1a1205); }
+html:not(.dark) .ar-ladder > li > svg { color: color-mix(in srgb, var(--tone) 70%, #1a1205); }

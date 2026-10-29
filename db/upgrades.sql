@@ -1016,3 +1016,44 @@ DO $do$ BEGIN
     INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-10-26');
   END IF;
 END $do$;
+
+-- The Arena: each client's alias and league, the achievements they have earned (with any
+-- bonus and the desk's decision on it), and each month's final league table. Results are
+-- written once per month, gated on league_closings, so a month is never closed twice.
+CREATE TABLE IF NOT EXISTS arena_profiles (
+  client_id    uuid PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
+  alias        text NOT NULL UNIQUE,
+  league       text NOT NULL DEFAULT 'bronze' CHECK (league IN ('bronze','silver','gold','platinum','diamond')),
+  listed       boolean NOT NULL DEFAULT true,
+  joined_month text NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS client_achievements (
+  id           bigserial PRIMARY KEY,
+  client_id    uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  code         text NOT NULL,
+  period       text NOT NULL DEFAULT '',
+  earned_at    timestamptz NOT NULL DEFAULT now(),
+  bonus        numeric(18,2),
+  bonus_status text NOT NULL DEFAULT 'none' CHECK (bonus_status IN ('none','pending','paid','declined')),
+  decided_by   uuid REFERENCES staff(id),
+  decided_at   timestamptz,
+  note         text,
+  UNIQUE (client_id, code, period)
+);
+CREATE INDEX IF NOT EXISTS client_achievements_pending ON client_achievements (bonus_status) WHERE bonus_status = 'pending';
+CREATE TABLE IF NOT EXISTS league_results (
+  month     text NOT NULL,
+  client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  league    text NOT NULL,
+  rank      int NOT NULL,
+  members   int NOT NULL,
+  score     int NOT NULL,
+  ret       numeric NOT NULL,
+  move      text NOT NULL CHECK (move IN ('up','down','stay')),
+  PRIMARY KEY (month, client_id)
+);
+CREATE TABLE IF NOT EXISTS league_closings (
+  month     text PRIMARY KEY,
+  closed_at timestamptz NOT NULL DEFAULT now()
+);

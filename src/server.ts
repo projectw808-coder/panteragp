@@ -21,6 +21,10 @@ import { candles, isLive, liveOpen, quote, spot, startLiveMarket, TIMEFRAMES, ty
 startLiveMarket();
 import { demoShowcase } from './showcase-demo.ts';
 import { makeFundamentals } from './fundamentals.ts';
+import {
+  ACHIEVEMENTS, achievement, demote, type Facts, LEAGUES, type League, leagueFor, makeAlias, monthKey, monthStart,
+  movesFor, nextMonth, promote, rankLeague, scoreOf, type Standing,
+} from './arena.ts';
 import { evaluate, DEFAULT_WIN_RATE, pairTrade, sizeFor, stats as botStats, steer, STRATEGIES, type Direction, type StrategyKind } from './autotrader.ts';
 import {
   accrue, applyFill, convert, isTriggered, marginCheck, progress, project, round8, trailStop, unrealized,
@@ -1350,26 +1354,21 @@ app.get('/clients/:id/wallets', { preHandler: clientScope }, async (req: any) =>
  * honest series: it answers "has this made me anything", which is the question the chart is
  * there for.
  */
-app.get('/me/performance', { preHandler: trader }, async (req: any) => {
-  const q = z.object({
-    days: z.coerce.number().int().min(1).max(3650).default(30),
-  }).parse(req.query);
-
-  // The day spine, so a day on which nothing happened is still a point on the line.
-  const { rows: spine } = await pool.query<{ day: string }>(`
-    SELECT to_char(d, 'YYYY-MM-DD') AS day
-      FROM generate_series(current_date - ($1 || ' days')::interval, current_date, interval '1 day') d
-     ORDER BY day`, [q.days - 1]);
-
+/**
+ * Everything a client earned and moved from a given day on, one row per day, per source,
+ * per currency. Shared by the performance chart and the Arena's league score, so the two
+ * can never disagree about what somebody earned.
+ */
+async function earningParts(clientId: string, fromDay: string) {
   // One row per day, per source, PER CURRENCY — never summed across currencies in SQL,
   // because they cannot be. A pot pays interest in the pot's currency and a stake pays its
   // reward in the asset staked, so the old version added 0.01 BTC to a dollar figure as
   // though it were one cent, and £100 of interest as though it were $100. The same mistake
   // was found and fixed for cash flows (see the note below) and left standing here.
-  const { rows: parts } = await pool.query<{
+  const { rows } = await pool.query<{
     day: string; bucket: 'earned' | 'in' | 'out'; code: string; amount: string;
   }>(`
-    WITH span AS (SELECT (current_date - ($2 || ' days')::interval)::date AS from_day)
+    WITH span AS (SELECT $2::date AS from_day)
     -- Realised P&L, written onto the fill's own timeline entry when it happens, plus any
     -- adjustment the desk has made by hand. Both land in the account demoAccount() returns,
     -- which is the USD one, and both write the same realized field.
@@ -1411,7 +1410,22 @@ app.get('/me/performance', { preHandler: trader }, async (req: any) => {
       JOIN trading_accounts ta ON ta.id = c.account_id, span s
      WHERE c.client_id = $1 AND c.status IN ('approved','settled')
        AND c.created_at >= s.from_day
-     GROUP BY 1, 2, 3`, [req.principal.sub, q.days - 1]);
+     GROUP BY 1, 2, 3`, [clientId, fromDay]);
+  return rows;
+}
+
+app.get('/me/performance', { preHandler: trader }, async (req: any) => {
+  const q = z.object({
+    days: z.coerce.number().int().min(1).max(3650).default(30),
+  }).parse(req.query);
+
+  // The day spine, so a day on which nothing happened is still a point on the line.
+  const { rows: spine } = await pool.query<{ day: string }>(`
+    SELECT to_char(d, 'YYYY-MM-DD') AS day
+      FROM generate_series(current_date - ($1 || ' days')::interval, current_date, interval '1 day') d
+     ORDER BY day`, [q.days - 1]);
+
+  const parts = await earningParts(req.principal.sub, spine[0]!.day);
 
   // Priced once per currency rather than once per row. Converted at today's rate, which is
   // the only rate this platform has: no FX or spot history is kept, so a reward earned in
@@ -2367,6 +2381,7 @@ const NOTIFY_KINDS = {
     { kind: 'kyc',          label: 'Verification', note: 'Progress on your identity documents.' },
     { kind: 'ticket',       label: 'Support replies', note: 'When we reply on one of your tickets.' },
     { kind: 'message',      label: 'Messages from the desk', note: 'Direct messages from your account manager.' },
+    { kind: 'achievement',  label: 'Arena', note: 'Achievements you earn, bonuses the desk decides and your league result each month.' },
     { kind: 'security',     label: 'Security', note: 'Password and sign-in changes.', locked: true },
   ],
   staff: [
@@ -2377,6 +2392,7 @@ const NOTIFY_KINDS = {
     { kind: 'task.assigned',      label: 'Tasks assigned to you', note: 'Somebody put a task on your list.' },
     { kind: 'client.registered',  label: 'New sign-ups', note: 'Somebody opened an account themselves.' },
     { kind: 'portfolio.request',  label: 'Portfolio withdrawals', note: 'A client asked to take money out of a savings pot, which needs a decision.' },
+    { kind: 'achievement.bonus',  label: 'Achievement bonuses', note: 'A client earned an Arena bonus that needs approving.' },
   ],
 } as const;
 
@@ -7328,6 +7344,350 @@ app.get('/robots.txt', async (_req, reply) =>
   reply.type('text/plain; charset=utf-8').header('cache-control', 'public, max-age=600')
     .send(`User-agent: *\nAllow: /\nSitemap: ${publicUrl()}/sitemap.xml\n`));
 
+// ------------------------------------------------------------------ the Arena
+//
+// Achievements earned from how the account is held, and a monthly league in which a client
+// sees their own row among anonymous clients of a similar size. The rules are in arena.ts;
+// this is the data around them. Nothing here moves money on its own: a bonus is written as
+// pending and paid only when the desk approves it, through the same entry a credit makes.
+
+type LeagueRow = { client_id: string; alias: string; score: number; ret: number; rank: number; move: 'up' | 'down' | 'stay' };
+const standingsCache = new Map<string, { at: number; rows: LeagueRow[] }>();
+
+/** Every client with an account to be ranked on, in the Arena — created on first sight. */
+async function ensureArenaProfiles(ids?: string[]) {
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT DISTINCT ta.client_id AS id FROM trading_accounts ta
+       LEFT JOIN arena_profiles ap ON ap.client_id = ta.client_id
+      WHERE ap.client_id IS NULL ${ids ? 'AND ta.client_id = ANY($1)' : ''}`, ids ? [ids] : []);
+  if (!rows.length) return;
+  const books = await clientBooks(rows.map((r) => r.id));
+  const month = monthKey(new Date());
+  for (const { id } of rows) {
+    const league = leagueFor(books.get(id)?.equity_usd ?? 0);
+    // An alias can collide; a handful of tries is plenty against ten thousand per animal.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const { rowCount } = await pool.query(
+        `INSERT INTO arena_profiles (client_id, alias, league, joined_month) VALUES ($1,$2,$3,$4)
+         ON CONFLICT DO NOTHING`, [id, makeAlias(), league, month]);
+      if (rowCount) break;
+      const { rowCount: has } = await pool.query('SELECT 1 FROM arena_profiles WHERE client_id = $1', [id]);
+      if (has) break;
+    }
+  }
+  // A new member changes the table; a cached one would leave them out for up to a minute.
+  standingsCache.clear();
+}
+
+/**
+ * One client's month: its return and its worst day, as fractions of the capital at work —
+ * what the account held when the month began, worked back from today the way the
+ * performance figure is, plus what was paid in during it. Earnings come from the same
+ * query the performance chart reads. Null when there was too little to earn on, or
+ * something in the mix has no price.
+ */
+async function monthFigures(clientId: string, month: string, book: Book) {
+  const from = monthStart(month);
+  const end = monthStart(nextMonth(month)).toISOString().slice(0, 10);
+  const parts = await earningParts(clientId, from.toISOString().slice(0, 10));
+  let earnedAll = 0, moved = 0, earnedIn = 0, paidIn = 0;
+  const daily = new Map<string, number>();
+  for (const p of parts) {
+    const r = await rateToUsd(p.code);
+    if (r === null) return null;
+    const usd = Number(p.amount) * r;
+    if (p.bucket === 'earned') {
+      earnedAll += usd;
+      if (p.day < end) { earnedIn += usd; daily.set(p.day, (daily.get(p.day) ?? 0) + usd); }
+    } else {
+      moved += usd;
+      if (p.bucket === 'in' && p.day < end) paidIn += usd;
+    }
+  }
+  const opening = book.holdings_usd - earnedAll - moved;
+  // The base is what was at work: the month's opening plus everything paid in during it.
+  // Against the opening alone, a client could start a month with $100, pay in $10,000 the
+  // next day and post a return of thousands of percent; a league that rewards depositing
+  // late is not a league. Accounts with less than $100 at work are not ranked.
+  const base = Math.max(0, opening) + paidIn;
+  if (!(base >= 100) || book.unpriced.length) return null;
+  const worst = Math.min(0, ...daily.values());
+  const ret = earnedIn / base;
+  const worstLoss = -worst / base;
+  return { ret, worstLoss, score: scoreOf(ret, worstLoss) };
+}
+
+
+/** A league's table for a month, ranked. Cached for a minute: it is read far more than it moves. */
+async function leagueStandings(league: League, month: string, fresh = false): Promise<LeagueRow[]> {
+  const key = `${league}:${month}`;
+  const hit = standingsCache.get(key);
+  if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.rows;
+  const { rows: members } = await pool.query<{ client_id: string; alias: string }>(
+    'SELECT client_id, alias FROM arena_profiles WHERE league = $1 AND listed', [league]);
+  const books = await clientBooks(members.map((m) => m.client_id));
+  const scored: (Standing & { alias: string })[] = [];
+  for (const m of members) {
+    const book = books.get(m.client_id);
+    const f = book ? await monthFigures(m.client_id, month, book) : null;
+    if (f) scored.push({ client_id: m.client_id, alias: m.alias, score: f.score, ret: f.ret });
+  }
+  const alias = new Map(scored.map((s) => [s.client_id, s.alias]));
+  const rows = rankLeague(league, scored).map((r) => ({ ...r, alias: alias.get(r.client_id)! }));
+  standingsCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
+/** Award an achievement once; returns true when it is new. Notifies the client, and the desk if there is a bonus. */
+async function award(c: pg.PoolClient, clientId: string, code: string, period = '') {
+  const a = achievement(code);
+  if (!a) return false;
+  const { rows: [row] } = await c.query(
+    `INSERT INTO client_achievements (client_id, code, period, bonus, bonus_status)
+     VALUES ($1,$2,$3,$4,$5) ON CONFLICT (client_id, code, period) DO NOTHING RETURNING id`,
+    [clientId, code, period, a.bonus, a.bonus ? 'pending' : 'none']);
+  if (!row) return false;
+  await notifyClientOf(c, {
+    client_id: clientId, kind: 'achievement',
+    title: `Achievement unlocked: ${a.title}`,
+    body: a.bonus ? `${a.note} A $${a.bonus} bonus is with the desk for approval.` : a.note,
+    ref_table: 'client_achievements', ref_id: String(row.id),
+  });
+  await logActivity(c, {
+    client_id: clientId, kind: 'achievement', actor: 'system',
+    summary: `Earned ${a.title}${a.bonus ? ` · $${a.bonus} bonus pending` : ''}`,
+    ref_table: 'client_achievements', ref_id: String(row.id), data: { code, period, bonus: a.bonus },
+  });
+  if (a.bonus) {
+    const { rows: [who] } = await c.query<{ name: string }>('SELECT name FROM clients WHERE id = $1', [clientId]);
+    await notifyStaff(c, { roles: ['admin'] }, {
+      kind: 'achievement.bonus', title: `Bonus to approve: ${who?.name ?? 'a client'}`,
+      body: `${a.title} · $${a.bonus}`, ref_table: 'client_achievements', ref_id: String(row.id),
+    });
+  }
+  return true;
+}
+
+/** What the achievement checks need to know about a client, in one query. */
+async function arenaFacts(clientId: string): Promise<Facts | null> {
+  const { rows: [f] } = await pool.query(`
+    SELECT c.kyc_status AS kyc, c.auto_trader,
+           (CASE WHEN coalesce(trim(c.name), '') <> '' THEN 1 ELSE 0 END
+            + CASE WHEN coalesce(trim(c.phone), '') <> '' THEN 1 ELSE 0 END
+            + CASE WHEN c.date_of_birth IS NOT NULL THEN 1 ELSE 0 END
+            + CASE WHEN coalesce(trim(c.country), '') <> '' THEN 1 ELSE 0 END
+            + CASE WHEN coalesce(trim(c.address), '') <> '' THEN 1 ELSE 0 END) AS profile_fields,
+           floor(extract(epoch FROM now() - c.created_at) / 86400)::int AS days_as_client,
+           (SELECT count(*) FROM stakes s WHERE s.client_id = c.id)::int AS stakes_ever,
+           coalesce((SELECT floor(max(extract(epoch FROM now() - s.staked_at)) / 86400) FROM stakes s
+                      WHERE s.client_id = c.id AND s.status = 'active'), 0)::int AS longest_stake,
+           (SELECT count(*) FROM portfolios p WHERE p.client_id = c.id)::int AS pots_ever,
+           coalesce((SELECT floor(max(extract(epoch FROM now() - p.created_at)) / 86400) FROM portfolios p
+                      WHERE p.client_id = c.id AND p.status = 'open' AND p.balance > 0), 0)::int AS oldest_pot,
+           (SELECT count(*) FROM ipo_subscriptions i WHERE i.client_id = c.id)::int AS ipos_ever,
+           EXISTS (SELECT 1 FROM stakes s WHERE s.client_id = c.id AND s.status = 'active') AS active_stake,
+           EXISTS (SELECT 1 FROM portfolios p WHERE p.client_id = c.id AND p.status = 'open' AND p.balance > 0) AS funded_pot,
+           EXISTS (SELECT 1 FROM ipo_subscriptions i WHERE i.client_id = c.id AND i.status = 'active') AS active_ipo,
+           (SELECT count(*) FROM linked_wallets w WHERE w.client_id = c.id)::int AS wallets
+      FROM clients c WHERE c.id = $1`, [clientId]);
+  if (!f) return null;
+  return {
+    kyc: f.kyc, profileFields: f.profile_fields, stakesEver: f.stakes_ever, longestActiveStakeDays: f.longest_stake,
+    potsEver: f.pots_ever, oldestFundedPotDays: f.oldest_pot, iposEver: f.ipos_ever, activeStake: f.active_stake,
+    fundedPot: f.funded_pot, activeIpo: f.active_ipo, autoTrader: f.auto_trader, walletsLinked: f.wallets,
+    daysAsClient: f.days_as_client,
+  };
+}
+
+/** Check a client against the catalogue and award what is newly earned. */
+async function evaluateAchievements(clientId: string) {
+  const facts = await arenaFacts(clientId);
+  if (!facts) return { facts: null, awarded: 0 };
+  const due = ACHIEVEMENTS.filter((a) => a.check?.(facts).done);
+  if (!due.length) return { facts, awarded: 0 };
+  const awarded = await tx('system', async (c) => {
+    let n = 0;
+    for (const a of due) if (await award(c, clientId, a.code)) n++;
+    return n;
+  });
+  if (awarded) flushNotifications();
+  return { facts, awarded };
+}
+
+/**
+ * Close every month that has ended and not been closed: write its final table, move the
+ * top up and the bottom down, and crown each league's winner. Months before the Arena
+ * existed are never closed, and league_closings makes each close happen exactly once.
+ */
+async function closeArenaMonths() {
+  const { rows: [first] } = await pool.query<{ m: string | null }>('SELECT min(joined_month) AS m FROM arena_profiles');
+  if (!first?.m) return 0;
+  const current = monthKey(new Date());
+  let closed = 0;
+  for (let m = first.m; m < current; m = nextMonth(m)) {
+    const { rowCount } = await pool.query('INSERT INTO league_closings (month) VALUES ($1) ON CONFLICT DO NOTHING', [m]);
+    if (!rowCount) continue;
+    // Every league's final table is taken before anybody moves. Moving as each league is
+    // closed would rank the clients just promoted into the next league a second time, in
+    // the same close, and send some of them up or down again.
+    const finals: [League, LeagueRow[]][] = [];
+    for (const league of LEAGUES) finals.push([league, await leagueStandings(league, m, true)]);
+    for (const [league, rows] of finals) {
+      if (!rows.length) continue;
+      await tx('system', async (c) => {
+        for (const r of rows) {
+          await c.query(
+            `INSERT INTO league_results (month, client_id, league, rank, members, score, ret, move)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+            [m, r.client_id, league, r.rank, rows.length, r.score, r.ret, r.move]);
+          if (r.move !== 'stay') {
+            await c.query('UPDATE arena_profiles SET league = $2 WHERE client_id = $1',
+              [r.client_id, r.move === 'up' ? promote(league) : demote(league)]);
+          }
+          if (r.move === 'up') await award(c, r.client_id, 'promoted');
+          // A winner needs a field to have won against, and a positive month to have won with.
+          if (r.rank === 1 && rows.length >= 3 && r.score > 0) await award(c, r.client_id, 'league_champion', m);
+          await notifyClientOf(c, {
+            client_id: r.client_id, kind: 'achievement',
+            title: `${m}: you finished #${r.rank} of ${rows.length} in ${league}`,
+            body: r.move === 'up' ? `You move up to ${promote(league)}.` : r.move === 'down' ? `You move down to ${demote(league)}.` : 'You stay in your league.',
+          });
+        }
+      });
+      flushNotifications();
+    }
+    standingsCache.clear();
+    closed++;
+  }
+  return closed;
+}
+
+/** The Arena's own sweep: new profiles, newly earned achievements, finished months. */
+async function arenaSweep() {
+  await ensureArenaProfiles();
+  const { rows } = await pool.query<{ client_id: string }>('SELECT client_id FROM arena_profiles');
+  let awarded = 0;
+  for (const r of rows) awarded += (await evaluateAchievements(r.client_id)).awarded;
+  const closed = await closeArenaMonths();
+  return { awarded, closed };
+}
+
+app.get('/me/arena', { preHandler: trader }, async (req: any) => {
+  const me = req.principal.sub as string;
+  await ensureArenaProfiles([me]);
+  await closeArenaMonths();
+  const { facts } = await evaluateAchievements(me);
+  const { rows: [profile] } = await pool.query('SELECT alias, league, listed FROM arena_profiles WHERE client_id = $1', [me]);
+  const month = monthKey(new Date());
+  const table = profile ? await leagueStandings(profile.league, month) : [];
+  const mine = table.find((r) => r.client_id === me) ?? null;
+  const { rows: earned } = await pool.query(
+    'SELECT code, period, earned_at, bonus, bonus_status FROM client_achievements WHERE client_id = $1 ORDER BY earned_at', [me]);
+  const { rows: [last] } = await pool.query(
+    'SELECT month, league, rank, members, score, ret, move FROM league_results WHERE client_id = $1 ORDER BY month DESC LIMIT 1', [me]);
+  const n = movesFor(table.length);
+
+  return {
+    month,
+    ends_at: monthStart(nextMonth(month)).toISOString(),
+    leagues: LEAGUES,
+    me: profile ? {
+      alias: profile.alias, league: profile.league, listed: profile.listed,
+      rank: mine?.rank ?? null, score: mine?.score ?? null, ret: mine?.ret ?? null,
+      members: table.length, moves: n,
+      beat: mine && table.length > 1 ? (table.length - mine.rank) / (table.length - 1) : null,
+    } : null,
+    // Aliases and percentages only. The client's own row is marked; nobody else's id leaves.
+    table: table.map((r) => ({ rank: r.rank, alias: r.alias, score: r.score, ret: r.ret, move: r.move, me: r.client_id === me })),
+    achievements: ACHIEVEMENTS.map((a) => {
+      const got = earned.filter((e) => e.code === a.code);
+      const progress = facts && a.check ? a.check(facts) : null;
+      return {
+        code: a.code, title: a.title, note: a.note, icon: a.icon, bonus: a.bonus,
+        earned: got.map((e) => ({ period: e.period, at: e.earned_at, bonus: e.bonus === null ? null : Number(e.bonus), status: e.bonus_status })),
+        have: progress?.have ?? null, need: progress?.need ?? null,
+      };
+    }),
+    last: last ? { ...last, ret: Number(last.ret) } : null,
+  };
+});
+
+app.put('/me/arena', { preHandler: trader }, async (req: any, reply) => {
+  const body = z.object({ listed: z.boolean() }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  await ensureArenaProfiles([req.principal.sub]);
+  await pool.query('UPDATE arena_profiles SET listed = $2 WHERE client_id = $1', [req.principal.sub, body.data.listed]);
+  standingsCache.clear();
+  return { listed: body.data.listed };
+});
+
+/** The desk's view: every league with real names, and the bonuses waiting on a decision. */
+app.get('/arena/overview', { preHandler: auth('crm:read') }, async () => {
+  await ensureArenaProfiles();
+  const month = monthKey(new Date());
+  const names = new Map((await pool.query<{ id: string; name: string }>('SELECT id, name FROM clients')).rows.map((r) => [r.id, r.name]));
+  const leagues = [];
+  for (const league of LEAGUES) {
+    const rows = await leagueStandings(league, month);
+    const { rows: [{ count }] } = await pool.query<{ count: number }>('SELECT count(*)::int AS count FROM arena_profiles WHERE league = $1', [league]);
+    leagues.push({ league, profiles: count, ranked: rows.length, rows: rows.map((r) => ({ ...r, name: names.get(r.client_id) ?? '' })) });
+  }
+  const { rows: bonuses } = await pool.query(
+    `SELECT a.id, a.client_id, c.name, a.code, a.period, a.earned_at, a.bonus, a.bonus_status, a.decided_at, a.note
+       FROM client_achievements a JOIN clients c ON c.id = a.client_id
+      WHERE a.bonus IS NOT NULL ORDER BY (a.bonus_status = 'pending') DESC, a.earned_at DESC LIMIT 200`);
+  return {
+    month, ends_at: monthStart(nextMonth(month)).toISOString(), leagues,
+    bonuses: bonuses.map((b) => ({ ...b, bonus: Number(b.bonus), title: achievement(b.code)?.title ?? b.code })),
+  };
+});
+
+/**
+ * Pay or decline a bonus. Paying writes the same adjustment a credit does — into the
+ * client's USD account, marked settled, visible to them as money the desk added and never
+ * counted as a deposit or as a return. The amount can be changed at the moment of paying.
+ */
+app.post('/arena/bonuses/:id/decide', { preHandler: auth('funds:credit') }, async (req: any, reply) => {
+  const body = z.object({
+    approve: z.boolean(), amount: z.number().positive().finite().max(1_000_000).optional(), note: z.string().max(300).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+  const out = await tx(req.principal.sub, async (c) => {
+    const { rows: [a] } = await c.query(
+      `SELECT * FROM client_achievements WHERE id = $1 FOR UPDATE`, [req.params.id]);
+    if (!a) return 'missing' as const;
+    if (a.bonus_status !== 'pending') return 'decided' as const;
+    const title = achievement(a.code)?.title ?? a.code;
+    if (!body.data.approve) {
+      await c.query(`UPDATE client_achievements SET bonus_status = 'declined', decided_by = $2, decided_at = now(), note = $3 WHERE id = $1`,
+        [a.id, req.principal.sub, body.data.note ?? null]);
+      await logActivity(c, { client_id: a.client_id, kind: 'achievement', actor: req.principal.sub,
+        summary: `Declined the ${title} bonus${body.data.note ? ` — ${body.data.note}` : ''}`, ref_table: 'client_achievements', ref_id: String(a.id) });
+      return { status: 'declined' };
+    }
+    const amount = body.data.amount ?? Number(a.bonus);
+    const { rows: [account] } = await c.query(
+      `INSERT INTO trading_accounts (client_id, mode, currency, balance) VALUES ($1,'demo','USD',0)
+       ON CONFLICT (client_id, mode, currency) DO UPDATE SET client_id = excluded.client_id RETURNING *`, [a.client_id]);
+    await c.query('UPDATE trading_accounts SET balance = balance + $2 WHERE id = $1', [account.id, amount]);
+    const { rows: [entry] } = await c.query(
+      `INSERT INTO cash_transactions (account_id, client_id, kind, amount, status, approved_by)
+       VALUES ($1,$2,'adjustment',$3,'settled',$4) RETURNING *`, [account.id, a.client_id, amount, req.principal.sub]);
+    await c.query(`UPDATE client_achievements SET bonus_status = 'paid', bonus = $4, decided_by = $2, decided_at = now(), note = $3 WHERE id = $1`,
+      [a.id, req.principal.sub, body.data.note ?? null, amount]);
+    await notifyClientOf(c, { client_id: a.client_id, kind: 'achievement', title: `$${amount} bonus for ${title} added to your account`,
+      body: body.data.note ?? undefined, ref_table: 'cash_transactions', ref_id: String(entry.id) });
+    await logActivity(c, { client_id: a.client_id, kind: 'credit', actor: req.principal.sub,
+      summary: `Paid the ${title} bonus, ${amount} USD`, ref_table: 'cash_transactions', ref_id: String(entry.id),
+      data: { currency: 'USD', amount, achievement: a.code } });
+    return { status: 'paid', amount };
+  });
+  if (out === 'missing') return reply.code(404).send({ error: 'no such bonus' });
+  if (out === 'decided') return reply.code(409).send({ error: 'that bonus has already been decided' });
+  flushNotifications();
+  return out;
+});
+
 if (process.argv[1]?.endsWith('server.ts')) {
   // Refuse to start misconfigured, rather than serving 500s at the login screen.
   try {
@@ -7369,6 +7729,15 @@ if (process.argv[1]?.endsWith('server.ts')) {
     });
   setTimeout(sweep, 5_000).unref();          // once shortly after boot
   setInterval(sweep, 3600_000).unref();
+
+  // The Arena checks achievements and closes finished months on its own schedule: often
+  // enough that a badge arrives soon after it is earned, and a month closes shortly after
+  // midnight on the first. Idempotent, like the accruals, so a restart repeats nothing.
+  const arena = () => arenaSweep()
+    .then((r) => { if (r.awarded || r.closed) app.log.info(r, 'arena sweep'); })
+    .catch((err: unknown) => app.log.error({ err }, 'arena sweep failed'));
+  setTimeout(arena, 20_000).unref();
+  setInterval(arena, 15 * 60_000).unref();
 
   // Drain in-flight requests and hand the pool back rather than dropping connections
   // mid-query. Windows kills without delivering this, and Postgres copes either way, so

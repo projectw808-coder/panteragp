@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   BarChart3, Bot, ChartCandlestick, ChartPie, Check, ChevronDown, Coins, FileText, Headset, Inbox, LayoutDashboard,
-  LayoutGrid, ListTodo, LogOut, Mail, Moon, Plus, Rocket, Search, Settings, ShieldCheck, Sun, User, Users, Wallet, X,
+  LayoutGrid, ListTodo, LogOut, Mail, Moon, Plus, Rocket, Search, Settings, ShieldCheck, Sun, User, Users, Wallet, X, Trophy,
 } from 'lucide-react';
 import { api, useApi } from './api.ts';
 import { headline, unit, type Accounts } from './balance.tsx';
@@ -19,7 +19,7 @@ export const NAV_ICONS: Record<string, typeof LayoutGrid> = {
   '#/requests': Inbox, '#/reports': BarChart3, '#/email': Mail,
   '#/overview': LayoutGrid, '#/charts': ChartCandlestick, '#/trade': Bot, '#/portfolios': ChartPie,
   '#/staking': Coins, '#/ipos': Rocket, '#/wallet': Wallet, '#/documents': FileText,
-  '#/support': Headset, '#/settings': Settings, '#/profile': User,
+  '#/support': Headset, '#/settings': Settings, '#/profile': User, '#/arena': Trophy,
 };
 
 type Quote = { symbol: string; price: number; change_pct: number; spark: number[] };

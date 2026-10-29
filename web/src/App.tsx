@@ -6,6 +6,8 @@ import { NotificationBell } from './notifications.tsx';
 import { SupportPanel, SupportQueue } from './tickets.tsx';
 import { PortfoliosPanel } from './portfolio.tsx';
 import { StakingPanel } from './staking.tsx';
+import { ArenaView } from './arena.tsx';
+import { ArenaAdmin } from './arena-admin.tsx';
 import { StakingAdmin } from './staking-admin.tsx';
 import { PortfolioRequests } from './portfolio-requests.tsx';
 import { NAV_ICONS, XTopBar } from './x-shell.tsx';
@@ -358,6 +360,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/staking', 'Staking', crm],
     ['#/ipos', 'IPO Offerings', crm],
     ['#/requests', 'Requests', crm],
+    ['#/arena', 'Arena', crm],
     // Support is the same route to two different things. For staff it is a queue they
     // work, so it sits among the work; for a client it is "get hold of us", which belongs
     // at the bottom with the rest of the account.
@@ -370,6 +373,7 @@ function Shell({ dark, setDark, onLogout }: {
     ['#/portfolios', 'Portfolios', trading],
     ['#/staking', 'Staking', trading],
     ['#/ipos', 'IPO Offerings', trading],
+    ['#/arena', 'Arena', trading],
     ['#/wallet', 'Wallet', trading],
     // Documents, support, settings: the account tail, after the things a client came here
     // to do. Staff keep their own Settings at the very end of their own rail.
@@ -482,6 +486,7 @@ function Shell({ dark, setDark, onLogout }: {
             ? <div className="mx-auto max-w-[1300px]"><PortfoliosPanel /></div>
             : <Denied />)
           : hash === '/requests' ? (crm ? <PortfolioRequests /> : <Denied />)
+          : hash === '/arena' ? (crm ? <ArenaAdmin admin={!!admin} /> : trading ? <ArenaView /> : <Denied />)
           : hash === '/staking' ? (crm ? <StakingAdmin />
             : trading
               ? <div className="mx-auto max-w-[1300px]"><StakingPanel /></div>

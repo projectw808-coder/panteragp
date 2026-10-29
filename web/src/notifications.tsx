@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDownLeft, ArrowUpRight, Bell, BellOff, CheckCheck, CircleCheck, Flag, ListTodo, Mail, MessageSquare, Percent, Plus, ShieldCheck,
+  ArrowDownLeft, ArrowUpRight, Bell, BellOff, CheckCheck, CircleCheck, Flag, ListTodo, Mail, MessageSquare, Percent, Plus, ShieldCheck, Trophy,
 } from 'lucide-react';
 import { api } from './api.ts';
 import { subscribe } from './feed.ts';
@@ -25,11 +25,12 @@ export const ICON: Record<string, typeof Bell> = {
   // Staff kinds. The bell is the same component on both sides — one inbox, two audiences.
   'flag.raised': Flag, 'kyc.uploaded': ShieldCheck, 'ticket.activity': MessageSquare,
   'withdrawal.request': ArrowUpRight, 'task.assigned': ListTodo,
+  achievement: Trophy, 'achievement.bonus': Trophy,
 };
 
 /** Money in and good news read green, money out and flags red; the rest stay ember. */
 export const TONE: Record<string, string> = {
-  'order.filled': 'is-up', deposit: 'is-up', interest: 'is-up', credit: 'is-up',
+  'order.filled': 'is-up', deposit: 'is-up', interest: 'is-up', credit: 'is-up', achievement: 'is-up',
   withdrawal: 'is-down', 'withdrawal.request': 'is-down', 'flag.raised': 'is-down',
 };
 

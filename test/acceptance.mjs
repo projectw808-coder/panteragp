@@ -2567,4 +2567,31 @@ await step('the trader sees no CRM, the client record is its own', async () => {
   assert.equal(await status(`/clients/${client.id}`, { token: T }), 200);
 });
 
+console.log('\nArena');
+await step('a client sees their own alias and league, and nobody else is identifiable', async () => {
+  const a = await get('/me/arena', { token: T });
+  assert.match(a.me.alias, /^[A-Z][a-z]+ \d{4}$/, 'an alias, not a name');
+  assert.ok(a.leagues.includes(a.me.league));
+  for (const row of a.table) {
+    assert.deepEqual(Object.keys(row).sort(), ['alias', 'me', 'move', 'rank', 'ret', 'score'], 'a row carries no id, name or balance');
+  }
+  assert.ok(a.achievements.length >= 10 && a.achievements.every((x) => x.code && x.title));
+});
+await step('a client can leave the scoreboard and come back', async () => {
+  await get('/me/arena', { token: T, method: 'PUT', body: { listed: false } });
+  let a = await get('/me/arena', { token: T });
+  assert.equal(a.me.listed, false);
+  assert.ok(!a.table.some((r) => r.me), 'a hidden client is not in the table');
+  await get('/me/arena', { token: T, method: 'PUT', body: { listed: true } });
+  a = await get('/me/arena', { token: T });
+  assert.equal(a.me.listed, true);
+});
+await step('only the desk sees the leagues with names, and only funds:credit pays a bonus', async () => {
+  assert.equal(await status('/arena/overview', { token: T }), 403);
+  const ov = await get('/arena/overview', { token: A });
+  assert.ok(Array.isArray(ov.leagues) && Array.isArray(ov.bonuses));
+  assert.equal(await status('/arena/bonuses/1/decide', { token: T, method: 'POST', body: { approve: true } }), 403);
+  assert.equal(await status('/arena/bonuses/999999999/decide', { token: A, method: 'POST', body: { approve: false } }), 404);
+});
+
 console.log(`\n${passed} checks passed across all nine phases.\n`);

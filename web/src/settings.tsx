@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   ArrowDownToLine, ArrowUpFromLine, BadgeCheck, Bell, BellOff, BriefcaseBusiness, Check, CircleDollarSign, Coins,
-  Eye, EyeOff, Flag, Headset, KeyRound, Lock, MessageSquare, Moon, Percent, ShieldCheck, Sun, UserPlus, UserRound,
+  Eye, EyeOff, Flag, Headset, KeyRound, Lock, MessageSquare, Moon, Percent, ShieldCheck, Sun, Trophy, UserPlus, UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import { StatTile } from './x-shell.tsx';
@@ -113,6 +113,7 @@ const KIND_ICON: Record<string, LucideIcon> = {
   interest: Percent, stake: Coins, 'portfolio.request': BriefcaseBusiness, kyc: BadgeCheck, ticket: Headset,
   message: MessageSquare, security: ShieldCheck, 'flag.raised': Flag, 'kyc.uploaded': BadgeCheck,
   'ticket.activity': Headset, 'withdrawal.request': ArrowUpFromLine, 'task.assigned': Check, 'client.registered': UserPlus,
+  achievement: Trophy, 'achievement.bonus': Trophy,
 };
 
 /**
