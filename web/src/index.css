@@ -2264,3 +2264,30 @@ html:not(.dark) .st-theme-swatch { border-color: #d6dae1; }
 html:not(.dark) .st-rows > div + div { border-color: var(--color-pebble); }
 html:not(.dark) .st-strength > span:not([class]) { background: var(--color-pebble); }
 .x-tabs > button:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------------------------------------------------------------- staking */
+.sk-token { display: grid; place-items: center; flex-shrink: 0; border-radius: 999px; overflow: hidden; }
+.sk-card { padding: 16px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s; }
+.sk-card:hover { border-color: rgba(255, 117, 24, 0.35); }
+.sk-card.is-locked { background: linear-gradient(160deg, rgba(255, 117, 24, 0.06), rgba(255, 255, 255, 0.01) 60%); }
+.sk-lead { border-color: rgba(255, 117, 24, 0.4) !important; background: linear-gradient(160deg, rgba(255, 117, 24, 0.12), rgba(255, 117, 24, 0.02) 70%) !important; }
+.sk-track { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
+.sk-track > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff7518, #ffb066); box-shadow: 0 0 12px rgba(255, 117, 24, 0.5); animation: sk-grow 1.1s var(--ease-enter) both; transform-origin: left; }
+@keyframes sk-grow { from { transform: scaleX(0); } }
+.sk-opt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.09); background: rgba(255, 255, 255, 0.02); transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s; }
+.sk-opt.is-term { flex-direction: column; align-items: stretch; gap: 3px; }
+.sk-opt:hover { border-color: rgba(255, 117, 24, 0.45); }
+.sk-opt.is-on { border-color: var(--color-ember); background: rgba(255, 117, 24, 0.1); box-shadow: 0 0 0 3px rgba(255, 117, 24, 0.12); }
+.sk-opt:focus-visible { outline: 2px solid var(--color-ember); outline-offset: 2px; }
+.sk-step { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #140802; background: var(--color-ember); }
+.sk-amount { position: relative; }
+.sk-amount > input { height: 46px; font-size: 18px; font-weight: 600; padding-right: 64px; }
+.sk-amount-unit { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: 600; color: var(--color-mist); pointer-events: none; }
+.sk-summary { padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; border: 1px dashed rgba(255, 117, 24, 0.4); background: rgba(255, 117, 24, 0.05); }
+.sk-summary b { font-weight: 600; color: var(--color-ember-ink); }
+html:not(.dark) .sk-card { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .sk-card.is-locked { background: linear-gradient(160deg, rgba(255, 117, 24, 0.06), #fff 60%); }
+html:not(.dark) .sk-track { background: var(--color-pebble); }
+html:not(.dark) .sk-opt { border-color: #e4e7ec; background: #fff; }
+html:not(.dark) .sk-opt.is-on { border-color: var(--color-ember); background: rgba(255, 117, 24, 0.07); }
+html:not(.dark) .sk-step { color: #fff; }
