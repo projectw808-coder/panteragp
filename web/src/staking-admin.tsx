@@ -33,7 +33,8 @@ export function StakingAdmin() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
-  const rows = products.data ?? [];
+  // Products still on offer first; retired ones sink to the bottom, each group in its own order.
+  const rows = [...(products.data ?? [])].sort((a, b) => Number(b.active) - Number(a.active));
   const open = stakes.data ?? [];
   const reload = () => { products.reload(); stakes.reload(); };
 
