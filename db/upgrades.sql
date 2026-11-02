@@ -391,7 +391,7 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order)
 VALUES
   ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
-   'Filed confidentially on 1 June 2026 for a Nasdaq listing. Bloomberg reports formal marketing could start as soon as the week of 9 November, with trading before Thanksgiving; no date, price or share count is set.',
+   'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT, after a confidential filing on 1 June. The share count and price range are not yet set; marketing can start no earlier than 10 November, and trading before Thanksgiving is reported.',
    'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
    '$2tn', 10000000, 500, 0.0725, 180,
    NULL, NULL, NULL, 'upcoming', 1),
@@ -409,8 +409,8 @@ VALUES
    NULL, NULL, NULL, 'upcoming', 3),
 
   ('databricks-2026', 'Databricks', 'DBX', 'USD',
-   'Lakehouse data platform with newer AI products in Lakebase and Genie. Valued $134bn in February 2026, with talks at $165-175bn.',
-   'No S-1 has been filed. The CEO has called 2026 a terrible year to go public and points at 2027. The window opens once a filing and a date exist.',
+   'Lakehouse data platform with newer AI products in Lakebase and Genie. Raised $5bn at a $190bn valuation on 13 August 2026, up from $134bn in February, with an annualised revenue run-rate above $7bn.',
+   'No S-1 has been filed. The CEO has called 2026 a terrible year to go public, says listing before Anthropic or OpenAI is very unlikely and points at 2027. The window opens once a filing and a date exist.',
    '$175bn', 12000000, 1000, 0.0580, 365,
    NULL, NULL, NULL, 'upcoming', 4),
 
@@ -1014,6 +1014,23 @@ DO $do$ BEGIN
       description = 'Goldman Sachs, Morgan Stanley and JPMorgan are lead underwriters. In October the company was reported by CNBC to be raising up to $30bn privately at a $1.25tn valuation ahead of the IPO. No date has been set; the window opens once one is.',
       updated_at = now() WHERE slug = 'openai-2026';
     INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-10-26');
+  END IF;
+END $do$;
+
+-- The offerings, as the public record stood on 2 November 2026. No new listing date has been
+-- set. Anthropic made its S-1 public on 26 October (SEC EDGAR; NPR, CNBC): Nasdaq, ticker
+-- ANT, share count and price range blank. Databricks raised $5bn at $190bn on 13 August
+-- (Reuters, Axios) and still has no filing. Only their text changes; the dates stay unset. Once.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-real-dates-2026-11-02') THEN
+    UPDATE ipos SET
+      summary = 'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT, after a confidential filing on 1 June. The share count and price range are not yet set; marketing can start no earlier than 10 November, and trading before Thanksgiving is reported.',
+      updated_at = now() WHERE slug = 'anthropic-2026';
+    UPDATE ipos SET
+      summary = 'Lakehouse data platform with newer AI products in Lakebase and Genie. Raised $5bn at a $190bn valuation on 13 August 2026, up from $134bn in February, with an annualised revenue run-rate above $7bn.',
+      description = 'No S-1 has been filed. The CEO has called 2026 a terrible year to go public, says listing before Anthropic or OpenAI is very unlikely and points at 2027. The window opens once a filing and a date exist.',
+      updated_at = now() WHERE slug = 'databricks-2026';
+    INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-11-02');
   END IF;
 END $do$;
 
