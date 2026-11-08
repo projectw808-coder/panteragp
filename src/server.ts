@@ -38,6 +38,7 @@ import { bearerMatches, parseDelivery, signatureMatches, SLUG, type Article, typ
 import { articlePage, indexPage, sitemap, type ArticleCard, type FooterView, type Topic } from './blog-page.ts';
 import { legalPage, LEGAL_PATHS, placeholdersOf, type Fills, type LegalKind } from './legal-page.ts';
 import { contactPage, type ContactContent } from './contact-page.ts';
+import { credentialsMatch, hasLockPass, LOCK_COOKIE, LOCK_DAYS, LOCK_PAGE, lockCookieValue, lockFromEnv, makeAttempts, safeNext } from './site-lock.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { principal: Principal }
@@ -1720,6 +1721,60 @@ app.get('/door', async (req, reply) => {
   const exempt = on && doorExempt(req);
   // Per caller now, since an allowed address is told so: cached by the browser only.
   return reply.header('cache-control', 'private, max-age=60').send({ on, countries: on ? [...geoPolicy!.countries] : [], timezones: on && geoPolicy!.countries.has('US'), exempt });
+});
+
+// The site lock: an optional username and password in front of the pages. See
+// src/site-lock.ts. Only a browser asking for a page is stopped; the API answers as before,
+// because the mobile app calls it on these same paths without an /api prefix.
+const siteLock = lockFromEnv();
+const lockAttempts = makeAttempts();
+const lockPage = (reply: any, next: string, error?: 'wrong' | 'busy') =>
+  reply.code(401).header('cache-control', 'no-store').type('text/html; charset=utf-8').send(LOCK_PAGE({ next, error }));
+if (siteLock) {
+  const LOCK_OPEN = new Set(['/health', '/site-lock', '/door', '/door/pass', '/whereami']);
+  app.addHook('onRequest', async (req: any, reply) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return;
+    if ((req.raw as ApiMarked).cameInUnderApi) return;
+    if (!/text\/html/.test(String(req.headers.accept ?? ''))) return;
+    const path = (req.raw.url ?? '/').split('?')[0];
+    if (LOCK_OPEN.has(path) || path.startsWith('/webhooks/')) return;
+    if (hasLockPass(req.headers.cookie, siteLock)) return;
+    return lockPage(reply, safeNext(req.raw.url));
+  });
+  // A page let through must not be kept by a cache in between and handed to someone
+  // without the cookie.
+  app.addHook('onSend', async (_req, reply, payload) => {
+    if (String(reply.getHeader('content-type') ?? '').startsWith('text/html')) {
+      reply.header('cache-control', 'private, no-store').header('vary', 'Cookie');
+    }
+    return payload;
+  });
+  app.log.info('the site lock is on');
+}
+app.get('/site-lock', async (req: any, reply) => (siteLock && !hasLockPass(req.headers.cookie, siteLock)
+  ? lockPage(reply, safeNext(req.query?.next))
+  : reply.code(303).header('location', '/').send()));
+await app.register(async (scope) => {
+  // The form posts as a plain HTML form would, so it works with scripts off. Parsed here
+  // only, so no other route starts accepting form bodies.
+  scope.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' },
+    (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(String(body)))));
+  scope.post('/site-lock', async (req: any, reply) => {
+    if (!siteLock) return reply.code(404).send({ error: 'not found' });
+    const ip = String(req.ip ?? '');
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const next = safeNext(b.next);
+    if (lockAttempts.blocked(ip)) return lockPage(reply, next, 'busy');
+    if (!credentialsMatch(siteLock, b.user, b.password)) {
+      lockAttempts.fail(ip);
+      req.log.info({ ip }, 'site lock: wrong username or password');
+      return lockPage(reply, next, 'wrong');
+    }
+    lockAttempts.clear(ip);
+    const secure = req.protocol === 'https' ? '; Secure' : '';
+    reply.header('set-cookie', `${LOCK_COOKIE}=${lockCookieValue(siteLock)}; Path=/; Max-Age=${LOCK_DAYS * 86_400}; HttpOnly${secure}; SameSite=Lax`);
+    return reply.code(303).header('location', next).header('cache-control', 'no-store').send();
+  });
 });
 
 await app.register(websocket);
@@ -5360,7 +5415,7 @@ app.get('/health', async (_req, reply) => {
     // See UPLOAD_PERSISTENCE: proven from a marker left on the last boot, not inferred
     // from an environment variable being set. Reported here so it can be read from
     // outside without signing in.
-    return { ok: true, uploads: UPLOAD_PERSISTENCE, door: doorState() };
+    return { ok: true, uploads: UPLOAD_PERSISTENCE, door: doorState(), lock: !!siteLock };
   } catch {
     return reply.code(503).send({ ok: false });
   }
