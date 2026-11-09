@@ -391,8 +391,8 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order)
 VALUES
   ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
-   'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT, after a confidential filing on 1 June. The share count and price range are not yet set; marketing can start no earlier than 10 November, and trading before Thanksgiving is reported.',
-   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
+   'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT; the amended S-1 of 2 November still leaves the price range and share count blank. A roadshow from the week of 9 November and pricing before Thanksgiving are reported, though investors have questioned that timetable (Reuters, 5 November).',
+   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. After the November AI selloff, prospective buyers are reported by Bloomberg to be discussing $1.2-1.3tn rather than the roughly $1.5tn sought. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
    '$2tn', 10000000, 500, 0.0725, 180,
    NULL, NULL, NULL, 'upcoming', 1),
 
@@ -1031,6 +1031,21 @@ DO $do$ BEGIN
       description = 'No S-1 has been filed. The CEO has called 2026 a terrible year to go public, says listing before Anthropic or OpenAI is very unlikely and points at 2027. The window opens once a filing and a date exist.',
       updated_at = now() WHERE slug = 'databricks-2026';
     INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-11-02');
+  END IF;
+END $do$;
+
+-- The offerings, as the public record stood on 9 November 2026. No new listing date has been
+-- set. Anthropic's amended S-1 of 2 November (SEC EDGAR) still has no price range or share
+-- count; Reuters (5 November) reports investors questioning a pre-Thanksgiving pricing, and
+-- Bloomberg (6 November) reports buyers discussing $1.2-1.3tn. Only its text changes; the
+-- dates stay unset. Once.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-real-dates-2026-11-09') THEN
+    UPDATE ipos SET
+      summary = 'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT; the amended S-1 of 2 November still leaves the price range and share count blank. A roadshow from the week of 9 November and pricing before Thanksgiving are reported, though investors have questioned that timetable (Reuters, 5 November).',
+      description = 'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. After the November AI selloff, prospective buyers are reported by Bloomberg to be discussing $1.2-1.3tn rather than the roughly $1.5tn sought. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
+      updated_at = now() WHERE slug = 'anthropic-2026';
+    INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-11-09');
   END IF;
 END $do$;
 
