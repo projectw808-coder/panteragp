@@ -391,10 +391,10 @@ INSERT INTO ipos (slug, name, asset, currency, summary, description, valuation,
                   opens_at, closes_at, matures_at, status, sort_order)
 VALUES
   ('anthropic-2026', 'Anthropic', 'ANTH', 'USD',
-   'Filed its S-1 publicly on 26 October 2026 to list Class A shares on the Nasdaq Global Select Market as ANT; the amended S-1 of 2 November still leaves the price range and share count blank. A roadshow from the week of 9 November and pricing before Thanksgiving are reported, though investors have questioned that timetable (Reuters, 5 November).',
-   'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. After the November AI selloff, prospective buyers are reported by Bloomberg to be discussing $1.2-1.3tn rather than the roughly $1.5tn sought. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
+   'Scheduled to list on the Nasdaq Global Select Market as ANT on 19 November 2026, with pricing expected on 18 November, per the company''s IPO website and offering documents filed with the SEC. The S-1/A of 10 November sets a range of $70-78 for 825 million Class A shares, up to $64.35bn at the top.',
+   'Anthropic is selling 801.4 million new shares and existing holders 23.6 million, with a 30-day option for 123.75 million more; AMD, Broadcom, Google, Micron, Microsoft, Nvidia and TSMC have agreed to buy $26bn of non-voting Class N stock at the IPO price. The top of the range values the company at up to about $1.4tn fully diluted; CNBC reports the book was covered at the range. Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026. The window closes on the listing day, and this offering runs 180 days from the listing, to 18 May 2027.',
    '$2tn', 10000000, 500, 0.0725, 180,
-   NULL, NULL, NULL, 'upcoming', 1),
+   '2026-11-09T09:00:00Z', '2026-11-19T16:00:00Z', '2027-05-18T16:00:00Z', 'upcoming', 1),
 
   ('nscale-2026', 'Nscale', 'NSCL', 'USD',
    'London-founded GPU data-centre operator, flagship campus in Narvik. Filed its S-1 on 18 September 2026 to list on the NYSE as NSCL at up to $35bn; the share count and price range are not yet set.',
@@ -1046,6 +1046,22 @@ DO $do$ BEGIN
       description = 'Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026; the last company-stated valuation is $965bn, from the May Series H. After the November AI selloff, prospective buyers are reported by Bloomberg to be discussing $1.2-1.3tn rather than the roughly $1.5tn sought. Morgan Stanley, Goldman Sachs and JPMorgan are reported as lead underwriters. The window opens once the listing date is announced.',
       updated_at = now() WHERE slug = 'anthropic-2026';
     INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-11-09');
+  END IF;
+END $do$;
+
+-- The offerings, as the public record stood on 16 November 2026. Anthropic has an official
+-- timetable: its IPO website and its EEA and UK offering documents, filed with the SEC as
+-- free writing prospectuses, say pricing is expected on 18 November and trading on Nasdaq
+-- (ANT) on 19 November, US Eastern time; the S-1/A of 10 November sets $70-78 for 825m
+-- shares. Its window closes on the listing day and the offering runs 180 days, to
+-- 18 May 2027. The other open offerings have no date and are unchanged. Once.
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM data_migrations WHERE name = 'ipo-real-dates-2026-11-16') THEN
+    UPDATE ipos SET opens_at = '2026-11-09T09:00:00Z', closes_at = '2026-11-19T16:00:00Z', matures_at = '2027-05-18T16:00:00Z', status = 'upcoming',
+      summary = 'Scheduled to list on the Nasdaq Global Select Market as ANT on 19 November 2026, with pricing expected on 18 November, per the company''s IPO website and offering documents filed with the SEC. The S-1/A of 10 November sets a range of $70-78 for 825 million Class A shares, up to $64.35bn at the top.',
+      description = 'Anthropic is selling 801.4 million new shares and existing holders 23.6 million, with a 30-day option for 123.75 million more; AMD, Broadcom, Google, Micron, Microsoft, Nvidia and TSMC have agreed to buy $26bn of non-voting Class N stock at the IPO price. The top of the range values the company at up to about $1.4tn fully diluted; CNBC reports the book was covered at the range. Revenue run-rate has grown from roughly $9bn at the end of 2025 to about $47-65bn by mid-2026. The window closes on the listing day, and this offering runs 180 days from the listing, to 18 May 2027.',
+      updated_at = now() WHERE slug = 'anthropic-2026';
+    INSERT INTO data_migrations (name) VALUES ('ipo-real-dates-2026-11-16');
   END IF;
 END $do$;
 
